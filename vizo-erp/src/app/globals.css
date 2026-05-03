@@ -1,0 +1,168 @@
+@import "tailwindcss";
+
+/* ==========================================================================
+   VIZO ERP — Tailwind v4 Theme + Custom Styles
+   --------------------------------------------------------------------------
+   Tailwind v4 uses CSS-based config via @theme. Design tokens defined here
+   automatically generate utility classes (e.g. bg-brand-yellow, text-navy-900).
+   ========================================================================== */
+
+/* Enable .dark class-based dark mode (instead of media query) */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  /* ── Fonts ─────────────────────────────────────────────────────── */
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, "SF Mono", monospace;
+
+  /* ── Brand: Yellow (accent only, used sparingly) ───────────────── */
+  --color-brand-yellow-50:  #FEFCE8;
+  --color-brand-yellow-100: #FDF6C2;
+  --color-brand-yellow-200: #FBED85;
+  --color-brand-yellow-300: #F8DF47;
+  --color-brand-yellow-400: #F2D11A;
+  --color-brand-yellow-500: #EDC705;
+  --color-brand-yellow-600: #C9A904;
+  --color-brand-yellow-700: #A08603;
+  --color-brand-yellow-800: #776302;
+  --color-brand-yellow-900: #4E4101;
+  --color-brand-yellow:     #EDC705;
+
+  /* ── Navy: Primary dark color ──────────────────────────────────── */
+  --color-navy-50:  #F0F4FA;
+  --color-navy-100: #D9E2F0;
+  --color-navy-200: #B3C5E1;
+  --color-navy-300: #8DA8D2;
+  --color-navy-400: #5577A8;
+  --color-navy-500: #1E3F6F;
+  --color-navy-600: #142E54;
+  --color-navy-700: #0A2042;
+  --color-navy-800: #061B3A;
+  --color-navy-900: #031833;
+  --color-navy-950: #010D1F;
+  --color-navy:     #031833;
+
+  /* ── Semantic status (muted, finance-grade) ────────────────────── */
+  --color-success:       #10B981;
+  --color-success-light: #D1FAE5;
+  --color-success-dark:  #047857;
+
+  --color-warning:       #F59E0B;
+  --color-warning-light: #FEF3C7;
+  --color-warning-dark:  #B45309;
+
+  --color-danger:        #EF4444;
+  --color-danger-light:  #FEE2E2;
+  --color-danger-dark:   #B91C1C;
+
+  --color-info:          #3B82F6;
+  --color-info-light:    #DBEAFE;
+  --color-info-dark:     #1D4ED8;
+
+  /* ── Custom font sizes ─────────────────────────────────────────── */
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 1rem;
+
+  /* ── Custom shadows ────────────────────────────────────────────── */
+  --shadow-card:        0 1px 3px 0 rgba(3, 24, 51, 0.04), 0 1px 2px 0 rgba(3, 24, 51, 0.03);
+  --shadow-card-hover:  0 4px 6px -1px rgba(3, 24, 51, 0.06), 0 2px 4px -1px rgba(3, 24, 51, 0.04);
+  --shadow-elevated:    0 10px 15px -3px rgba(3, 24, 51, 0.08), 0 4px 6px -2px rgba(3, 24, 51, 0.05);
+  --shadow-glow-yellow: 0 0 0 4px rgba(237, 199, 5, 0.15);
+
+  /* ── Custom border radius ──────────────────────────────────────── */
+  --radius-xl: 0.875rem;
+  --radius-2xl: 1.125rem;
+
+  /* ── Animations ────────────────────────────────────────────────── */
+  --animate-fade-in: fadeIn 0.18s ease-out;
+  --animate-slide-in-right: slideInRight 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-slide-in-left:  slideInLeft  0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-slide-up: slideUp 0.20s cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-pulse-soft: pulseSoft 2s ease-in-out infinite;
+}
+
+@keyframes fadeIn {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+@keyframes slideInRight {
+  0% { transform: translateX(20px); opacity: 0; }
+  100% { transform: translateX(0); opacity: 1; }
+}
+@keyframes slideInLeft {
+  0% { transform: translateX(-20px); opacity: 0; }
+  100% { transform: translateX(0); opacity: 1; }
+}
+@keyframes slideUp {
+  0% { transform: translateY(8px); opacity: 0; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+@keyframes pulseSoft {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+/* ==========================================================================
+   Base + Body
+   ========================================================================== */
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  font-family: var(--font-sans);
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  background-color: #F8FAFC;
+  color: #031833;
+}
+
+.dark body {
+  background-color: #031833;
+  color: #F8FAFC;
+}
+
+/* Tabular figures (money / numeric columns) */
+.tabular {
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-mono);
+  letter-spacing: -0.01em;
+}
+
+/* ==========================================================================
+   Scrollbar (thin)
+   ========================================================================== */
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(203 213 225) transparent;
+}
+.scrollbar-thin::-webkit-scrollbar { width: 6px; height: 6px; }
+.scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background-color: rgb(203 213 225);
+  border-radius: 3px;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb:hover { background-color: rgb(148 163 184); }
+.dark .scrollbar-thin { scrollbar-color: rgb(20 46 84) transparent; }
+.dark .scrollbar-thin::-webkit-scrollbar-thumb { background-color: rgb(20 46 84); }
+.dark .scrollbar-thin::-webkit-scrollbar-thumb:hover { background-color: rgb(30 63 111); }
+
+/* ==========================================================================
+   Print Styles
+   ========================================================================== */
+@media print {
+  .no-print, aside, header.topbar { display: none !important; }
+  body { background: white !important; }
+}
+
+/* ==========================================================================
+   Reduced motion
+   ========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

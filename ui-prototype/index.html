@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en" class="">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sign in · VIZO ERP</title>
+  <link rel="icon" href="assets/images/vizo-logo.png" />
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+
+  <!-- Tailwind via CDN with inline VIZO config -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'monospace'],
+          },
+          colors: {
+            brand: { yellow: { DEFAULT: '#EDC705', 400: '#F2D11A', 500: '#EDC705', 600: '#C9A904' } },
+            navy: { DEFAULT: '#031833', 800: '#061B3A', 900: '#031833', 950: '#010D1F' },
+          },
+        },
+      },
+    };
+  </script>
+
+  <link rel="stylesheet" href="assets/css/styles.css" />
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
+  <script>
+    // Apply theme before paint
+    if (localStorage.getItem('vizo-theme') === 'dark') {
+      document.documentElement.classList.add('dark');
+    }
+  </script>
+</head>
+
+<body class="bg-white dark:bg-navy-950 font-sans text-navy-900 dark:text-white antialiased">
+
+  <div class="min-h-screen grid lg:grid-cols-2">
+
+    <!-- ═══════════════ LEFT: FORM ═══════════════ -->
+    <div class="flex flex-col px-6 py-10 sm:px-10 lg:px-16 xl:px-24 relative">
+
+      <!-- Top bar -->
+      <div class="flex items-center justify-between mb-12">
+        <div class="flex items-center gap-2.5">
+          <img src="assets/images/vizo-logo.png" alt="VIZO" class="h-9 w-9 rounded-lg object-cover dark:hidden" />
+          <img src="assets/images/vizo-logo-dark.jpg" alt="VIZO" class="h-9 w-9 rounded-lg object-cover hidden dark:block" />
+          <div>
+            <div class="text-base font-bold leading-none">VIZO <span class="text-brand-yellow">ERP</span></div>
+            <div class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Sales · Inventory · Accounting</div>
+          </div>
+        </div>
+
+        <button type="button"
+                onclick="
+                  if (document.documentElement.classList.contains('dark')) {
+                    document.documentElement.classList.remove('dark');
+                    localStorage.setItem('vizo-theme','light');
+                  } else {
+                    document.documentElement.classList.add('dark');
+                    localStorage.setItem('vizo-theme','dark');
+                  }
+                  lucide.createIcons();
+                "
+                class="btn btn-ghost btn-icon" title="Toggle theme">
+          <i data-lucide="moon" class="icon-lg dark:hidden"></i>
+          <i data-lucide="sun"  class="icon-lg hidden dark:block"></i>
+        </button>
+      </div>
+
+      <!-- Form area -->
+      <div class="flex-1 flex flex-col justify-center max-w-md w-full mx-auto lg:mx-0">
+
+        <div class="mb-8">
+          <h1 class="text-3xl font-bold tracking-tight">Welcome back</h1>
+          <p class="text-sm text-slate-500 dark:text-slate-400 mt-2">
+            Sign in to your VIZO account to continue.
+          </p>
+        </div>
+
+        <form class="space-y-5" onsubmit="event.preventDefault(); window.location.href='pages/dashboard.html';">
+
+          <!-- Email -->
+          <div>
+            <label for="email" class="block text-sm font-medium mb-1.5">Email address</label>
+            <div class="relative">
+              <i data-lucide="mail" class="icon-sm absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"></i>
+              <input id="email" type="email" required value="umer@vizo.com.pk"
+                     class="input pl-9" placeholder="you@vizo.com.pk" />
+            </div>
+          </div>
+
+          <!-- Password -->
+          <div x-data="{ show: false }">
+            <div class="flex items-center justify-between mb-1.5">
+              <label for="password" class="block text-sm font-medium">Password</label>
+              <a href="#" class="text-xs text-brand-yellow hover:underline font-medium">Forgot password?</a>
+            </div>
+            <div class="relative">
+              <i data-lucide="lock" class="icon-sm absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"></i>
+              <input id="password" :type="show ? 'text' : 'password'" required value="demo-password"
+                     class="input pl-9 pr-10" placeholder="Enter your password" />
+              <button type="button" @click="show = !show"
+                      class="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-md hover:bg-slate-100 dark:hover:bg-navy-800 text-slate-400">
+                <i :data-lucide="show ? 'eye-off' : 'eye'" class="icon-sm"></i>
+              </button>
+            </div>
+          </div>
+
+          <!-- Remember + Submit -->
+          <div class="flex items-center justify-between">
+            <label class="inline-flex items-center gap-2 text-sm cursor-pointer select-none">
+              <input type="checkbox" class="rounded border-slate-300 dark:border-navy-700 text-brand-yellow focus:ring-brand-yellow" />
+              <span>Remember me for 30 days</span>
+            </label>
+          </div>
+
+          <button type="submit" class="btn btn-accent w-full btn-lg gap-2 font-semibold">
+            Sign in to VIZO
+            <i data-lucide="arrow-right" class="icon-md"></i>
+          </button>
+
+          <!-- Divider -->
+          <div class="relative my-2">
+            <div class="absolute inset-0 flex items-center"><span class="w-full border-t border-slate-200 dark:border-navy-800"></span></div>
+            <div class="relative flex justify-center"><span class="bg-white dark:bg-navy-950 px-3 text-xs text-slate-400">or</span></div>
+          </div>
+
+          <!-- SSO placeholder -->
+          <button type="button" class="btn btn-secondary w-full gap-2">
+            <i data-lucide="key-round" class="icon-sm"></i>
+            Single sign-on (SSO)
+          </button>
+
+        </form>
+
+        <!-- Footer info -->
+        <div class="mt-10 pt-6 border-t border-slate-200 dark:border-navy-800 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+          <div>© 2026 VIZO. All rights reserved.</div>
+          <div class="flex items-center gap-3">
+            <a href="#" class="hover:text-navy-900 dark:hover:text-white">Privacy</a>
+            <a href="#" class="hover:text-navy-900 dark:hover:text-white">Terms</a>
+            <a href="#" class="hover:text-navy-900 dark:hover:text-white">Help</a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════ RIGHT: BRAND PANEL ═══════════════ -->
+    <div class="hidden lg:flex relative bg-navy-900 text-white overflow-hidden login-bg-pattern">
+
+      <!-- Decorative grid -->
+      <div class="absolute inset-0 opacity-[0.04]"
+           style="background-image: linear-gradient(white 1px, transparent 1px), linear-gradient(90deg, white 1px, transparent 1px); background-size: 64px 64px;"></div>
+
+      <!-- Yellow accent shapes -->
+      <div class="absolute top-1/4 -right-20 w-96 h-96 bg-brand-yellow/10 rounded-full blur-3xl"></div>
+      <div class="absolute bottom-1/4 -left-10 w-72 h-72 bg-brand-yellow/5 rounded-full blur-3xl"></div>
+
+      <div class="relative z-10 flex flex-col justify-between p-12 xl:p-16 w-full">
+
+        <!-- Quote -->
+        <div class="max-w-lg">
+          <div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-brand-yellow/10 border border-brand-yellow/20 text-brand-yellow text-xs font-semibold uppercase tracking-wider mb-8">
+            <span class="w-1.5 h-1.5 rounded-full bg-brand-yellow animate-pulse-soft"></span>
+            Production-grade ERP
+          </div>
+
+          <h2 class="text-4xl xl:text-5xl font-bold leading-[1.15] tracking-tight">
+            Run your <span class="text-brand-yellow">entire business</span> from a single dashboard.
+          </h2>
+          <p class="text-base xl:text-lg text-slate-300 mt-6 leading-relaxed">
+            Multi-branch sales, purchases, inventory and double-entry accounting —
+            built for Pakistan, ready for the next 10 years of your growth.
+          </p>
+        </div>
+
+        <!-- Feature stats -->
+        <div class="grid grid-cols-3 gap-8 mt-12 max-w-2xl">
+          <div>
+            <div class="text-3xl xl:text-4xl font-bold tabular text-brand-yellow">11</div>
+            <div class="text-xs text-slate-400 uppercase tracking-wider mt-1.5">Modules</div>
+            <div class="text-sm text-slate-300 mt-1 leading-snug">Sales · Purchases · Inventory · Accounting · Zakat · Reports · AI</div>
+          </div>
+          <div>
+            <div class="text-3xl xl:text-4xl font-bold tabular text-brand-yellow">3+</div>
+            <div class="text-xs text-slate-400 uppercase tracking-wider mt-1.5">Branches</div>
+            <div class="text-sm text-slate-300 mt-1 leading-snug">Karachi, Lahore, Islamabad — branch-aware accounting</div>
+          </div>
+          <div>
+            <div class="text-3xl xl:text-4xl font-bold tabular text-brand-yellow">100%</div>
+            <div class="text-xs text-slate-400 uppercase tracking-wider mt-1.5">Audit trail</div>
+            <div class="text-sm text-slate-300 mt-1 leading-snug">Every JE immutable, every action logged</div>
+          </div>
+        </div>
+
+        <!-- Bottom strip -->
+        <div class="mt-12 flex items-center gap-4 text-xs text-slate-400">
+          <div class="flex -space-x-2">
+            <div class="avatar avatar-sm ring-2 ring-navy-900">UM</div>
+            <div class="avatar avatar-sm ring-2 ring-navy-900">AH</div>
+            <div class="avatar avatar-sm ring-2 ring-navy-900">SK</div>
+            <div class="avatar avatar-sm ring-2 ring-navy-900 bg-navy-800 text-slate-300">+8</div>
+          </div>
+          <div>Trusted by your team across 3 cities</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    // Hydrate icons
+    document.addEventListener('DOMContentLoaded', () => {
+      if (window.lucide) lucide.createIcons();
+    });
+  </script>
+</body>
+</html>

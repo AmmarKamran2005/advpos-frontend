@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dashboard · VIZO ERP</title>
+  <link rel="icon" href="../assets/images/vizo-logo.png" />
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+
+  <!-- Tailwind CDN with VIZO config -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'monospace'],
+          },
+          colors: {
+            brand: { yellow: { DEFAULT: '#EDC705', 400: '#F2D11A', 500: '#EDC705', 600: '#C9A904' } },
+            navy: {
+              DEFAULT: '#031833',
+              50: '#F0F4FA', 100: '#D9E2F0', 200: '#B3C5E1', 500: '#1E3F6F',
+              700: '#0A2042', 800: '#061B3A', 900: '#031833', 950: '#010D1F',
+            },
+            success: { DEFAULT: '#10B981', light: '#D1FAE5', dark: '#047857' },
+            warning: { DEFAULT: '#F59E0B', light: '#FEF3C7', dark: '#B45309' },
+            danger:  { DEFAULT: '#EF4444', light: '#FEE2E2', dark: '#B91C1C' },
+            info:    { DEFAULT: '#3B82F6', light: '#DBEAFE', dark: '#1D4ED8' },
+          },
+          fontSize: { '2xs': ['0.6875rem', { lineHeight: '1rem' }] },
+          boxShadow: {
+            'card':       '0 1px 3px 0 rgba(3,24,51,0.04), 0 1px 2px 0 rgba(3,24,51,0.03)',
+            'card-hover': '0 4px 6px -1px rgba(3,24,51,0.06), 0 2px 4px -1px rgba(3,24,51,0.04)',
+            'elevated':   '0 10px 15px -3px rgba(3,24,51,0.08), 0 4px 6px -2px rgba(3,24,51,0.05)',
+          },
+          animation: {
+            'slide-in-right': 'slideInRight 0.25s cubic-bezier(0.16,1,0.3,1)',
+            'pulse-soft': 'pulseSoft 2s ease-in-out infinite',
+          },
+          keyframes: {
+            slideInRight: { '0%': { transform:'translateX(20px)', opacity:0 }, '100%': { transform:'translateX(0)', opacity:1 } },
+            pulseSoft: { '0%,100%': { opacity:1 }, '50%': { opacity:0.6 } },
+          },
+        },
+      },
+    };
+  </script>
+
+  <link rel="stylesheet" href="../assets/css/styles.css" />
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Alpine plugins MUST be loaded before Alpine core -->
+  <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/collapse@3.x.x/dist/cdn.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+  <script src="../assets/js/app-data.js"></script>
+  <script src="../assets/js/app.js"></script>
+
+  <script>
+    // Theme before paint
+    if (localStorage.getItem('vizo-theme') === 'dark') {
+      document.documentElement.classList.add('dark');
+    }
+  </script>
+</head>
+
+<body class="font-sans text-navy-900 dark:text-white antialiased">
+
+  <div id="app-root">
+    <!-- ═══════════════ PAGE CONTENT (will be wrapped by shell) ═══════════════ -->
+
+    <!-- ───── Page Header ───── -->
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+      <div>
+        <h1 class="page-title">Good evening, Umer 👋</h1>
+        <p class="page-subtitle">Here's what's happening across all branches today, May 1, 2026.</p>
+      </div>
+      <div class="flex items-center gap-2">
+        <!-- Date range picker -->
+        <div x-data="{ open: false, sel: 'Today' }" class="relative">
+          <button @click="open = !open" class="btn btn-secondary gap-2">
+            <i data-lucide="calendar" class="icon-sm"></i>
+            <span x-text="sel"></span>
+            <i data-lucide="chevron-down" class="icon-xs text-slate-400"></i>
+          </button>
+          <div x-show="open" @click.outside="open = false" x-transition
+               class="absolute top-full mt-1 right-0 w-48 bg-white dark:bg-navy-900 border border-slate-200 dark:border-navy-800 rounded-lg shadow-elevated py-1 z-30">
+            <template x-for="opt in ['Today','Yesterday','This Week','This Month','This Quarter','This Year','Custom range…']">
+              <button @click="sel = opt; open = false"
+                      class="block w-full text-left px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-navy-800"
+                      :class="sel === opt ? 'text-brand-yellow font-semibold' : 'text-slate-700 dark:text-slate-200'"
+                      x-text="opt"></button>
+            </template>
+          </div>
+        </div>
+
+        <button class="btn btn-secondary gap-2" onclick="VIZO.toast('Report exported successfully', 'success')">
+          <i data-lucide="download" class="icon-sm"></i>
+          <span class="hidden sm:inline">Export</span>
+        </button>
+        <button class="btn btn-primary gap-2">
+          <i data-lucide="refresh-cw" class="icon-sm"></i>
+          <span class="hidden sm:inline">Refresh</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- ───── Top Stat Cards (4) ───── -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+
+      <!-- Today's Sales -->
+      <div class="card stat-card group hover:border-brand-yellow/40 transition-colors cursor-pointer">
+        <div class="flex items-start justify-between">
+          <div class="w-10 h-10 rounded-lg bg-brand-yellow/10 flex items-center justify-center text-brand-yellow group-hover:bg-brand-yellow group-hover:text-navy-900 transition-colors">
+            <i data-lucide="trending-up" class="icon-md"></i>
+          </div>
+          <span class="delta delta-up"><i data-lucide="arrow-up" class="icon-xs"></i>12.4%</span>
+        </div>
+        <div class="stat-label mt-4">Today's Sales</div>
+        <div class="stat-value">PKR 8,42,500</div>
+        <div class="text-xs text-slate-500 dark:text-slate-400 mt-1.5 flex items-center gap-1">
+          <span class="tabular">42</span> orders · vs yesterday
+        </div>
+      </div>
+
+      <!-- Today's Collections -->
+      <div class="card stat-card group hover:border-brand-yellow/40 transition-colors cursor-pointer">
+        <div class="flex items-start justify-between">
+          <div class="w-10 h-10 rounded-lg bg-success/10 flex items-center justify-center text-success">
+            <i data-lucide="banknote" class="icon-md"></i>
+          </div>
+          <span class="delta delta-up"><i data-lucide="arrow-up" class="icon-xs"></i>5.2%</span>
+        </div>
+        <div class="stat-label mt-4">Collections Today</div>
+        <div class="stat-value">PKR 3,15,000</div>
+        <div class="text-xs text-slate-500 dark:text-slate-400 mt-1.5">
+          Cash <span class="tabular text-navy-900 dark:text-white">1.2L</span> · Bank <span class="tabular text-navy-900 dark:text-white">1.8L</span> · Wallet <span class="tabular text-navy-900 dark:text-white">15K</span>
+        </div>
+      </div>
+
+      <!-- AR Outstanding -->
+      <div class="card stat-card group hover:border-brand-yellow/40 transition-colors cursor-pointer">
+        <div class="flex items-start justify-between">
+          <div class="w-10 h-10 rounded-lg bg-warning/10 flex items-center justify-center text-warning">
+            <i data-lucide="clock" class="icon-md"></i>
+          </div>
+          <span class="delta delta-down"><i data-lucide="arrow-down" class="icon-xs"></i>2.1%</span>
+        </div>
+        <div class="stat-label mt-4">AR Outstanding</div>
+        <div class="stat-value">PKR 1.84 Cr</div>
+        <div class="text-xs text-slate-500 dark:text-slate-400 mt-1.5 flex items-center gap-1.5">
+          <span class="status-dot bg-danger"></span>
+          <span class="tabular text-danger font-semibold">42.5L</span> overdue 60+ days
+        </div>
+      </div>
+
+      <!-- AP Payable -->
+      <div class="card stat-card group hover:border-brand-yellow/40 transition-colors cursor-pointer">
+        <div class="flex items-start justify-between">
+          <div class="w-10 h-10 rounded-lg bg-info/10 flex items-center justify-center text-info">
+            <i data-lucide="receipt" class="icon-md"></i>
+          </div>
+          <span class="delta delta-flat"><i data-lucide="minus" class="icon-xs"></i>0%</span>
+        </div>
+        <div class="stat-label mt-4">AP Payable</div>
+        <div class="stat-value">PKR 96.2L</div>
+        <div class="text-xs text-slate-500 dark:text-slate-400 mt-1.5">
+          <span class="tabular text-warning font-semibold">8.4L</span> due in next 7 days
+        </div>
+      </div>
+    </div>
+
+    <!-- ───── AI Insights Banner ───── -->
+    <div class="card mb-6 relative overflow-hidden bg-gradient-to-br from-navy-900 to-navy-800 text-white border-navy-800">
+      <div class="absolute -top-10 -right-10 w-40 h-40 bg-brand-yellow/10 rounded-full blur-3xl"></div>
+      <div class="absolute top-1/2 right-1/3 w-24 h-24 bg-brand-yellow/5 rounded-full blur-2xl"></div>
+
+      <div class="relative flex flex-col lg:flex-row lg:items-center gap-4">
+        <div class="flex-shrink-0">
+          <div class="w-12 h-12 rounded-xl bg-brand-yellow/15 flex items-center justify-center">
+            <i data-lucide="sparkles" class="icon-lg text-brand-yellow"></i>
+          </div>
+        </div>
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2 mb-1">
+            <span class="text-2xs font-bold uppercase tracking-wider text-brand-yellow">AI Insight · Daily Briefing</span>
+            <span class="badge badge-accent text-2xs">New</span>
+          </div>
+          <p class="text-sm leading-relaxed text-slate-200">
+            Sales are <span class="text-brand-yellow font-semibold">up 12% week-over-week</span>, driven mainly by <span class="font-semibold text-white">Karachi branch</span>.
+            However, <span class="text-brand-yellow font-semibold">3 wholesalers in Lahore</span> have crossed their credit limit — recommend collections action this week.
+            Slow-moving stock value is at <span class="text-brand-yellow font-semibold">PKR 18.2L</span>; consider a clearance promotion.
+          </p>
+        </div>
+        <div class="flex items-center gap-2 flex-shrink-0">
+          <button onclick="VIZO.openAIDrawer()" class="btn btn-accent btn-sm gap-1.5">
+            Ask follow-up
+            <i data-lucide="arrow-right" class="icon-sm"></i>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ───── Main Grid: Charts & Lists ───── -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+
+      <!-- Sales Trend (2/3 width) -->
+      <div class="card lg:col-span-2 p-0 overflow-hidden">
+        <div class="flex items-center justify-between p-5 pb-3">
+          <div>
+            <h3 class="text-base font-semibold text-navy-900 dark:text-white">Sales Trend</h3>
+            <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Last 30 days · all branches</p>
+          </div>
+          <div class="flex items-center gap-1 text-xs">
+            <button class="px-2.5 py-1 rounded-md font-medium text-slate-500 hover:text-navy-900 dark:hover:text-white">7D</button>
+            <button class="px-2.5 py-1 rounded-md font-medium bg-navy-900 dark:bg-navy-800 text-brand-yellow">30D</button>
+            <button class="px-2.5 py-1 rounded-md font-medium text-slate-500 hover:text-navy-900 dark:hover:text-white">90D</button>
+            <button class="px-2.5 py-1 rounded-md font-medium text-slate-500 hover:text-navy-900 dark:hover:text-white">1Y</button>
+          </div>
+        </div>
+        <div class="px-5 pb-5">
+          <div class="flex items-end gap-6 mb-4">
+            <div>
+              <div class="text-2xs uppercase font-semibold text-slate-500 dark:text-slate-400 tracking-wider">Total Revenue</div>
+              <div class="text-2xl font-bold tabular text-navy-900 dark:text-white mt-1">PKR 2.18 Cr</div>
+            </div>
+            <div>
+              <div class="text-2xs uppercase font-semibold text-slate-500 dark:text-slate-400 tracking-wider">Orders</div>
+              <div class="text-2xl font-bold tabular text-navy-900 dark:text-white mt-1">1,247</div>
+            </div>
+            <div>
+              <div class="text-2xs uppercase font-semibold text-slate-500 dark:text-slate-400 tracking-wider">Avg Order</div>
+              <div class="text-2xl font-bold tabular text-navy-900 dark:text-white mt-1">17.5K</div>
+            </div>
+          </div>
+          <div class="h-64">
+            <canvas id="chart-sales"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- Branch Performance -->
+      <div class="card p-0 overflow-hidden">
+        <div class="p-5 pb-3">
+          <h3 class="text-base font-semibold text-navy-900 dark:text-white">Branch Performance</h3>
+          <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Revenue this month</p>
+        </div>
+        <div class="px-5 pb-5">
+          <div class="space-y-4">
+            <!-- Karachi -->
+            <div>
+              <div class="flex items-center justify-between mb-1.5">
+                <div class="flex items-center gap-2">
+                  <span class="w-2 h-2 rounded-full bg-brand-yellow"></span>
+                  <span class="text-sm font-medium text-navy-900 dark:text-white">Karachi</span>
+                </div>
+                <span class="text-sm font-bold tabular text-navy-900 dark:text-white">PKR 1.24 Cr</span>
+              </div>
+              <div class="h-2 bg-slate-100 dark:bg-navy-800 rounded-full overflow-hidden">
+                <div class="h-full bg-brand-yellow" style="width: 78%"></div>
+              </div>
+              <div class="flex items-center justify-between mt-1 text-xs text-slate-500 dark:text-slate-400">
+                <span>Target: PKR 1.6 Cr</span>
+                <span class="text-success font-semibold">78%</span>
+              </div>
+            </div>
+            <!-- Lahore -->
+            <div>
+              <div class="flex items-center justify-between mb-1.5">
+                <div class="flex items-center gap-2">
+                  <span class="w-2 h-2 rounded-full bg-info"></span>
+                  <span class="text-sm font-medium text-navy-900 dark:text-white">Lahore</span>
+                </div>
+                <span class="text-sm font-bold tabular text-navy-900 dark:text-white">PKR 68.5L</span>
+              </div>
+              <div class="h-2 bg-slate-100 dark:bg-navy-800 rounded-full overflow-hidden">
+                <div class="h-full bg-info" style="width: 54%"></div>
+              </div>
+              <div class="flex items-center justify-between mt-1 text-xs text-slate-500 dark:text-slate-400">
+                <span>Target: PKR 1.25 Cr</span>
+                <span class="text-warning font-semibold">54%</span>
+              </div>
+            </div>
+            <!-- Islamabad -->
+            <div>
+              <div class="flex items-center justify-between mb-1.5">
+                <div class="flex items-center gap-2">
+                  <span class="w-2 h-2 rounded-full bg-success"></span>
+                  <span class="text-sm font-medium text-navy-900 dark:text-white">Islamabad</span>
+                </div>
+                <span class="text-sm font-bold tabular text-navy-900 dark:text-white">PKR 25.7L</span>
+              </div>
+              <div class="h-2 bg-slate-100 dark:bg-navy-800 rounded-full overflow-hidden">
+                <div class="h-full bg-success" style="width: 42%"></div>
+              </div>
+              <div class="flex items-center justify-between mt-1 text-xs text-slate-500 dark:text-slate-400">
+                <span>Target: PKR 60L</span>
+                <span class="text-warning font-semibold">42%</span>
+              </div>
+            </div>
+          </div>
+          <div class="mt-5 pt-4 border-t border-slate-100 dark:border-navy-800">
+            <a href="#" class="text-sm text-brand-yellow font-medium flex items-center gap-1 hover:gap-2 transition-all">
+              View detailed report <i data-lucide="arrow-right" class="icon-sm"></i>
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ───── Second Row: Top Products + Stock Alerts + Cash Position ───── -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+
+      <!-- Top Products -->
+      <div class="card p-0 overflow-hidden">
+        <div class="p-5 pb-3 flex items-center justify-between">
+          <div>
+            <h3 class="text-base font-semibold text-navy-900 dark:text-white">Top Products</h3>
+            <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">By revenue · last 7 days</p>
+          </div>
+          <button class="text-xs text-brand-yellow hover:underline font-medium">View all</button>
+        </div>
+        <div class="px-2 pb-2">
+          <!-- Item -->
+          <div class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-slate-50 dark:hover:bg-navy-800 cursor-pointer">
+            <div class="w-9 h-9 rounded-lg bg-navy-100 dark:bg-navy-800 flex items-center justify-center text-navy-900 dark:text-brand-yellow font-bold text-sm tabular">1</div>
+            <div class="flex-1 min-w-0">
+              <div class="text-sm font-medium text-navy-900 dark:text-white truncate">Tapal Danedar Premium 500g</div>
+              <div class="text-xs text-slate-500 dark:text-slate-400">SKU: TPL-DAN-500 · 248 units sold</div>
+            </div>
+            <div class="text-right">
+              <div class="text-sm font-bold tabular text-navy-900 dark:text-white">PKR 2.42L</div>
+              <div class="text-2xs text-success font-semibold">▲ 18%</div>
+            </div>
+          </div>
+          <div class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-slate-50 dark:hover:bg-navy-800 cursor-pointer">
+            <div class="w-9 h-9 rounded-lg bg-navy-100 dark:bg-navy-800 flex items-center justify-center text-navy-900 dark:text-brand-yellow font-bold text-sm tabular">2</div>
+            <div class="flex-1 min-w-0">
+              <div class="text-sm font-medium text-navy-900 dark:text-white truncate">National Salt 800g</div>
+              <div class="text-xs text-slate-500 dark:text-slate-400">SKU: NTL-SLT-800 · 412 units sold</div>
+            </div>
+            <div class="text-right">
+              <div class="text-sm font-bold tabular text-navy-900 dark:text-white">PKR 1.85L</div>
+              <div class="text-2xs text-success font-semibold">▲ 9%</div>
+            </div>
+          </div>
+          <div class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-slate-50 dark:hover:bg-navy-800 cursor-pointer">
+            <div class="w-9 h-9 rounded-lg bg-navy-100 dark:bg-navy-800 flex items-center justify-center text-navy-900 dark:text-brand-yellow font-bold text-sm tabular">3</div>
+            <div class="flex-1 min-w-0">
+              <div class="text-sm font-medium text-navy-900 dark:text-white truncate">Olper's Milk 1L (UHT)</div>
+              <div class="text-xs text-slate-500 dark:text-slate-400">SKU: OLP-MLK-1L · 156 units sold</div>
+            </div>
+            <div class="text-right">
+              <div class="text-sm font-bold tabular text-navy-900 dark:text-white">PKR 1.32L</div>
+              <div class="text-2xs text-danger font-semibold">▼ 4%</div>
+            </div>
+          </div>
+          <div class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-slate-50 dark:hover:bg-navy-800 cursor-pointer">
+            <div class="w-9 h-9 rounded-lg bg-navy-100 dark:bg-navy-800 flex items-center justify-center text-navy-900 dark:text-brand-yellow font-bold text-sm tabular">4</div>
+            <div class="flex-1 min-w-0">
+              <div class="text-sm font-medium text-navy-900 dark:text-white truncate">Shan Biryani Masala 65g</div>
+              <div class="text-xs text-slate-500 dark:text-slate-400">SKU: SHN-BRY-65 · 198 units sold</div>
+            </div>
+            <div class="text-right">
+              <div class="text-sm font-bold tabular text-navy-900 dark:text-white">PKR 98.4K</div>
+              <div class="text-2xs text-success font-semibold">▲ 22%</div>
+            </div>
+          </div>
+          <div class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-slate-50 dark:hover:bg-navy-800 cursor-pointer">
+            <div class="w-9 h-9 rounded-lg bg-navy-100 dark:bg-navy-800 flex items-center justify-center text-navy-900 dark:text-brand-yellow font-bold text-sm tabular">5</div>
+            <div class="flex-1 min-w-0">
+              <div class="text-sm font-medium text-navy-900 dark:text-white truncate">Knorr Chicken Cube 80g</div>
+              <div class="text-xs text-slate-500 dark:text-slate-400">SKU: KNR-CHK-80 · 184 units sold</div>
+            </div>
+            <div class="text-right">
+              <div class="text-sm font-bold tabular text-navy-900 dark:text-white">PKR 76.5K</div>
+              <div class="text-2xs text-success font-semibold">▲ 6%</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Stock Alerts -->
+      <div class="card p-0 overflow-hidden">
+        <div class="p-5 pb-3 flex items-center justify-between">
+          <div>
+            <h3 class="text-base font-semibold text-navy-900 dark:text-white">Stock Alerts</h3>
+            <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Action needed</p>
+          </div>
+          <span class="badge badge-warning">12 alerts</span>
+        </div>
+        <div class="px-5 pb-5 space-y-3">
+          <div class="flex items-start gap-3 p-3 bg-danger/5 border border-danger/20 rounded-lg">
+            <div class="w-8 h-8 rounded-lg bg-danger/10 flex items-center justify-center flex-shrink-0">
+              <i data-lucide="alert-circle" class="icon-sm text-danger"></i>
+            </div>
+            <div class="flex-1 min-w-0">
+              <div class="text-sm font-semibold text-navy-900 dark:text-white">Out of stock</div>
+              <div class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">3 products in Lahore warehouse have zero stock</div>
+              <a href="#" class="text-xs text-danger font-medium mt-1.5 inline-flex items-center gap-1 hover:underline">View list <i data-lucide="arrow-right" class="icon-xs"></i></a>
+            </div>
+          </div>
+          <div class="flex items-start gap-3 p-3 bg-warning/5 border border-warning/20 rounded-lg">
+            <div class="w-8 h-8 rounded-lg bg-warning/10 flex items-center justify-center flex-shrink-0">
+              <i data-lucide="trending-down" class="icon-sm text-warning"></i>
+            </div>
+            <div class="flex-1 min-w-0">
+              <div class="text-sm font-semibold text-navy-900 dark:text-white">Low stock</div>
+              <div class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">9 products below reorder level</div>
+              <a href="#" class="text-xs text-warning font-medium mt-1.5 inline-flex items-center gap-1 hover:underline">Review reorder <i data-lucide="arrow-right" class="icon-xs"></i></a>
+            </div>
+          </div>
+          <div class="flex items-start gap-3 p-3 bg-info/5 border border-info/20 rounded-lg">
+            <div class="w-8 h-8 rounded-lg bg-info/10 flex items-center justify-center flex-shrink-0">
+              <i data-lucide="archive" class="icon-sm text-info"></i>
+            </div>
+            <div class="flex-1 min-w-0">
+              <div class="text-sm font-semibold text-navy-900 dark:text-white">Dead stock</div>
+              <div class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">PKR 18.2L tied up in 24 SKUs (180+ days)</div>
+              <a href="#" class="text-xs text-info font-medium mt-1.5 inline-flex items-center gap-1 hover:underline">Plan clearance <i data-lucide="arrow-right" class="icon-xs"></i></a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Cash Position -->
+      <div class="card p-0 overflow-hidden">
+        <div class="p-5 pb-3 flex items-center justify-between">
+          <div>
+            <h3 class="text-base font-semibold text-navy-900 dark:text-white">Cash Position</h3>
+            <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">As of right now</p>
+          </div>
+          <button class="btn btn-ghost btn-icon -mr-2">
+            <i data-lucide="more-horizontal" class="icon-md"></i>
+          </button>
+        </div>
+        <div class="px-5 pb-5">
+          <div class="text-3xl font-bold tabular text-navy-900 dark:text-white">PKR 47.8L</div>
+          <div class="text-xs text-slate-500 dark:text-slate-400 mt-1">Total liquid cash across accounts</div>
+
+          <div class="mt-5 space-y-3">
+            <div class="flex items-center gap-3">
+              <div class="w-8 h-8 rounded-lg bg-success/10 flex items-center justify-center">
+                <i data-lucide="wallet" class="icon-sm text-success"></i>
+              </div>
+              <div class="flex-1">
+                <div class="text-sm font-medium text-navy-900 dark:text-white">Cash on Hand</div>
+                <div class="text-xs text-slate-500 dark:text-slate-400">3 cashiers</div>
+              </div>
+              <div class="text-sm font-bold tabular text-navy-900 dark:text-white">8.4L</div>
+            </div>
+            <div class="flex items-center gap-3">
+              <div class="w-8 h-8 rounded-lg bg-info/10 flex items-center justify-center">
+                <i data-lucide="landmark" class="icon-sm text-info"></i>
+              </div>
+              <div class="flex-1">
+                <div class="text-sm font-medium text-navy-900 dark:text-white">Bank Accounts</div>
+                <div class="text-xs text-slate-500 dark:text-slate-400">HBL · Meezan · UBL</div>
+              </div>
+              <div class="text-sm font-bold tabular text-navy-900 dark:text-white">37.2L</div>
+            </div>
+            <div class="flex items-center gap-3">
+              <div class="w-8 h-8 rounded-lg bg-brand-yellow/10 flex items-center justify-center">
+                <i data-lucide="smartphone" class="icon-sm text-brand-yellow"></i>
+              </div>
+              <div class="flex-1">
+                <div class="text-sm font-medium text-navy-900 dark:text-white">Mobile Wallets</div>
+                <div class="text-xs text-slate-500 dark:text-slate-400">Easypaisa · JazzCash</div>
+              </div>
+              <div class="text-sm font-bold tabular text-navy-900 dark:text-white">2.2L</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ───── Recent Activity Feed ───── -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+
+      <!-- Recent Orders Table (2/3) -->
+      <div class="card lg:col-span-2 p-0 overflow-hidden">
+        <div class="p-5 pb-3 flex items-center justify-between">
+          <div>
+            <h3 class="text-base font-semibold text-navy-900 dark:text-white">Recent Orders</h3>
+            <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Last 8 orders across all branches</p>
+          </div>
+          <a href="#" class="text-xs text-brand-yellow hover:underline font-medium flex items-center gap-1">
+            View all orders <i data-lucide="arrow-right" class="icon-xs"></i>
+          </a>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Order #</th>
+                <th>Customer</th>
+                <th>Branch</th>
+                <th class="text-right">Amount</th>
+                <th>Status</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="tabular text-navy-900 dark:text-white font-medium">ORD-KHI-26-0142</td>
+                <td>
+                  <div class="flex items-center gap-2.5">
+                    <div class="avatar avatar-sm">NF</div>
+                    <div>
+                      <div class="font-medium text-navy-900 dark:text-white">Naveed Foods</div>
+                      <div class="text-xs text-slate-500 dark:text-slate-400">Wholesaler</div>
+                    </div>
+                  </div>
+                </td>
+                <td><span class="text-xs">Karachi</span></td>
+                <td class="tabular text-right font-semibold text-navy-900 dark:text-white">PKR 1,45,000</td>
+                <td><span class="badge badge-success"><span class="status-dot bg-success"></span>Dispatched</span></td>
+                <td><button class="btn btn-ghost btn-icon"><i data-lucide="eye" class="icon-sm"></i></button></td>
+              </tr>
+              <tr>
+                <td class="tabular text-navy-900 dark:text-white font-medium">ORD-LHR-26-0089</td>
+                <td>
+                  <div class="flex items-center gap-2.5">
+                    <div class="avatar avatar-sm">AH</div>
+                    <div>
+                      <div class="font-medium text-navy-900 dark:text-white">Ahmed Hyper Mart</div>
+                      <div class="text-xs text-slate-500 dark:text-slate-400">Retailer</div>
+                    </div>
+                  </div>
+                </td>
+                <td><span class="text-xs">Lahore</span></td>
+                <td class="tabular text-right font-semibold text-navy-900 dark:text-white">PKR 84,500</td>
+                <td><span class="badge badge-warning"><span class="status-dot bg-warning"></span>Credit Hold</span></td>
+                <td><button class="btn btn-ghost btn-icon"><i data-lucide="eye" class="icon-sm"></i></button></td>
+              </tr>
+              <tr>
+                <td class="tabular text-navy-900 dark:text-white font-medium">ORD-KHI-26-0141</td>
+                <td>
+                  <div class="flex items-center gap-2.5">
+                    <div class="avatar avatar-sm">SK</div>
+                    <div>
+                      <div class="font-medium text-navy-900 dark:text-white">Sindh Kiryana Store</div>
+                      <div class="text-xs text-slate-500 dark:text-slate-400">Retailer</div>
+                    </div>
+                  </div>
+                </td>
+                <td><span class="text-xs">Karachi</span></td>
+                <td class="tabular text-right font-semibold text-navy-900 dark:text-white">PKR 32,750</td>
+                <td><span class="badge badge-info"><span class="status-dot bg-info"></span>Confirmed</span></td>
+                <td><button class="btn btn-ghost btn-icon"><i data-lucide="eye" class="icon-sm"></i></button></td>
+              </tr>
+              <tr>
+                <td class="tabular text-navy-900 dark:text-white font-medium">ORD-ISB-26-0034</td>
+                <td>
+                  <div class="flex items-center gap-2.5">
+                    <div class="avatar avatar-sm">MD</div>
+                    <div>
+                      <div class="font-medium text-navy-900 dark:text-white">Margalla Distributors</div>
+                      <div class="text-xs text-slate-500 dark:text-slate-400">Distributor</div>
+                    </div>
+                  </div>
+                </td>
+                <td><span class="text-xs">Islamabad</span></td>
+                <td class="tabular text-right font-semibold text-navy-900 dark:text-white">PKR 2,18,000</td>
+                <td><span class="badge badge-success"><span class="status-dot bg-success"></span>Dispatched</span></td>
+                <td><button class="btn btn-ghost btn-icon"><i data-lucide="eye" class="icon-sm"></i></button></td>
+              </tr>
+              <tr>
+                <td class="tabular text-navy-900 dark:text-white font-medium">ORD-KHI-26-0140</td>
+                <td>
+                  <div class="flex items-center gap-2.5">
+                    <div class="avatar avatar-sm">RT</div>
+                    <div>
+                      <div class="font-medium text-navy-900 dark:text-white">Rashid Traders</div>
+                      <div class="text-xs text-slate-500 dark:text-slate-400">Wholesaler</div>
+                    </div>
+                  </div>
+                </td>
+                <td><span class="text-xs">Karachi</span></td>
+                <td class="tabular text-right font-semibold text-navy-900 dark:text-white">PKR 56,200</td>
+                <td><span class="badge badge-muted"><span class="status-dot bg-slate-400"></span>Packing</span></td>
+                <td><button class="btn btn-ghost btn-icon"><i data-lucide="eye" class="icon-sm"></i></button></td>
+              </tr>
+              <tr>
+                <td class="tabular text-navy-900 dark:text-white font-medium">ORD-LHR-26-0088</td>
+                <td>
+                  <div class="flex items-center gap-2.5">
+                    <div class="avatar avatar-sm">FS</div>
+                    <div>
+                      <div class="font-medium text-navy-900 dark:text-white">Faisal Super Store</div>
+                      <div class="text-xs text-slate-500 dark:text-slate-400">Retailer</div>
+                    </div>
+                  </div>
+                </td>
+                <td><span class="text-xs">Lahore</span></td>
+                <td class="tabular text-right font-semibold text-navy-900 dark:text-white">PKR 18,400</td>
+                <td><span class="badge badge-success"><span class="status-dot bg-success"></span>Delivered</span></td>
+                <td><button class="btn btn-ghost btn-icon"><i data-lucide="eye" class="icon-sm"></i></button></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Recent Activity -->
+      <div class="card p-0 overflow-hidden">
+        <div class="p-5 pb-3">
+          <h3 class="text-base font-semibold text-navy-900 dark:text-white">Recent Activity</h3>
+          <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Live audit feed</p>
+        </div>
+        <div class="px-5 pb-5 space-y-4 max-h-[450px] overflow-y-auto scrollbar-thin">
+
+          <div class="flex gap-3">
+            <div class="relative flex-shrink-0">
+              <div class="w-8 h-8 rounded-full bg-success/10 flex items-center justify-center">
+                <i data-lucide="check" class="icon-sm text-success"></i>
+              </div>
+              <div class="absolute top-8 left-1/2 -translate-x-1/2 w-px h-full bg-slate-200 dark:bg-navy-800"></div>
+            </div>
+            <div class="flex-1 pb-4 min-w-0">
+              <div class="text-sm text-navy-900 dark:text-white">
+                <span class="font-semibold">Sara Khan</span> dispatched order <span class="font-mono text-xs bg-slate-100 dark:bg-navy-800 px-1.5 py-0.5 rounded">ORD-KHI-26-0142</span>
+              </div>
+              <div class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Invoice INV-KHI-26-0142 generated automatically</div>
+              <div class="text-2xs text-slate-400 dark:text-slate-500 mt-1">2 min ago · Karachi</div>
+            </div>
+          </div>
+
+          <div class="flex gap-3">
+            <div class="relative flex-shrink-0">
+              <div class="w-8 h-8 rounded-full bg-warning/10 flex items-center justify-center">
+                <i data-lucide="alert-triangle" class="icon-sm text-warning"></i>
+              </div>
+              <div class="absolute top-8 left-1/2 -translate-x-1/2 w-px h-full bg-slate-200 dark:bg-navy-800"></div>
+            </div>
+            <div class="flex-1 pb-4 min-w-0">
+              <div class="text-sm text-navy-900 dark:text-white">
+                Order <span class="font-mono text-xs bg-slate-100 dark:bg-navy-800 px-1.5 py-0.5 rounded">ORD-LHR-26-0089</span> placed on <span class="font-semibold text-warning">credit hold</span>
+              </div>
+              <div class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Ahmed Hyper Mart exceeded credit limit by PKR 12,400</div>
+              <div class="text-2xs text-slate-400 dark:text-slate-500 mt-1">15 min ago · Lahore</div>
+            </div>
+          </div>
+
+          <div class="flex gap-3">
+            <div class="relative flex-shrink-0">
+              <div class="w-8 h-8 rounded-full bg-info/10 flex items-center justify-center">
+                <i data-lucide="package" class="icon-sm text-info"></i>
+              </div>
+              <div class="absolute top-8 left-1/2 -translate-x-1/2 w-px h-full bg-slate-200 dark:bg-navy-800"></div>
+            </div>
+            <div class="flex-1 pb-4 min-w-0">
+              <div class="text-sm text-navy-900 dark:text-white">
+                <span class="font-semibold">Bilal Ahmed</span> received GRN <span class="font-mono text-xs bg-slate-100 dark:bg-navy-800 px-1.5 py-0.5 rounded">GRN-KHI-26-0089</span>
+              </div>
+              <div class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">From Al-Rasheed Traders · 24 items · PKR 4,82,000</div>
+              <div class="text-2xs text-slate-400 dark:text-slate-500 mt-1">1 hour ago · Karachi</div>
+            </div>
+          </div>
+
+          <div class="flex gap-3">
+            <div class="relative flex-shrink-0">
+              <div class="w-8 h-8 rounded-full bg-success/10 flex items-center justify-center">
+                <i data-lucide="banknote" class="icon-sm text-success"></i>
+              </div>
+              <div class="absolute top-8 left-1/2 -translate-x-1/2 w-px h-full bg-slate-200 dark:bg-navy-800"></div>
+            </div>
+            <div class="flex-1 pb-4 min-w-0">
+              <div class="text-sm text-navy-900 dark:text-white">
+                <span class="font-semibold">Hassan Raza</span> recorded payment of <span class="tabular font-bold">PKR 1,45,000</span>
+              </div>
+              <div class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Naveed Foods · Bank transfer · Allocated to 3 invoices</div>
+              <div class="text-2xs text-slate-400 dark:text-slate-500 mt-1">2 hours ago · Karachi</div>
+            </div>
+          </div>
+
+          <div class="flex gap-3">
+            <div class="relative flex-shrink-0">
+              <div class="w-8 h-8 rounded-full bg-brand-yellow/10 flex items-center justify-center">
+                <i data-lucide="user-plus" class="icon-sm text-brand-yellow"></i>
+              </div>
+            </div>
+            <div class="flex-1 min-w-0">
+              <div class="text-sm text-navy-900 dark:text-white">
+                <span class="font-semibold">You</span> added new customer <span class="font-medium">Quetta General Store</span>
+              </div>
+              <div class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Retailer · Credit limit PKR 50,000 · NET 15</div>
+              <div class="text-2xs text-slate-400 dark:text-slate-500 mt-1">3 hours ago</div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+    <!-- ═══════════════ END PAGE CONTENT ═══════════════ -->
+  </div>
+
+  <!-- ───── Init Shell + Charts ───── -->
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      VIZO.initShell({
+        activeMatch: 'dashboard',
+        breadcrumbs: [{ label: 'Dashboard' }],
+      });
+
+      // Sales Trend chart
+      setTimeout(() => {
+        const ctx = document.getElementById('chart-sales');
+        if (!ctx) return;
+        const isDark = document.documentElement.classList.contains('dark');
+        const tickColor = isDark ? '#94A3B8' : '#64748B';
+        const gridColor = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(3,24,51,0.05)';
+
+        new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels: ['Apr 2','5','8','11','14','17','20','23','26','29','May 1'],
+            datasets: [
+              {
+                label: 'Revenue (PKR)',
+                data: [380000, 425000, 510000, 470000, 585000, 620000, 540000, 695000, 745000, 820000, 842500],
+                borderColor: '#EDC705',
+                backgroundColor: (ctx) => {
+                  const chart = ctx.chart;
+                  const { ctx: c, chartArea } = chart;
+                  if (!chartArea) return null;
+                  const grad = c.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+                  grad.addColorStop(0, 'rgba(237, 199, 5, 0.25)');
+                  grad.addColorStop(1, 'rgba(237, 199, 5, 0)');
+                  return grad;
+                },
+                borderWidth: 2.5,
+                fill: true,
+                tension: 0.35,
+                pointRadius: 0,
+                pointHoverRadius: 5,
+                pointHoverBackgroundColor: '#EDC705',
+                pointHoverBorderColor: '#031833',
+                pointHoverBorderWidth: 2,
+              }
+            ],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                backgroundColor: '#031833',
+                titleColor: '#EDC705',
+                bodyColor: '#FFFFFF',
+                padding: 12,
+                cornerRadius: 8,
+                titleFont: { size: 11, weight: '600' },
+                bodyFont: { size: 13, weight: '600', family: 'JetBrains Mono' },
+                displayColors: false,
+                callbacks: {
+                  label: (c) => 'PKR ' + new Intl.NumberFormat('en-PK').format(c.parsed.y),
+                },
+              },
+            },
+            scales: {
+              x: {
+                grid: { display: false },
+                ticks: { color: tickColor, font: { size: 11 } },
+                border: { display: false },
+              },
+              y: {
+                grid: { color: gridColor },
+                border: { display: false },
+                ticks: {
+                  color: tickColor,
+                  font: { size: 11, family: 'JetBrains Mono' },
+                  callback: (v) => v >= 100000 ? (v/100000).toFixed(1) + 'L' : (v/1000) + 'K',
+                },
+              },
+            },
+          },
+        });
+      }, 100);
+    });
+  </script>
+</body>
+</html>
