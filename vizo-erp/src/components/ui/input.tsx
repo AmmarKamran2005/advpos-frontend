@@ -14,6 +14,7 @@ const Input = React.forwardRef<
       "disabled:cursor-not-allowed disabled:opacity-50",
       "dark:bg-navy-800 dark:border-navy-700 dark:text-white dark:placeholder:text-slate-500",
       "dark:focus:border-brand-yellow",
+      "aria-[invalid=true]:border-danger aria-[invalid=true]:focus:border-danger aria-[invalid=true]:focus:shadow-[0_0_0_4px_rgba(239,68,68,0.15)]",
       className
     )}
     {...props}

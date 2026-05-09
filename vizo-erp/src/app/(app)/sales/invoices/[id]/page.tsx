@@ -1,5 +1,6 @@
 "use client";
 
+import * as React from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { Printer, Mail, MessageSquare, X, ArrowRight, Building2, MapPin, Phone, AlertCircle } from "lucide-react";
@@ -9,6 +10,10 @@ import { Button } from "@/components/ui/button";
 import { Avatar } from "@/components/ui/avatar";
 import { StatusPill } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
+import { ConfirmDialog } from "@/components/dialogs/confirm-dialog";
+import { RecordPaymentDialog } from "@/components/dialogs/record-payment-dialog";
+import { SendSmsDialog } from "@/components/dialogs/send-sms-dialog";
+import { toast } from "@/components/ui/toaster";
 import { getInvoice, INVOICE_STATUS_VARIANT } from "@/data/sales";
 import { getParty } from "@/data/parties";
 import { formatMoney, formatDate } from "@/lib/format";
@@ -32,6 +37,10 @@ export default function InvoiceDetailPage() {
   const subtotal = invoice.total / 1.18;
   const tax = invoice.total - subtotal;
 
+  const [pay, setPay] = React.useState(false);
+  const [voidConfirm, setVoidConfirm] = React.useState(false);
+  const [smsOpen, setSmsOpen] = React.useState(false);
+
   return (
     <>
       <PageHeader
@@ -45,13 +54,16 @@ export default function InvoiceDetailPage() {
         subtitle={`Issued ${formatDate(invoice.invoiceDate)} · Due ${formatDate(invoice.dueDate)}`}
         actions={
           <>
-            <Button variant="ghost" size="md" className="gap-1.5"><Printer />Print</Button>
-            <Button variant="ghost" size="md" className="gap-1.5"><Mail /><span className="hidden sm:inline">Email</span></Button>
-            <Button variant="ghost" size="md" className="gap-1.5"><MessageSquare /><span className="hidden sm:inline">SMS</span></Button>
-            {invoice.status !== "PAID" && (
-              <Button variant="accent" size="md" className="gap-1.5">
+            <Button variant="ghost" size="md" className="gap-1.5" onClick={() => toast.info("Printing invoice…")}><Printer />Print</Button>
+            <Button variant="ghost" size="md" className="gap-1.5" onClick={() => toast.success("Invoice emailed", { description: invoice.customerName })}><Mail /><span className="hidden sm:inline">Email</span></Button>
+            <Button variant="ghost" size="md" className="gap-1.5" onClick={() => setSmsOpen(true)}><MessageSquare /><span className="hidden sm:inline">SMS</span></Button>
+            {invoice.status !== "PAID" && invoice.status !== "VOID" && (
+              <Button variant="accent" size="md" className="gap-1.5" onClick={() => setPay(true)}>
                 <ArrowRight />Record Payment
               </Button>
+            )}
+            {invoice.status !== "VOID" && invoice.status !== "PAID" && (
+              <Button variant="ghost" size="md" className="text-danger" onClick={() => setVoidConfirm(true)}><X />Void</Button>
             )}
           </>
         }
@@ -179,6 +191,37 @@ export default function InvoiceDetailPage() {
           </div>
         </CardBody>
       </Card>
+
+      <RecordPaymentDialog
+        open={pay}
+        onOpenChange={setPay}
+        invoiceNo={invoice.invoiceNo}
+        customerName={invoice.customerName}
+        totalAmount={invoice.total}
+        balanceAmount={invoice.balance}
+      />
+      <ConfirmDialog
+        open={voidConfirm}
+        onOpenChange={setVoidConfirm}
+        title="Void this invoice?"
+        description="A reversing journal entry will be posted automatically. This action is logged in the audit trail."
+        variant="danger"
+        confirmLabel="Yes, void invoice"
+        requireReason
+        reasonLabel="Reason for voiding"
+        onConfirm={(r) => { toast.success("Invoice voided", { description: `Reason: ${r}` }); setVoidConfirm(false); }}
+      />
+      <SendSmsDialog
+        open={smsOpen}
+        onOpenChange={setSmsOpen}
+        defaultPhone={customer?.phone.replace(/\s/g, "") ?? ""}
+        defaultTemplate="PAYMENT_REMINDER"
+        contextVars={{
+          name: invoice.customerName,
+          invoiceNo: invoice.invoiceNo,
+          amount: formatMoney(invoice.balance).replace("PKR ", ""),
+        }}
+      />
     </>
   );
 }

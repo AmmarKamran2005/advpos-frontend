@@ -4,6 +4,8 @@ import * as React from "react";
 import { Sidebar } from "./sidebar";
 import { TopBar } from "./top-bar";
 import { AIDrawer } from "./ai-drawer";
+import { CommandPalette } from "./command-palette";
+import { Toaster } from "@/components/ui/toaster";
 
 const SIDEBAR_COLLAPSED_KEY = "vizo-sidebar-collapsed";
 
@@ -16,21 +18,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   React.useEffect(() => {
     const stored = localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
     if (stored === "1") setCollapsed(true);
-  }, []);
-
-  /* Cmd+K → focus search (placeholder for command palette) */
-  React.useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
-        e.preventDefault();
-        const search = document.querySelector<HTMLInputElement>(
-          "header input[type=text]"
-        );
-        search?.focus();
-      }
-    }
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
   }, []);
 
   /* Close mobile sidebar on route navigation */
@@ -67,6 +54,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </main>
       </div>
       <AIDrawer open={aiOpen} onOpenChange={setAIOpen} />
+      <CommandPalette />
+      <Toaster />
     </div>
   );
 }

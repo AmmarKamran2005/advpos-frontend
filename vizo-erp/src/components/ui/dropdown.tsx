@@ -32,8 +32,8 @@ DropdownMenuContent.displayName = "DropdownMenuContent";
 
 const DropdownMenuItem = React.forwardRef<
   React.ElementRef<typeof DropdownMenuPrimitive.Item>,
-  React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Item>
->(({ className, ...props }, ref) => (
+  React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Item> & { danger?: boolean }
+>(({ className, danger, ...props }, ref) => (
   <DropdownMenuPrimitive.Item
     ref={ref}
     className={cn(
@@ -42,6 +42,7 @@ const DropdownMenuItem = React.forwardRef<
       "focus:bg-slate-50 dark:focus:bg-navy-700",
       "focus:text-navy-900 dark:focus:text-white",
       "[&_svg]:size-4 [&_svg]:text-slate-400",
+      danger && "text-danger focus:bg-danger/10 focus:text-danger [&_svg]:text-danger",
       className
     )}
     {...props}

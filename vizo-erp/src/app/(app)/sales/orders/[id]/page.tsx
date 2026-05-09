@@ -14,8 +14,14 @@ import { Avatar } from "@/components/ui/avatar";
 import { Badge, StatusPill } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import {
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuLabel,
+} from "@/components/ui/dropdown";
+import { ConfirmDialog } from "@/components/dialogs/confirm-dialog";
+import { SendSmsDialog } from "@/components/dialogs/send-sms-dialog";
 import { getOrder, getStatusVariant } from "@/data/sales";
 import { formatMoney, formatDate, formatNumber } from "@/lib/format";
+import { toast } from "@/components/ui/toaster";
 import { cn } from "@/lib/utils";
 
 const STATE_FLOW = ["DRAFT", "SUBMITTED", "CONFIRMED", "PACKED", "DISPATCHED", "DELIVERED"];
@@ -54,6 +60,11 @@ export default function OrderDetailPage() {
   const isCreditHold = order.status === "CREDIT_HOLD";
   const currentStateIndex = STATE_FLOW.indexOf(order.status);
 
+  /* Action modals */
+  const [override, setOverride] = React.useState(false);
+  const [cancel, setCancel] = React.useState(false);
+  const [sendSms, setSendSms] = React.useState(false);
+
   return (
     <>
       <PageHeader
@@ -73,32 +84,44 @@ export default function OrderDetailPage() {
         subtitle={`Created ${formatDate(order.orderDate)} · ${order.salesPerson} · ${order.branch}`}
         actions={
           <>
-            <Button variant="ghost" size="md" className="gap-1.5">
+            <Button variant="ghost" size="md" className="gap-1.5" onClick={() => toast.info("Printing order…")}>
               <Printer />
               <span className="hidden sm:inline">Print</span>
             </Button>
             {isCreditHold ? (
-              <Button variant="accent" size="md" className="gap-1.5">
+              <Button variant="accent" size="md" className="gap-1.5" onClick={() => setOverride(true)}>
                 <AlertTriangle />
                 Override Credit Hold
               </Button>
             ) : order.status === "PACKED" ? (
-              <Button variant="accent" size="md" className="gap-1.5">
+              <Button variant="accent" size="md" className="gap-1.5" onClick={() => toast.success("Order dispatched", { description: `Invoice INV-KHI-26-0142 generated. SMS queued for customer.` })}>
                 <Truck />
                 Dispatch
               </Button>
             ) : order.status === "CONFIRMED" ? (
-              <Button variant="accent" size="md" className="gap-1.5">
+              <Button variant="accent" size="md" className="gap-1.5" onClick={() => toast.success("Order moved to Packed", { description: "Warehouse will pick items now." })}>
                 <Package />
                 Pack
               </Button>
             ) : order.status === "SUBMITTED" ? (
-              <Button variant="accent" size="md" className="gap-1.5">
+              <Button variant="accent" size="md" className="gap-1.5" onClick={() => toast.success("Order confirmed", { description: "Moved to Order Department queue." })}>
                 <CheckCircle2 />
                 Confirm
               </Button>
             ) : null}
-            <Button variant="ghost" size="icon"><MoreHorizontal /></Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" aria-label="More actions"><MoreHorizontal /></Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuLabel>Order actions</DropdownMenuLabel>
+                <DropdownMenuItem onClick={() => setSendSms(true)}><MessageSquare />Send SMS update</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => toast.success("Invoice emailed to customer")}><Mail />Email invoice</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => toast.info("Duplicating order…")}><FileText />Duplicate order</DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem danger onClick={() => setCancel(true)}><AlertCircle />Cancel order</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </>
         }
       />
@@ -117,8 +140,8 @@ export default function OrderDetailPage() {
                   {order.creditHoldReason ?? "Customer credit limit exceeded."}
                 </p>
                 <div className="mt-3 flex items-center gap-2">
-                  <Button variant="accent" size="sm">Override (with reason)</Button>
-                  <Button variant="ghost" size="sm">Cancel order</Button>
+                  <Button variant="accent" size="sm" onClick={() => setOverride(true)}>Override (with reason)</Button>
+                  <Button variant="ghost" size="sm" onClick={() => setCancel(true)}>Cancel order</Button>
                 </div>
               </div>
             </div>
@@ -309,10 +332,10 @@ export default function OrderDetailPage() {
             <CardBody>
               <h3 className="text-sm font-semibold text-navy-900 dark:text-white mb-3">Quick Actions</h3>
               <div className="space-y-2">
-                <Button variant="secondary" size="md" className="w-full justify-start gap-2"><Printer />Print Invoice</Button>
-                <Button variant="secondary" size="md" className="w-full justify-start gap-2"><Mail />Email Invoice</Button>
-                <Button variant="secondary" size="md" className="w-full justify-start gap-2"><MessageSquare />Send via SMS</Button>
-                <Button variant="secondary" size="md" className="w-full justify-start gap-2"><ArrowRight />Record Payment</Button>
+                <Button variant="secondary" size="md" className="w-full justify-start gap-2" onClick={() => toast.info("Printing invoice…")}><Printer />Print Invoice</Button>
+                <Button variant="secondary" size="md" className="w-full justify-start gap-2" onClick={() => toast.success("Invoice emailed", { description: order.customerName })}><Mail />Email Invoice</Button>
+                <Button variant="secondary" size="md" className="w-full justify-start gap-2" onClick={() => setSendSms(true)}><MessageSquare />Send via SMS</Button>
+                <Button variant="secondary" size="md" className="w-full justify-start gap-2" asChild><Link href={`/sales/invoices/1`}><ArrowRight />Record Payment</Link></Button>
               </div>
             </CardBody>
           </Card>
@@ -338,6 +361,53 @@ export default function OrderDetailPage() {
           </Card>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={override}
+        onOpenChange={setOverride}
+        title="Override credit hold?"
+        description={
+          <span>
+            This order ({order.orderNo}) is on hold because <strong>{order.customerName}</strong> exceeded their credit limit.
+            Override will allow it to proceed and require accountant approval.
+          </span>
+        }
+        variant="warning"
+        confirmLabel="Override and continue"
+        requireReason
+        reasonLabel="Override reason (audit trail)"
+        reasonPlaceholder="e.g. Verbal commitment from customer to clear in 7 days"
+        onConfirm={(r) => {
+          toast.success("Credit hold overridden", { description: `Reason logged: "${r}"` });
+          setOverride(false);
+        }}
+      />
+      <ConfirmDialog
+        open={cancel}
+        onOpenChange={setCancel}
+        title="Cancel this order?"
+        description={`Order ${order.orderNo} will be cancelled and reserved stock will be released.`}
+        variant="danger"
+        confirmLabel="Yes, cancel order"
+        requireReason
+        reasonLabel="Cancellation reason"
+        onConfirm={(r) => {
+          toast.success("Order cancelled", { description: `Stock released. Reason: ${r}` });
+          setCancel(false);
+        }}
+      />
+      <SendSmsDialog
+        open={sendSms}
+        onOpenChange={setSendSms}
+        defaultPhone="03004567890"
+        defaultTemplate="ORDER_DISPATCHED"
+        contextVars={{
+          name: order.customerName,
+          orderNo: order.orderNo,
+          invoiceNo: order.orderNo.replace("ORD", "INV"),
+          amount: formatMoney(order.total).replace("PKR ", ""),
+        }}
+      />
     </>
   );
 }
