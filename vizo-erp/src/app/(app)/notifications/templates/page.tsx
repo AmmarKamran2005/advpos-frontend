@@ -1,12 +1,18 @@
 "use client";
 
-import { Plus, FileText, Edit3, Eye } from "lucide-react";
+import * as React from "react";
+import { z } from "zod";
+import { Plus, FileText, Edit3, Eye, Send, Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardBody } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge, StatusPill } from "@/components/ui/badge";
+import { EntityFormDialog, ConfirmDialog, SendSmsDialog } from "@/components/dialogs";
+import { toast } from "@/components/ui/toaster";
 
-const TEMPLATES = [
+type Template = { code: string; name: string; body: string; language: string; maxLength: number; isActive: boolean };
+
+const TEMPLATES: Template[] = [
   { code: "ORDER_CONFIRMED",      name: "Order Confirmation",     body: "Dear {{name}}, your order {{orderNo}} of PKR {{amount}} has been confirmed. Thank you!", language: "en", maxLength: 160, isActive: true },
   { code: "ORDER_DISPATCHED",     name: "Order Dispatched",       body: "Dear {{name}}, your order {{orderNo}} has been dispatched. Invoice: {{invoiceNo}}",     language: "en", maxLength: 160, isActive: true },
   { code: "ORDER_DELIVERED",      name: "Order Delivered",        body: "Your order {{orderNo}} has been delivered. Thank you for your business!",                language: "en", maxLength: 160, isActive: true },
@@ -18,7 +24,20 @@ const TEMPLATES = [
   { code: "PO_APPROVED",          name: "PO Approved (Supplier)", body: "Your PO {{poNo}} of PKR {{amount}} has been approved. Please proceed with delivery.",   language: "en", maxLength: 160, isActive: true },
 ];
 
+const Schema = z.object({
+  code: z.string().min(3, "Min 3 chars").max(50).regex(/^[A-Z_]+$/, "Uppercase letters and underscores only"),
+  name: z.string().min(2).max(100),
+  body: z.string().min(10, "Body too short").max(459, "Max 459 chars (3 SMS)"),
+  language: z.enum(["en", "ur", "roman-ur"]),
+  isActive: z.boolean(),
+});
+type Form = z.infer<typeof Schema>;
+
 export default function TemplatesPage() {
+  const [dialog, setDialog] = React.useState<{ mode: "create" | "edit"; t?: Template } | null>(null);
+  const [del, setDel] = React.useState<Template | null>(null);
+  const [test, setTest] = React.useState<Template | null>(null);
+
   return (
     <>
       <PageHeader
@@ -26,7 +45,9 @@ export default function TemplatesPage() {
         title="SMS Templates"
         subtitle="Pre-approved message templates with Handlebars variables"
         actions={
-          <Button variant="accent" size="md" className="gap-1.5"><Plus /><span>New Template</span></Button>
+          <Button variant="accent" size="md" className="gap-1.5" onClick={() => setDialog({ mode: "create" })}>
+            <Plus /><span>New Template</span>
+          </Button>
         }
       />
 
@@ -39,8 +60,9 @@ export default function TemplatesPage() {
                   <FileText className="size-4" />
                 </div>
                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100">
-                  <Button variant="ghost" size="icon-sm"><Eye /></Button>
-                  <Button variant="ghost" size="icon-sm"><Edit3 /></Button>
+                  <Button variant="ghost" size="icon-sm" onClick={() => setTest(t)} aria-label="Test send"><Eye /></Button>
+                  <Button variant="ghost" size="icon-sm" onClick={() => setDialog({ mode: "edit", t })} aria-label="Edit"><Edit3 /></Button>
+                  <Button variant="ghost" size="icon-sm" onClick={() => setDel(t)} className="text-danger" aria-label="Delete"><Trash2 /></Button>
                 </div>
               </div>
               <h4 className="text-sm font-semibold text-navy-900 dark:text-white">{t.name}</h4>
@@ -50,10 +72,55 @@ export default function TemplatesPage() {
                 <span className="text-2xs uppercase font-semibold text-slate-500 dark:text-slate-400">EN · {t.body.length}/{t.maxLength}</span>
                 {t.isActive ? <StatusPill variant="success">Active</StatusPill> : <StatusPill variant="muted">Inactive</StatusPill>}
               </div>
+              <Button variant="ghost" size="sm" className="w-full mt-3 gap-1" onClick={() => setTest(t)}>
+                <Send className="size-3" /> Test send
+              </Button>
             </CardBody>
           </Card>
         ))}
       </div>
+
+      <EntityFormDialog<Form>
+        open={dialog !== null}
+        onOpenChange={(o) => !o && setDialog(null)}
+        mode={dialog?.mode ?? "create"}
+        title="SMS Template"
+        schema={Schema}
+        fields={[
+          { name: "code", label: "Code", type: "text", placeholder: "ORDER_CONFIRMED", required: true, disabledOnEdit: true, hint: "Uppercase + underscores only" },
+          { name: "name", label: "Display name", type: "text", placeholder: "Order Confirmation", required: true },
+          { name: "body", label: "Message body", type: "textarea", required: true, rows: 4, placeholder: "Dear {{name}}, …", hint: "Use {{variable}} for dynamic values. 153 chars = 1 SMS." },
+          { name: "language", label: "Language", type: "select", required: true, options: [
+            { value: "en", label: "English" },
+            { value: "ur", label: "Urdu" },
+            { value: "roman-ur", label: "Roman Urdu" },
+          ] },
+          { name: "isActive", label: "Active", type: "switch", hint: "Inactive templates won't be triggered by events", fullWidth: true },
+        ]}
+        defaultValues={{
+          code: dialog?.t?.code ?? "",
+          name: dialog?.t?.name ?? "",
+          body: dialog?.t?.body ?? "",
+          language: (dialog?.t?.language ?? "en") as "en" | "ur" | "roman-ur",
+          isActive: dialog?.t?.isActive ?? true,
+        }}
+      />
+
+      <ConfirmDialog
+        open={del !== null}
+        onOpenChange={(o) => !o && setDel(null)}
+        title={`Delete template "${del?.name}"?`}
+        description="This template will no longer be triggered by events. Existing queued messages are unaffected."
+        variant="danger"
+        confirmLabel="Delete template"
+        onConfirm={() => { toast.success("Template deleted"); setDel(null); }}
+      />
+
+      <SendSmsDialog
+        open={test !== null}
+        onOpenChange={(o) => !o && setTest(null)}
+        defaultPhone="03007287607"
+      />
     </>
   );
 }

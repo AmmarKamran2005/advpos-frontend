@@ -129,14 +129,18 @@ export default function ProductDetailPage() {
         }
         actions={
           <>
-            <Button variant="secondary" size="md" className="gap-1.5">
-              <Edit3 />
-              Edit
+            <Button variant="secondary" size="md" className="gap-1.5" asChild>
+              <Link href={`/inventory/products/new?id=${product.id}`}>
+                <Edit3 />
+                Edit
+              </Link>
             </Button>
-            <Button variant="accent" size="md">
-              Adjust Stock
+            <Button variant="accent" size="md" asChild>
+              <Link href={`/inventory/adjustments/new?productId=${product.id}`}>
+                Adjust Stock
+              </Link>
             </Button>
-            <Button variant="ghost" size="icon">
+            <Button variant="ghost" size="icon" aria-label="More">
               <MoreHorizontal />
             </Button>
           </>

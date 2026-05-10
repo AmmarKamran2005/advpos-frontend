@@ -54,7 +54,7 @@ export default function UserDetailPage() {
         actions={
           <>
             <Button variant="ghost" asChild><Link href="/admin/users"><ArrowLeft />Back</Link></Button>
-            <Button variant="secondary" className="gap-1.5"><Edit3 />Edit</Button>
+            <Button variant="secondary" className="gap-1.5" asChild><Link href={`/admin/users/new?id=${u.id}`}><Edit3 />Edit</Link></Button>
             <Button variant="ghost" className="gap-1.5" onClick={() => setResetPwd(true)}><KeyRound />Reset Password</Button>
             <Button variant="ghost" className="text-danger" onClick={() => setDel(true)}><Trash2 />Delete</Button>
           </>

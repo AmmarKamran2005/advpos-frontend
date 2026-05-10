@@ -46,7 +46,7 @@ export default function BranchDetailPage() {
         actions={
           <>
             <Button variant="ghost" asChild><Link href="/admin/branches"><ArrowLeft />Back</Link></Button>
-            <Button variant="secondary" className="gap-1.5"><Edit3 />Edit</Button>
+            <Button variant="secondary" className="gap-1.5" asChild><Link href={`/admin/branches/new?id=${b.id}`}><Edit3 />Edit</Link></Button>
           </>
         }
       />

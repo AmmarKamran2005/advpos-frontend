@@ -26,6 +26,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/empty-state";
+import { toast } from "@/components/ui/toaster";
 import { getParty } from "@/data/parties";
 import { formatCompact, formatDate, formatMoney } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -134,9 +135,11 @@ export default function PartyDetailPage() {
         }
         actions={
           <>
-            <Button variant="secondary" size="md" className="gap-1.5">
-              <Edit3 />
-              <span className="hidden sm:inline">Edit</span>
+            <Button variant="secondary" size="md" className="gap-1.5" asChild>
+              <Link href={`/parties/new?id=${party.id}`}>
+                <Edit3 />
+                <span className="hidden sm:inline">Edit</span>
+              </Link>
             </Button>
             <Button variant="accent" size="md" className="gap-1.5" asChild>
               <Link href={`/sales/orders/new?customerId=${party.id}`}>
@@ -290,17 +293,19 @@ export default function PartyDetailPage() {
                       Create New Order
                     </Link>
                   </Button>
-                  <Button variant="secondary" size="md" className="w-full justify-start">
+                  <Button variant="secondary" size="md" className="w-full justify-start" onClick={() => toast.info("Opening payment dialog…")}>
                     <CreditCard />
                     Record Payment
                   </Button>
-                  <Button variant="secondary" size="md" className="w-full justify-start">
+                  <Button variant="secondary" size="md" className="w-full justify-start" onClick={() => toast.info("Generating statement…")}>
                     <Building />
                     Print Statement
                   </Button>
-                  <Button variant="secondary" size="md" className="w-full justify-start">
-                    <Edit3 />
-                    Edit Credit Limit
+                  <Button variant="secondary" size="md" className="w-full justify-start" asChild>
+                    <Link href={`/parties/new?id=${party.id}`}>
+                      <Edit3 />
+                      Edit Credit Limit
+                    </Link>
                   </Button>
                 </div>
               </CardBody>
@@ -378,9 +383,11 @@ export default function PartyDetailPage() {
                 <CardBody>
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="text-base font-semibold text-navy-900 dark:text-white">Credit Settings</h3>
-                    <Button variant="secondary" size="sm">
-                      <Edit3 />
-                      Edit
+                    <Button variant="secondary" size="sm" asChild>
+                      <Link href={`/parties/new?id=${party.id}`}>
+                        <Edit3 />
+                        Edit
+                      </Link>
                     </Button>
                   </div>
                   <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
