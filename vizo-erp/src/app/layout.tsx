@@ -17,11 +17,11 @@ const jetbrainsMono = JetBrains_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "VIZO ERP — Sales · Inventory · Accounting",
-    template: "%s · VIZO ERP",
+    default: "AdvPOS — Sales · Inventory · Accounting",
+    template: "%s · AdvPOS",
   },
   description:
-    "Multi-branch ERP for VIZO mobile accessories distribution — sales, purchases, inventory, accounting, and AI-powered insights.",
+    "Multi-branch POS & ERP for distribution businesses — sales, purchases, inventory, accounting, and AI-powered insights.",
   icons: { icon: "/vizo-logo.png" },
 };
 

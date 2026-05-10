@@ -67,7 +67,7 @@ export function Sidebar({
             <div className="relative size-8 rounded-md overflow-hidden flex-shrink-0">
               <Image
                 src="/vizo-logo.png"
-                alt="VIZO"
+                alt="AdvPOS"
                 fill
                 sizes="32px"
                 className="object-cover dark:hidden"
@@ -75,7 +75,7 @@ export function Sidebar({
               />
               <Image
                 src="/vizo-logo-dark.jpg"
-                alt="VIZO"
+                alt="AdvPOS"
                 fill
                 sizes="32px"
                 className="object-cover hidden dark:block"
@@ -85,7 +85,7 @@ export function Sidebar({
             {!collapsed && (
               <div className="min-w-0">
                 <div className="text-sm font-bold text-navy-900 dark:text-white leading-tight truncate">
-                  VIZO ERP
+                  AdvPOS
                 </div>
                 <div className="text-2xs text-slate-500 dark:text-slate-400 leading-tight truncate">
                   Sales · Inventory · Accounting

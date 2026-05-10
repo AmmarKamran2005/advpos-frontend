@@ -143,10 +143,10 @@ export function TopBar({
         </kbd>
       </div>
 
-      <div className="flex-1 lg:hidden" />
+      <div className="flex-1" />
 
       {/* Action cluster */}
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-1 ml-auto">
         {/* Quick Create */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

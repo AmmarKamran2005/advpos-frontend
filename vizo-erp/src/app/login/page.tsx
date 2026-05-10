@@ -46,7 +46,7 @@ export default function LoginPage() {
       return;
     }
 
-    toast.success("Welcome back, Umer!", { description: "Signed in to VIZO ERP successfully." });
+    toast.success("Welcome back, Umer!", { description: "Signed in to AdvPOS successfully." });
     router.push("/dashboard");
   }
 
@@ -58,12 +58,12 @@ export default function LoginPage() {
           <div className="flex items-center gap-2.5">
             <Image
               src={resolvedTheme === "dark" ? "/vizo-logo-dark.jpg" : "/vizo-logo.png"}
-              alt="VIZO" width={36} height={36}
+              alt="AdvPOS" width={36} height={36}
               className="rounded-lg object-cover"
             />
             <div>
               <div className="text-base font-bold leading-none">
-                VIZO <span className="text-brand-yellow">ERP</span>
+                Adv<span className="text-brand-yellow">POS</span>
               </div>
               <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Sales · Inventory · Accounting</div>
             </div>
@@ -74,7 +74,7 @@ export default function LoginPage() {
         <div className="flex-1 flex flex-col justify-center max-w-md w-full mx-auto lg:mx-0">
           <div className="mb-8">
             <h1 className="text-3xl font-bold tracking-tight">Welcome back</h1>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-2">Sign in to your VIZO account to continue.</p>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-2">Sign in to your AdvPOS account to continue.</p>
           </div>
 
           {serverError && (
@@ -144,7 +144,7 @@ export default function LoginPage() {
                 {form.formState.isSubmitting ? (
                   <><Loader2 className="size-4 animate-spin" /> Signing in…</>
                 ) : (
-                  <>Sign in to VIZO <ArrowRight className="size-4" /></>
+                  <>Sign in to AdvPOS <ArrowRight className="size-4" /></>
                 )}
               </Button>
 
@@ -166,7 +166,7 @@ export default function LoginPage() {
           </Form>
 
           <div className="mt-10 pt-6 border-t border-slate-200 dark:border-navy-800 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-            <div>© 2026 VIZO. All rights reserved.</div>
+            <div>© 2026 AdvPOS. All rights reserved.</div>
             <div className="flex items-center gap-3">
               <Link href="#" className="hover:text-navy-900 dark:hover:text-white">Privacy</Link>
               <Link href="#" className="hover:text-navy-900 dark:hover:text-white">Terms</Link>

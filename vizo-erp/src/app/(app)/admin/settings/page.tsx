@@ -41,7 +41,7 @@ export default function SettingsPage() {
       <PageHeader
         breadcrumbs={[{ label: "Administration" }, { label: "System Settings" }]}
         title="System Settings"
-        subtitle={savedAt ? `Last saved at ${savedAt}` : "Configure VIZO ERP organisation-wide"}
+        subtitle={savedAt ? `Last saved at ${savedAt}` : "Configure AdvPOS organisation-wide"}
         actions={
           <div className="flex items-center gap-2">
             {dirty && <span className="text-xs text-warning font-medium">● Unsaved changes</span>}
@@ -137,7 +137,7 @@ export default function SettingsPage() {
             <CardBody>
               <h3 className="text-base font-semibold text-navy-900 dark:text-white mb-4">Email (SMTP)</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <Field label="From Name"><Input defaultValue="VIZO ERP" /></Field>
+                <Field label="From Name"><Input defaultValue="AdvPOS" /></Field>
                 <Field label="From Address"><Input type="email" defaultValue="noreply@vizo.com.pk" /></Field>
                 <Field label="SMTP Host"><Input defaultValue="smtp.sendgrid.net" /></Field>
                 <Field label="SMTP Port"><Input type="number" defaultValue="587" /></Field>

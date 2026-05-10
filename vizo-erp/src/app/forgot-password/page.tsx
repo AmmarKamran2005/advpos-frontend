@@ -35,10 +35,10 @@ export default function ForgotPasswordPage() {
         <Link href="/login" className="flex items-center gap-2.5">
           <Image
             src={resolvedTheme === "dark" ? "/vizo-logo-dark.jpg" : "/vizo-logo.png"}
-            alt="VIZO" width={32} height={32}
+            alt="AdvPOS" width={32} height={32}
             className="rounded-lg object-cover"
           />
-          <span className="text-base font-bold">VIZO <span className="text-brand-yellow">ERP</span></span>
+          <span className="text-base font-bold">Adv<span className="text-brand-yellow">POS</span></span>
         </Link>
         <ThemeToggle />
       </header>

@@ -39,7 +39,7 @@ export default function SetupPage() {
 
   async function onSubmit(_d: Form) {
     await new Promise((r) => setTimeout(r, 700));
-    toast.success("Password updated", { description: "Welcome to VIZO ERP!" });
+    toast.success("Password updated", { description: "Welcome to AdvPOS!" });
     router.push("/dashboard");
   }
 
@@ -47,8 +47,8 @@ export default function SetupPage() {
     <div className="min-h-screen bg-white dark:bg-navy-950 font-sans text-navy-900 dark:text-white antialiased flex flex-col">
       <header className="flex items-center justify-between p-6">
         <Link href="/login" className="flex items-center gap-2.5">
-          <Image src={resolvedTheme === "dark" ? "/vizo-logo-dark.jpg" : "/vizo-logo.png"} alt="VIZO" width={32} height={32} className="rounded-lg object-cover" />
-          <span className="text-base font-bold">VIZO <span className="text-brand-yellow">ERP</span></span>
+          <Image src={resolvedTheme === "dark" ? "/vizo-logo-dark.jpg" : "/vizo-logo.png"} alt="AdvPOS" width={32} height={32} className="rounded-lg object-cover" />
+          <span className="text-base font-bold">Adv<span className="text-brand-yellow">POS</span></span>
         </Link>
         <ThemeToggle />
       </header>
@@ -60,7 +60,7 @@ export default function SetupPage() {
           </div>
           <h1 className="text-2xl font-bold tracking-tight">First-time setup</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-2">
-            Welcome to VIZO ERP! For security, please change your temporary password before continuing.
+            Welcome to AdvPOS! For security, please change your temporary password before continuing.
           </p>
 
           <Form {...form}>

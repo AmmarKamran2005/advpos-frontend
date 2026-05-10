@@ -24,7 +24,7 @@ export default function PreferencesPage() {
       <PageHeader
         breadcrumbs={[{ label: "My Profile", href: "/profile" }, { label: "Preferences" }]}
         title="Preferences"
-        subtitle="Customize how VIZO ERP looks and behaves for you"
+        subtitle="Customize how AdvPOS looks and behaves for you"
         actions={
           <Button variant="accent" size="md" className="gap-1.5" onClick={() => toast.success("Preferences saved")}>
             <Save /> Save
