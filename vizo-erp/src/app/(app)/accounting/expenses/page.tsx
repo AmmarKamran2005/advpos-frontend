@@ -72,7 +72,7 @@ export default function ExpensesPage() {
       <FilterBar searchPlaceholder="Search expenses…" searchValue={search} onSearchChange={setSearch} />
 
       <Card className="p-0 overflow-hidden">
-        <DataTable columns={columns} data={filtered} />
+        <DataTable columns={columns} data={filtered} rowHref={(e) => `/accounting/expenses/${e.id}`} />
       </Card>
     </>
   );

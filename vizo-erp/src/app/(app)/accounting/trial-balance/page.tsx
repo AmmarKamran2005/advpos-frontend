@@ -1,13 +1,19 @@
 "use client";
 
-import { Calendar, Download, Printer } from "lucide-react";
+import * as React from "react";
+import Link from "next/link";
+import { ArrowRight } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardBody } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { ReportToolbar } from "@/components/widgets/report-toolbar";
 import { accounts } from "@/data/accounting";
-import { formatMoney } from "@/lib/format";
+import { branchesAdmin } from "@/data/admin";
+import { formatMoney, formatDate } from "@/lib/format";
 
 export default function TrialBalancePage() {
+  const [asOfDate, setAsOfDate] = React.useState(new Date().toISOString().slice(0, 10));
+  const [branchId, setBranchId] = React.useState<number | null>(null);
+
   const leaves = accounts.filter((a) => !a.isGroup);
   const debitTotal = leaves.filter((a) => ["ASSET", "EXPENSE"].includes(a.type)).reduce((s, a) => s + a.balance, 0);
   const creditTotal = leaves.filter((a) => ["LIABILITY", "EQUITY", "REVENUE"].includes(a.type)).reduce((s, a) => s + Math.abs(a.balance), 0);
@@ -17,13 +23,16 @@ export default function TrialBalancePage() {
       <PageHeader
         breadcrumbs={[{ label: "Accounting" }, { label: "Trial Balance" }]}
         title="Trial Balance"
-        subtitle="As of May 1, 2026"
+        subtitle={`As of ${formatDate(asOfDate)} · ${branchId ? branchesAdmin.find((b) => b.id === branchId)?.name : "All Branches (Consolidated)"}`}
         actions={
-          <>
-            <Button variant="secondary" size="md" className="gap-1.5"><Calendar /><span>As of</span></Button>
-            <Button variant="secondary" size="md" className="gap-1.5"><Printer /><span className="hidden sm:inline">Print</span></Button>
-            <Button variant="secondary" size="md" className="gap-1.5"><Download /><span className="hidden sm:inline">Export</span></Button>
-          </>
+          <ReportToolbar
+            mode="asOf"
+            reportName="Trial Balance"
+            asOfDate={asOfDate}
+            onAsOfChange={setAsOfDate}
+            branchId={branchId}
+            onBranchChange={setBranchId}
+          />
         }
       />
 
@@ -32,7 +41,9 @@ export default function TrialBalancePage() {
           <div className="text-center mb-6 pb-4 border-b-2 border-navy-900 dark:border-brand-yellow">
             <h2 className="text-xl font-bold text-navy-900 dark:text-white">VIZO Trading Company (Pvt.) Ltd.</h2>
             <h3 className="text-lg font-semibold text-navy-900 dark:text-white mt-1">Trial Balance</h3>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">As of May 1, 2026 · All Branches</p>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+              As of {formatDate(asOfDate)} · {branchId ? branchesAdmin.find((b) => b.id === branchId)?.name : "All Branches"}
+            </p>
           </div>
 
           <table className="w-full">
@@ -42,17 +53,29 @@ export default function TrialBalancePage() {
                 <th className="text-left text-2xs uppercase font-bold tracking-wider text-slate-500 dark:text-slate-400 py-2.5">Account Name</th>
                 <th className="text-right text-2xs uppercase font-bold tracking-wider text-slate-500 dark:text-slate-400 py-2.5">Debit</th>
                 <th className="text-right text-2xs uppercase font-bold tracking-wider text-slate-500 dark:text-slate-400 py-2.5">Credit</th>
+                <th className="w-8"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-navy-700">
               {leaves.map((a) => {
                 const isDebit = ["ASSET", "EXPENSE"].includes(a.type);
                 return (
-                  <tr key={a.id} className="hover:bg-slate-50 dark:hover:bg-navy-800">
-                    <td className="py-2 tabular text-xs text-slate-500 dark:text-slate-400">{a.code}</td>
-                    <td className="py-2 text-sm text-navy-900 dark:text-white">{a.name}</td>
-                    <td className="py-2 text-right tabular text-sm text-navy-900 dark:text-white">{isDebit ? formatMoney(a.balance) : ""}</td>
-                    <td className="py-2 text-right tabular text-sm text-navy-900 dark:text-white">{!isDebit ? formatMoney(Math.abs(a.balance)) : ""}</td>
+                  <tr key={a.id} className="hover:bg-slate-50 dark:hover:bg-navy-800 group cursor-pointer">
+                    <td className="py-2 tabular text-xs text-slate-500 dark:text-slate-400">
+                      <Link href={`/accounting/ledger?accountId=${a.id}`} className="block">{a.code}</Link>
+                    </td>
+                    <td className="py-2 text-sm text-navy-900 dark:text-white">
+                      <Link href={`/accounting/ledger?accountId=${a.id}`} className="block hover:text-brand-yellow-700 dark:hover:text-brand-yellow">{a.name}</Link>
+                    </td>
+                    <td className="py-2 text-right tabular text-sm text-navy-900 dark:text-white">
+                      <Link href={`/accounting/ledger?accountId=${a.id}`} className="block">{isDebit ? formatMoney(a.balance) : ""}</Link>
+                    </td>
+                    <td className="py-2 text-right tabular text-sm text-navy-900 dark:text-white">
+                      <Link href={`/accounting/ledger?accountId=${a.id}`} className="block">{!isDebit ? formatMoney(Math.abs(a.balance)) : ""}</Link>
+                    </td>
+                    <td className="py-2">
+                      <ArrowRight className="size-3 text-slate-300 group-hover:text-brand-yellow opacity-0 group-hover:opacity-100" />
+                    </td>
                   </tr>
                 );
               })}
@@ -62,10 +85,10 @@ export default function TrialBalancePage() {
                 <td colSpan={2} className="py-3 text-right text-sm font-bold uppercase tracking-wider text-navy-900 dark:text-white">Totals</td>
                 <td className="py-3 text-right tabular text-base font-bold text-navy-900 dark:text-white">{formatMoney(debitTotal)}</td>
                 <td className="py-3 text-right tabular text-base font-bold text-navy-900 dark:text-white">{formatMoney(creditTotal)}</td>
+                <td></td>
               </tr>
               <tr>
-                <td colSpan={2}></td>
-                <td colSpan={2} className="py-2 text-right text-xs">
+                <td colSpan={5} className="py-2 text-right text-xs">
                   {debitTotal === creditTotal ? (
                     <span className="text-success font-semibold">✓ Balanced</span>
                   ) : (
@@ -75,6 +98,10 @@ export default function TrialBalancePage() {
               </tr>
             </tfoot>
           </table>
+
+          <div className="mt-4 text-xs text-slate-500 dark:text-slate-400 text-center">
+            💡 Click any account row to drill into its General Ledger
+          </div>
         </CardBody>
       </Card>
     </>

@@ -1,10 +1,12 @@
 "use client";
 
-import { Calendar, Download, TrendingUp, TrendingDown } from "lucide-react";
+import * as React from "react";
+import { TrendingUp } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardBody } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { formatMoney } from "@/lib/format";
+import { ReportToolbar } from "@/components/widgets/report-toolbar";
+import { branchesAdmin } from "@/data/admin";
+import { formatMoney, formatDate } from "@/lib/format";
 
 const SECTIONS = [
   {
@@ -37,6 +39,12 @@ const SECTIONS = [
 ];
 
 export default function CashFlowPage() {
+  const today = new Date().toISOString().slice(0, 10);
+  const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10);
+  const [from, setFrom] = React.useState(monthStart);
+  const [to,   setTo]   = React.useState(today);
+  const [branchId, setBranchId] = React.useState<number | null>(null);
+
   const opening = 5240000;
   const totals = SECTIONS.map((s) => s.items.reduce((sum, i) => sum + i.value, 0));
   const netChange = totals.reduce((s, t) => s + t, 0);
@@ -47,12 +55,17 @@ export default function CashFlowPage() {
       <PageHeader
         breadcrumbs={[{ label: "Accounting" }, { label: "Cash Flow" }]}
         title="Cash Flow Statement"
-        subtitle="May 2026 (Indirect method)"
+        subtitle={`${formatDate(from)} → ${formatDate(to)} · ${branchId ? branchesAdmin.find((b) => b.id === branchId)?.name : "All Branches"}`}
         actions={
-          <>
-            <Button variant="secondary" size="md" className="gap-1.5"><Calendar /><span>Period</span></Button>
-            <Button variant="secondary" size="md" className="gap-1.5"><Download /><span className="hidden sm:inline">Export</span></Button>
-          </>
+          <ReportToolbar
+            mode="range"
+            reportName="Cash Flow"
+            fromDate={from}
+            toDate={to}
+            onRangeChange={(f, t) => { setFrom(f); setTo(t); }}
+            branchId={branchId}
+            onBranchChange={setBranchId}
+          />
         }
       />
 
@@ -61,14 +74,14 @@ export default function CashFlowPage() {
           <div className="text-center mb-6 pb-4 border-b-2 border-navy-900 dark:border-brand-yellow">
             <h2 className="text-xl font-bold text-navy-900 dark:text-white">VIZO Trading Company (Pvt.) Ltd.</h2>
             <h3 className="text-lg font-semibold text-navy-900 dark:text-white mt-1">Statement of Cash Flows</h3>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">For the period ended 1 May 2026</p>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">For the period ended {formatDate(to)}</p>
           </div>
 
           {SECTIONS.map((sec, idx) => (
             <div key={sec.title} className="mb-6">
               <h4 className="text-xs uppercase font-bold tracking-wider text-slate-500 dark:text-slate-400 mb-2 pb-2 border-b border-slate-200 dark:border-navy-700">{sec.title}</h4>
               {sec.items.map((it, i) => (
-                <div key={i} className="flex items-center justify-between py-1.5">
+                <div key={i} className="flex items-center justify-between py-1.5 px-2 rounded-md hover:bg-slate-50 dark:hover:bg-navy-700">
                   <span className="text-sm text-slate-700 dark:text-slate-300">{it.label}</span>
                   <span className={`tabular text-sm ${it.value < 0 ? "text-danger" : "text-navy-900 dark:text-white"}`}>{it.value < 0 ? "(" : ""}{formatMoney(Math.abs(it.value))}{it.value < 0 ? ")" : ""}</span>
                 </div>

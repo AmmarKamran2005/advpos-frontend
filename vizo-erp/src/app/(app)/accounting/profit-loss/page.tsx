@@ -1,13 +1,20 @@
 "use client";
 
-import { Calendar, Download, Printer } from "lucide-react";
+import * as React from "react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardBody } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { ReportToolbar } from "@/components/widgets/report-toolbar";
 import { accounts } from "@/data/accounting";
-import { formatMoney, formatPercent } from "@/lib/format";
+import { branchesAdmin } from "@/data/admin";
+import { formatMoney, formatPercent, formatDate } from "@/lib/format";
 
 export default function ProfitLossPage() {
+  const today = new Date().toISOString().slice(0, 10);
+  const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10);
+  const [from, setFrom] = React.useState(monthStart);
+  const [to,   setTo]   = React.useState(today);
+  const [branchId, setBranchId] = React.useState<number | null>(null);
+
   const revenue = accounts.filter((a) => a.type === "REVENUE" && !a.isGroup);
   const cogs = accounts.find((a) => a.code === "5001");
   const opex = accounts.filter((a) => a.type === "EXPENSE" && !a.isGroup && a.code !== "5001");
@@ -23,13 +30,17 @@ export default function ProfitLossPage() {
       <PageHeader
         breadcrumbs={[{ label: "Accounting" }, { label: "Profit & Loss" }]}
         title="Profit & Loss Statement"
-        subtitle="May 2026 (Month-to-date)"
+        subtitle={`${formatDate(from)} → ${formatDate(to)} · ${branchId ? branchesAdmin.find((b) => b.id === branchId)?.name : "All Branches"}`}
         actions={
-          <>
-            <Button variant="secondary" size="md" className="gap-1.5"><Calendar /><span>Period</span></Button>
-            <Button variant="secondary" size="md" className="gap-1.5"><Printer /><span className="hidden sm:inline">Print</span></Button>
-            <Button variant="secondary" size="md" className="gap-1.5"><Download /><span className="hidden sm:inline">Export</span></Button>
-          </>
+          <ReportToolbar
+            mode="range"
+            reportName="Profit & Loss"
+            fromDate={from}
+            toDate={to}
+            onRangeChange={(f, t) => { setFrom(f); setTo(t); }}
+            branchId={branchId}
+            onBranchChange={setBranchId}
+          />
         }
       />
 
@@ -38,16 +49,16 @@ export default function ProfitLossPage() {
           <div className="text-center mb-6 pb-4 border-b-2 border-navy-900 dark:border-brand-yellow">
             <h2 className="text-xl font-bold text-navy-900 dark:text-white">VIZO Trading Company (Pvt.) Ltd.</h2>
             <h3 className="text-lg font-semibold text-navy-900 dark:text-white mt-1">Profit & Loss Statement</h3>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">For the period: 1 May 2026 (MTD)</p>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">For the period: {formatDate(from)} to {formatDate(to)}</p>
           </div>
 
           <Section title="Revenue">
-            {revenue.map((a) => <Row key={a.id} label={a.name} value={a.balance} />)}
+            {revenue.map((a) => <Row key={a.id} label={a.name} value={a.balance} accountId={a.id} />)}
             <Total label="Total Revenue" value={totalRevenue} />
           </Section>
 
           <Section title="Cost of Goods Sold">
-            <Row label={cogs?.name ?? "COGS"} value={cogsValue} />
+            <Row label={cogs?.name ?? "COGS"} value={cogsValue} accountId={cogs?.id} />
             <Total label="Total COGS" value={cogsValue} />
           </Section>
 
@@ -55,14 +66,14 @@ export default function ProfitLossPage() {
             <div className="flex items-center justify-between">
               <div>
                 <div className="text-xs uppercase font-bold tracking-wider text-info-dark dark:text-info-light">Gross Profit</div>
-                <div className="text-2xs text-info-dark/60 mt-0.5">Margin: {formatPercent((grossProfit / totalRevenue) * 100)}</div>
+                <div className="text-2xs text-info-dark/60 mt-0.5">Margin: {totalRevenue > 0 ? formatPercent((grossProfit / totalRevenue) * 100) : "—"}</div>
               </div>
               <div className="text-2xl tabular font-bold text-info-dark dark:text-info-light">{formatMoney(grossProfit)}</div>
             </div>
           </div>
 
           <Section title="Operating Expenses">
-            {opex.map((a) => <Row key={a.id} label={a.name} value={a.balance} />)}
+            {opex.map((a) => <Row key={a.id} label={a.name} value={a.balance} accountId={a.id} />)}
             <Total label="Total Operating Expenses" value={totalOpex} />
           </Section>
 
@@ -70,10 +81,14 @@ export default function ProfitLossPage() {
             <div className="flex items-center justify-between">
               <div>
                 <div className="text-sm uppercase font-bold tracking-wider text-success-dark dark:text-success-light">Net Profit</div>
-                <div className="text-xs text-success-dark/60 mt-1">Net Margin: {formatPercent((netProfit / totalRevenue) * 100)}</div>
+                <div className="text-xs text-success-dark/60 mt-1">Net Margin: {totalRevenue > 0 ? formatPercent((netProfit / totalRevenue) * 100) : "—"}</div>
               </div>
               <div className="text-3xl tabular font-bold text-success-dark dark:text-success-light">{formatMoney(netProfit)}</div>
             </div>
+          </div>
+
+          <div className="mt-4 text-xs text-slate-500 dark:text-slate-400 text-center">
+            💡 Click any line item to drill into the General Ledger
           </div>
         </CardBody>
       </Card>
@@ -90,13 +105,17 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function Row({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="flex items-center justify-between py-1.5">
-      <span className="text-sm text-slate-700 dark:text-slate-300">{label}</span>
+function Row({ label, value, accountId }: { label: string; value: number; accountId?: number }) {
+  const inner = (
+    <div className="flex items-center justify-between py-1.5 px-2 rounded-md group hover:bg-slate-50 dark:hover:bg-navy-700">
+      <span className="text-sm text-slate-700 dark:text-slate-300 group-hover:text-navy-900 dark:group-hover:text-white">{label}</span>
       <span className="tabular text-sm text-navy-900 dark:text-white">{formatMoney(value)}</span>
     </div>
   );
+  if (accountId) {
+    return <a href={`/accounting/ledger?accountId=${accountId}`} className="block">{inner}</a>;
+  }
+  return inner;
 }
 
 function Total({ label, value }: { label: string; value: number }) {

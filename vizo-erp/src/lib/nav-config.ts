@@ -127,6 +127,7 @@ export const navigation: NavNode[] = [
       { label: "Profit & Loss",     href: "/accounting/profit-loss",     match: "accounting.pl" },
       { label: "Balance Sheet",     href: "/accounting/balance-sheet",   match: "accounting.bs" },
       { label: "Cash Flow",         href: "/accounting/cash-flow",       match: "accounting.cf" },
+      { label: "Bank Reconciliation", href: "/accounting/reconciliation",match: "accounting.recon" },
       { label: "Period Close",      href: "/accounting/period-close",    match: "accounting.pc" },
     ],
   },
