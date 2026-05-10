@@ -1,13 +1,17 @@
 "use client";
 
-import { Calendar, Download, Archive, Package } from "lucide-react";
+import * as React from "react";
+import { Archive, Package } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
+import { ReportToolbar } from "@/components/widgets/report-toolbar";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { DataTable, type Column } from "@/components/ui/data-table";
+import { ConfirmDialog } from "@/components/dialogs/confirm-dialog";
 import { products, brands } from "@/data/products";
 import { formatMoney, formatCompact } from "@/lib/format";
+import { toast } from "@/components/ui/toaster";
 
 const DEAD = products
   .filter((p) => p.totalStock > 0 && (p.status === "low" || p.totalStock < 50))
@@ -20,6 +24,11 @@ const DEAD = products
 
 export default function DeadStockPage() {
   const totalTied = DEAD.reduce((s, p) => s + p.tiedUpValue, 0);
+  const today = new Date().toISOString().slice(0, 10);
+  const [asOf, setAsOf] = React.useState(today);
+  const [branchId, setBranchId] = React.useState<number | null>(null);
+  const [writeOff, setWriteOff] = React.useState<typeof DEAD[number] | null>(null);
+  const [liquidate, setLiquidate] = React.useState<typeof DEAD[number] | null>(null);
 
   const columns: Column<typeof DEAD[number]>[] = [
     { key: "name", header: "Product", cell: (p) => (
@@ -36,10 +45,10 @@ export default function DeadStockPage() {
     { key: "daysSinceLastMovement",  header: "Last Movement", align: "right", cell: (p) => <span className="tabular text-xs text-danger font-semibold">{p.daysSinceLastMovement} days ago</span> },
     { key: "costPrice",              header: "Cost",        align: "right", cell: (p) => <span className="tabular text-sm text-slate-600 dark:text-slate-300">{formatMoney(p.costPrice)}</span> },
     { key: "tiedUpValue",            header: "Tied Value",  align: "right", cell: (p) => <span className="tabular text-sm font-bold text-danger">{formatMoney(p.tiedUpValue)}</span> },
-    { key: "action",                 header: "",            cell: () => (
+    { key: "action",                 header: "",            cell: (p) => (
         <div className="flex items-center gap-1">
-          <Button variant="secondary" size="sm">Liquidate</Button>
-          <Button variant="ghost" size="sm">Write-off</Button>
+          <Button variant="secondary" size="sm" onClick={(e) => { e.stopPropagation(); setLiquidate(p); }}>Liquidate</Button>
+          <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); setWriteOff(p); }}>Write-off</Button>
         </div>
       )
     },
@@ -52,10 +61,7 @@ export default function DeadStockPage() {
         title="Dead Stock Report"
         subtitle="No movement in 180+ days — capital tied up"
         actions={
-          <>
-            <Button variant="secondary" size="md" className="gap-1.5"><Calendar /><span>180+ day threshold</span></Button>
-            <Button variant="secondary" size="md" className="gap-1.5"><Download /><span className="hidden sm:inline">Export</span></Button>
-          </>
+          <ReportToolbar mode="asOf" reportName="Dead Stock" asOfDate={asOf} onAsOfChange={setAsOf} branchId={branchId} onBranchChange={setBranchId} />
         }
       />
 
@@ -86,6 +92,26 @@ export default function DeadStockPage() {
       <Card className="p-0 overflow-hidden">
         <DataTable columns={columns} data={DEAD} pageSize={15} />
       </Card>
+
+      <ConfirmDialog
+        open={!!liquidate}
+        onOpenChange={(o) => !o && setLiquidate(null)}
+        title={liquidate ? `Liquidate ${liquidate.name}?` : "Liquidate"}
+        description={liquidate ? `Mark ${liquidate.totalStock} units for clearance sale at 50% off cost. Tied-up capital: ${formatMoney(liquidate.tiedUpValue)}.` : ""}
+        variant="info"
+        confirmLabel="Move to Clearance"
+        onConfirm={() => { toast.success("Moved to clearance pricing", { description: `${liquidate?.name} now appears in promo pricelist.` }); setLiquidate(null); }}
+      />
+      <ConfirmDialog
+        open={!!writeOff}
+        onOpenChange={(o) => !o && setWriteOff(null)}
+        title={writeOff ? `Write off ${writeOff.name}?` : "Write off"}
+        description={writeOff ? `${writeOff.totalStock} units of ${writeOff.name} will be removed from inventory and ${formatMoney(writeOff.tiedUpValue)} will be charged to Inventory Loss expense. This requires Finance Manager approval.` : ""}
+        variant="danger"
+        confirmLabel="Submit Write-off"
+        requireReason
+        onConfirm={(reason) => { toast.success("Write-off submitted for approval", { description: `Reason: ${reason}` }); setWriteOff(null); }}
+      />
     </>
   );
 }

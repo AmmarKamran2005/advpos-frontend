@@ -96,7 +96,7 @@ export default function SalesReturnsPage() {
       />
 
       <Card className="p-0 overflow-hidden">
-        <DataTable columns={columns} data={filtered} pageSize={10} />
+        <DataTable columns={columns} data={filtered} pageSize={10} rowHref={(r) => `/sales/returns/${r.id}`} />
       </Card>
     </>
   );

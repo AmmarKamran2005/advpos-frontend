@@ -1,13 +1,16 @@
 "use client";
 
-import { Calendar, Download, AlertTriangle, Package } from "lucide-react";
+import * as React from "react";
+import { AlertTriangle, Package } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
+import { ReportToolbar } from "@/components/widgets/report-toolbar";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { products, brands } from "@/data/products";
 import { formatMoney, formatCompact } from "@/lib/format";
+import { toast } from "@/components/ui/toaster";
 
 const SLOW = products
   .filter((p) => p.totalStock > 0)
@@ -39,8 +42,12 @@ export default function SlowMovingPage() {
     { key: "daysSinceLastSale", header: "Last Sale",       align: "right", cell: (p) => <span className="tabular text-xs text-slate-500 dark:text-slate-400">{p.daysSinceLastSale} days ago</span> },
     { key: "salePrice",         header: "Sale Price",     align: "right", cell: (p) => <span className="tabular text-sm text-slate-600 dark:text-slate-300">{formatMoney(p.salePrice)}</span> },
     { key: "tiedUpValue",       header: "Tied-up Value",  align: "right", cell: (p) => <span className="tabular text-sm font-bold text-danger">{formatMoney(p.tiedUpValue)}</span> },
-    { key: "action",            header: "",               cell: () => <Button variant="secondary" size="sm">Suggest Discount</Button> },
+    { key: "action",            header: "",               cell: (p) => <Button variant="secondary" size="sm" onClick={(e) => { e.stopPropagation(); toast.success("Discount suggested", { description: `Recommend 15% off on ${p.name} to clear ${p.totalStock} units.` }); }}>Suggest Discount</Button> },
   ];
+
+  const [from, setFrom] = React.useState(() => new Date(Date.now() - 60 * 86400000).toISOString().slice(0, 10));
+  const [to, setTo] = React.useState(() => new Date().toISOString().slice(0, 10));
+  const [branchId, setBranchId] = React.useState<number | null>(null);
 
   return (
     <>
@@ -49,10 +56,7 @@ export default function SlowMovingPage() {
         title="Slow Moving Stock"
         subtitle="SKUs with low movement in last 60 days"
         actions={
-          <>
-            <Button variant="secondary" size="md" className="gap-1.5"><Calendar /><span>60 days threshold</span></Button>
-            <Button variant="secondary" size="md" className="gap-1.5"><Download /><span className="hidden sm:inline">Export</span></Button>
-          </>
+          <ReportToolbar mode="range" reportName="Slow Moving Stock" fromDate={from} toDate={to} onRangeChange={(f, t) => { setFrom(f); setTo(t); }} branchId={branchId} onBranchChange={setBranchId} />
         }
       />
 

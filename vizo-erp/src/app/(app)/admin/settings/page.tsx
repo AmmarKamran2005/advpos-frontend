@@ -1,27 +1,60 @@
 "use client";
 
-import { Save, Building, Hash, Receipt, Mail, Wifi, Globe } from "lucide-react";
+import * as React from "react";
+import { Save, Building, Hash, Receipt, Mail, Wifi, Globe, Loader2, CheckCircle2 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardBody } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { ConfirmDialog } from "@/components/dialogs/confirm-dialog";
+import { toast } from "@/components/ui/toaster";
 
 export default function SettingsPage() {
+  const [dirty, setDirty] = React.useState(false);
+  const [saving, setSaving] = React.useState(false);
+  const [savedAt, setSavedAt] = React.useState<string | null>(null);
+  const [testEmail, setTestEmail] = React.useState(false);
+  const [connectIntegration, setConnectIntegration] = React.useState<{ name: string; verb: string } | null>(null);
+
+  React.useEffect(() => {
+    function handler(e: BeforeUnloadEvent) {
+      if (dirty) { e.preventDefault(); e.returnValue = ""; }
+    }
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [dirty]);
+
+  function save() {
+    setSaving(true);
+    setTimeout(() => {
+      setSaving(false);
+      setDirty(false);
+      const time = new Date().toLocaleTimeString();
+      setSavedAt(time);
+      toast.success("Settings saved", { description: `All changes were applied at ${time}.` });
+    }, 800);
+  }
+
   return (
     <>
       <PageHeader
         breadcrumbs={[{ label: "Administration" }, { label: "System Settings" }]}
         title="System Settings"
-        subtitle="Configure VIZO ERP organisation-wide"
+        subtitle={savedAt ? `Last saved at ${savedAt}` : "Configure VIZO ERP organisation-wide"}
         actions={
-          <Button variant="accent" size="md" className="gap-1.5">
-            <Save />
-            <span>Save Changes</span>
-          </Button>
+          <div className="flex items-center gap-2">
+            {dirty && <span className="text-xs text-warning font-medium">● Unsaved changes</span>}
+            {!dirty && savedAt && <span className="text-xs text-success font-medium inline-flex items-center gap-1"><CheckCircle2 className="size-3.5" />Saved</span>}
+            <Button variant="accent" size="md" className="gap-1.5" onClick={save} disabled={!dirty || saving}>
+              {saving ? <Loader2 className="animate-spin" /> : <Save />}
+              <span>{saving ? "Saving…" : "Save Changes"}</span>
+            </Button>
+          </div>
         }
       />
 
+      <div onChange={() => setDirty(true)}>
       <Tabs defaultValue="company" className="w-full">
         <TabsList className="overflow-x-auto scrollbar-thin flex-nowrap">
           <TabsTrigger value="company"><Building className="size-3.5 mr-1.5" /> Company</TabsTrigger>
@@ -111,7 +144,10 @@ export default function SettingsPage() {
                 <Field label="Username"><Input defaultValue="apikey" /></Field>
                 <Field label="Password"><Input type="password" placeholder="••••••••" /></Field>
               </div>
-              <Button variant="secondary" size="md" className="mt-4">Send Test Email</Button>
+              <Button variant="secondary" size="md" className="mt-4" onClick={() => { setTestEmail(true); setTimeout(() => { setTestEmail(false); toast.success("Test email sent", { description: "Check noreply@vizo.com.pk inbox." }); }, 1000); }} disabled={testEmail}>
+                {testEmail ? <Loader2 className="animate-spin mr-1.5" /> : null}
+                {testEmail ? "Sending…" : "Send Test Email"}
+              </Button>
             </CardBody>
           </Card>
         </TabsContent>
@@ -135,7 +171,7 @@ export default function SettingsPage() {
                       <h4 className="text-sm font-semibold text-navy-900 dark:text-white">{i.name}</h4>
                       <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{i.desc}</p>
                     </div>
-                    <Button variant={i.color === "success" ? "secondary" : "accent"} size="sm">
+                    <Button variant={i.color === "success" ? "secondary" : "accent"} size="sm" onClick={() => setConnectIntegration({ name: i.name, verb: i.color === "success" ? "Reconfigure" : "Connect" })}>
                       {i.color === "success" ? "Configure" : "Connect"}
                     </Button>
                   </div>
@@ -194,6 +230,17 @@ export default function SettingsPage() {
           </Card>
         </TabsContent>
       </Tabs>
+      </div>
+
+      <ConfirmDialog
+        open={!!connectIntegration}
+        onOpenChange={(o) => !o && setConnectIntegration(null)}
+        title={connectIntegration ? `${connectIntegration.verb} ${connectIntegration.name}?` : ""}
+        description={connectIntegration ? `You'll be redirected to ${connectIntegration.name} to authorise the connection. After confirming, the integration will be available across the system.` : ""}
+        variant="info"
+        confirmLabel={connectIntegration?.verb ?? "Connect"}
+        onConfirm={() => { toast.success(`${connectIntegration?.name} ${connectIntegration?.verb.toLowerCase()}d`, { description: "Connection verified — credentials stored in vault." }); setConnectIntegration(null); }}
+      />
     </>
   );
 }

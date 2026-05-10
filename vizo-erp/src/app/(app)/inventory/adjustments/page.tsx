@@ -75,7 +75,7 @@ export default function AdjustmentsPage() {
       />
 
       <Card className="p-0 overflow-hidden">
-        <DataTable columns={columns} data={ADJUSTMENTS} />
+        <DataTable columns={columns} data={ADJUSTMENTS} rowHref={(a) => `/inventory/adjustments/${a.id}`} />
       </Card>
     </>
   );

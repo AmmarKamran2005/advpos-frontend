@@ -5,10 +5,9 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, LineChart, Line,
 } from "recharts";
 import { useTheme } from "next-themes";
-import { Calendar, Download } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
+import { ReportToolbar } from "@/components/widgets/report-toolbar";
 import { Card, CardBody } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { formatCompact } from "@/lib/format";
 
@@ -31,8 +30,11 @@ const PRODUCTS = [
 
 export default function SalesTrendsPage() {
   const { resolvedTheme } = useTheme();
-  const [mounted, setMounted] = React.useState(false);
-  React.useEffect(() => setMounted(true), []);
+  const mounted = resolvedTheme !== undefined;
+
+  const [from, setFrom] = React.useState(() => new Date(Date.now() - 180 * 86400000).toISOString().slice(0, 10));
+  const [to, setTo] = React.useState(() => new Date().toISOString().slice(0, 10));
+  const [branchId, setBranchId] = React.useState<number | null>(null);
 
   const isDark = resolvedTheme === "dark";
   const tickColor = isDark ? "#94A3B8" : "#64748B";
@@ -45,10 +47,7 @@ export default function SalesTrendsPage() {
         title="Sales Trends"
         subtitle="By region and product · last 6 months"
         actions={
-          <>
-            <Button variant="secondary" size="md" className="gap-1.5"><Calendar /><span>Last 6 months</span></Button>
-            <Button variant="secondary" size="md" className="gap-1.5"><Download /><span className="hidden sm:inline">Export</span></Button>
-          </>
+          <ReportToolbar mode="range" reportName="Sales Trends" fromDate={from} toDate={to} onRangeChange={(f, t) => { setFrom(f); setTo(t); }} branchId={branchId} onBranchChange={setBranchId} />
         }
       />
 

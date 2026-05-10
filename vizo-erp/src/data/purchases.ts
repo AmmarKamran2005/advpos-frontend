@@ -118,6 +118,7 @@ export const purchaseReturns = [
   { id: 1, returnNo: "PR-KHI-26-0008", invoiceNo: "PI-KHI-26-0040", supplier: "Pak Accessories Imports",    initials: "PA", date: "2026-04-28", reason: "Damaged in transit", itemCount: 2, totalAmount: 18400, status: "POSTED" as const },
   { id: 2, returnNo: "PR-KHI-26-0007", invoiceNo: "PI-KHI-26-0038", supplier: "Karachi Wholesale Cells",    initials: "KW", date: "2026-04-25", reason: "Wrong specification",itemCount: 1, totalAmount: 12000, status: "APPROVED" as const },
   { id: 3, returnNo: "PR-LHR-26-0003", invoiceNo: "PI-LHR-26-0013", supplier: "Audio Tech International",   initials: "AT", date: "2026-04-22", reason: "Expired stock",       itemCount: 3, totalAmount: 24500, status: "POSTED" as const },
+  { id: 4, returnNo: "PR-KHI-26-0009", invoiceNo: "PI-KHI-26-0042", supplier: "China Mobile Plaza Trading", initials: "CM", date: "2026-04-30", reason: "Wrong color",         itemCount: 4, totalAmount: 32500, status: "DRAFT"    as const },
 ];
 
 export const PR_STATUS_VARIANT = {

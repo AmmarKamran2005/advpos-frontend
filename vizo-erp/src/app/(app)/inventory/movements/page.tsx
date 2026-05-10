@@ -1,10 +1,10 @@
 "use client";
 
 import * as React from "react";
-import { Download, ArrowUpRight, ArrowDownRight, Calendar } from "lucide-react";
+import { ArrowUpRight, ArrowDownRight } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
+import { ReportToolbar } from "@/components/widgets/report-toolbar";
 import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { FilterBar } from "@/components/ui/filter-bar";
@@ -48,6 +48,11 @@ const MOVEMENTS: Movement[] = [
 
 export default function MovementsPage() {
   const [search, setSearch] = React.useState("");
+  const today = new Date().toISOString().slice(0, 10);
+  const monthAgo = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+  const [from, setFrom] = React.useState(monthAgo);
+  const [to, setTo] = React.useState(today);
+  const [branchId, setBranchId] = React.useState<number | null>(null);
 
   const filtered = MOVEMENTS.filter((m) =>
     !search ||
@@ -94,16 +99,7 @@ export default function MovementsPage() {
         title="Stock Movements"
         subtitle="Append-only ledger of all inventory changes"
         actions={
-          <>
-            <Button variant="secondary" size="md" className="gap-1.5">
-              <Calendar />
-              <span className="hidden sm:inline">Last 30 days</span>
-            </Button>
-            <Button variant="secondary" size="md" className="gap-1.5">
-              <Download />
-              <span className="hidden sm:inline">Export</span>
-            </Button>
-          </>
+          <ReportToolbar mode="range" reportName="Stock Movements" fromDate={from} toDate={to} onRangeChange={(f, t) => { setFrom(f); setTo(t); }} branchId={branchId} onBranchChange={setBranchId} />
         }
       />
 

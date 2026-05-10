@@ -1,13 +1,14 @@
 "use client";
 
-import { Calendar, Download, Trophy } from "lucide-react";
+import * as React from "react";
+import { Trophy } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
+import { ReportToolbar } from "@/components/widgets/report-toolbar";
 import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { parties } from "@/data/parties";
-import { formatMoney, formatCompact } from "@/lib/format";
+import { formatMoney } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 const customers = parties.filter((p) => p.type === "CUSTOMER" || p.type === "BOTH");
@@ -26,6 +27,10 @@ const TOP = customers
 const totalRevenue = TOP.reduce((s, t) => s + t.revenue, 0);
 
 export default function TopCustomersPage() {
+  const [from, setFrom] = React.useState(() => new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10));
+  const [to, setTo] = React.useState(() => new Date().toISOString().slice(0, 10));
+  const [branchId, setBranchId] = React.useState<number | null>(null);
+
   return (
     <>
       <PageHeader
@@ -33,10 +38,7 @@ export default function TopCustomersPage() {
         title="Top Customers"
         subtitle="Last 90 days · Revenue ranking"
         actions={
-          <>
-            <Button variant="secondary" size="md" className="gap-1.5"><Calendar /><span>Last 90 days</span></Button>
-            <Button variant="secondary" size="md" className="gap-1.5"><Download /><span className="hidden sm:inline">Export</span></Button>
-          </>
+          <ReportToolbar mode="range" reportName="Top Customers" fromDate={from} toDate={to} onRangeChange={(f, t) => { setFrom(f); setTo(t); }} branchId={branchId} onBranchChange={setBranchId} />
         }
       />
 

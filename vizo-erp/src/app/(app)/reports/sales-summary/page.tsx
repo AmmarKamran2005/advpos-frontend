@@ -1,13 +1,18 @@
 "use client";
 
-import { Calendar, Download } from "lucide-react";
+import * as React from "react";
+
 import { PageHeader } from "@/components/ui/page-header";
+import { ReportToolbar } from "@/components/widgets/report-toolbar";
 import { Card, CardBody } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { SalesTrendChart } from "@/components/widgets/sales-trend-chart";
 import { formatMoney, formatCompact } from "@/lib/format";
 
 export default function SalesSummaryPage() {
+  const [from, setFrom] = React.useState(() => new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10));
+  const [to, setTo] = React.useState(() => new Date().toISOString().slice(0, 10));
+  const [branchId, setBranchId] = React.useState<number | null>(null);
+
   return (
     <>
       <PageHeader
@@ -15,10 +20,7 @@ export default function SalesSummaryPage() {
         title="Sales Summary"
         subtitle="High-level sales performance"
         actions={
-          <>
-            <Button variant="secondary" size="md" className="gap-1.5"><Calendar /><span>Last 30 days</span></Button>
-            <Button variant="secondary" size="md" className="gap-1.5"><Download /><span className="hidden sm:inline">Export</span></Button>
-          </>
+          <ReportToolbar mode="range" reportName={"Sales Summary"} fromDate={from} toDate={to} onRangeChange={(f, t) => { setFrom(f); setTo(t); }} branchId={branchId} onBranchChange={setBranchId} />
         }
       />
 

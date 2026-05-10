@@ -151,7 +151,7 @@ export default function TransfersPage() {
                 const meta = STATUS_META[t.status];
                 const Icon = meta.icon;
                 return (
-                  <tr key={t.id} className="hover:bg-slate-50 dark:hover:bg-navy-800 cursor-pointer">
+                  <tr key={t.id} className="hover:bg-slate-50 dark:hover:bg-navy-800 cursor-pointer" onClick={() => { window.location.href = `/inventory/transfers/${t.id}`; }}>
                     <td className="px-4 py-3 tabular text-sm font-medium text-navy-900 dark:text-white">{t.transferNo}</td>
                     <td className="px-4 py-3 text-xs text-slate-500 dark:text-slate-400">{formatDate(t.date)}</td>
                     <td className="px-4 py-3">

@@ -45,7 +45,7 @@ export default function PurchaseReturnsPage() {
       />
 
       <Card className="p-0 overflow-hidden">
-        <DataTable columns={columns} data={purchaseReturns} />
+        <DataTable columns={columns} data={purchaseReturns} rowHref={(r) => `/purchases/returns/${r.id}`} />
       </Card>
     </>
   );

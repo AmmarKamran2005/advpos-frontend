@@ -1,13 +1,16 @@
 "use client";
 
-import { Calendar, Download, Printer, MessageSquare } from "lucide-react";
+import * as React from "react";
+import { MessageSquare } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
-import { Card, CardBody } from "@/components/ui/card";
+import { ReportToolbar } from "@/components/widgets/report-toolbar";
+import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Avatar } from "@/components/ui/avatar";
 import { parties } from "@/data/parties";
 import { formatMoney, formatCompact } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { toast } from "@/components/ui/toaster";
 
 const customers = parties.filter((p) => p.type === "CUSTOMER" || p.type === "BOTH").filter((p) => p.currentBalance > 0);
 
@@ -35,18 +38,20 @@ const TOTALS = AGING.reduce((acc, r) => ({
 }), { current: 0, days_1_30: 0, days_31_60: 0, days_61_90: 0, days_over_90: 0, total: 0 });
 
 export default function CustomerAgingPage() {
+  const today = new Date().toISOString().slice(0, 10);
+  const [asOf, setAsOf] = React.useState(today);
+  const [branchId, setBranchId] = React.useState<number | null>(null);
+
   return (
     <>
       <PageHeader
         breadcrumbs={[{ label: "Reports", href: "/reports" }, { label: "AR Aging" }]}
         title="Accounts Receivable Aging"
-        subtitle="Outstanding by age bucket — as of May 1, 2026"
+        subtitle={`Outstanding by age bucket — as of ${asOf}`}
         actions={
           <>
-            <Button variant="secondary" size="md" className="gap-1.5"><Calendar /><span>As of</span></Button>
-            <Button variant="secondary" size="md" className="gap-1.5"><MessageSquare /><span className="hidden sm:inline">Send Reminders</span></Button>
-            <Button variant="secondary" size="md" className="gap-1.5"><Printer /><span className="hidden sm:inline">Print</span></Button>
-            <Button variant="secondary" size="md" className="gap-1.5"><Download /><span className="hidden sm:inline">Export</span></Button>
+            <Button variant="secondary" size="md" className="gap-1.5" onClick={() => toast.success("Sending bulk SMS reminders…", { description: `${AGING.filter(r => r.days_31_60 + r.days_61_90 + r.days_over_90 > 0).length} overdue customers will receive a payment reminder.` })}><MessageSquare /><span className="hidden sm:inline">Send Reminders</span></Button>
+            <ReportToolbar mode="asOf" reportName="AR Aging" asOfDate={asOf} onAsOfChange={setAsOf} branchId={branchId} onBranchChange={setBranchId} />
           </>
         }
       />

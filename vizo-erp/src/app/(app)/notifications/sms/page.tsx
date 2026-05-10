@@ -114,7 +114,7 @@ export default function SMSHistoryPage() {
       <FilterBar searchPlaceholder="Search by recipient, number, or message…" searchValue={search} onSearchChange={setSearch} />
 
       <Card className="p-0 overflow-hidden">
-        <DataTable columns={columns} data={filtered} pageSize={15} />
+        <DataTable columns={columns} data={filtered} pageSize={15} rowHref={(s) => `/notifications/sms/${s.id}`} />
       </Card>
     </>
   );

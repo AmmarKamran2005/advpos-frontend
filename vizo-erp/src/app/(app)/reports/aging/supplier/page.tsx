@@ -1,9 +1,9 @@
 "use client";
 
-import { Calendar, Download } from "lucide-react";
+import * as React from "react";
 import { PageHeader } from "@/components/ui/page-header";
+import { ReportToolbar } from "@/components/widgets/report-toolbar";
 import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Avatar } from "@/components/ui/avatar";
 import { parties } from "@/data/parties";
 import { formatMoney, formatCompact } from "@/lib/format";
@@ -35,17 +35,18 @@ const TOTALS = AGING.reduce((acc, r) => ({
 }), { current: 0, days_1_30: 0, days_31_60: 0, days_61_90: 0, days_over_90: 0, total: 0 });
 
 export default function SupplierAgingPage() {
+  const today = new Date().toISOString().slice(0, 10);
+  const [asOf, setAsOf] = React.useState(today);
+  const [branchId, setBranchId] = React.useState<number | null>(null);
+
   return (
     <>
       <PageHeader
         breadcrumbs={[{ label: "Reports", href: "/reports" }, { label: "AP Aging" }]}
         title="Accounts Payable Aging"
-        subtitle="Supplier payables by age — as of May 1, 2026"
+        subtitle={`Supplier payables by age — as of ${asOf}`}
         actions={
-          <>
-            <Button variant="secondary" size="md" className="gap-1.5"><Calendar /><span>As of</span></Button>
-            <Button variant="secondary" size="md" className="gap-1.5"><Download /><span className="hidden sm:inline">Export</span></Button>
-          </>
+          <ReportToolbar mode="asOf" reportName="AP Aging" asOfDate={asOf} onAsOfChange={setAsOf} branchId={branchId} onBranchChange={setBranchId} />
         }
       />
 
