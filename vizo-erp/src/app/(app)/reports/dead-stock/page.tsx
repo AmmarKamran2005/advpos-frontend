@@ -26,7 +26,7 @@ export default function DeadStockPage() {
   const totalTied = DEAD.reduce((s, p) => s + p.tiedUpValue, 0);
   const today = new Date().toISOString().slice(0, 10);
   const [asOf, setAsOf] = React.useState(today);
-  const [branchId, setBranchId] = React.useState<number | null>(null);
+  const [locationId, setLocationId] = React.useState<number | null>(null);
   const [writeOff, setWriteOff] = React.useState<typeof DEAD[number] | null>(null);
   const [liquidate, setLiquidate] = React.useState<typeof DEAD[number] | null>(null);
 
@@ -61,7 +61,7 @@ export default function DeadStockPage() {
         title="Dead Stock Report"
         subtitle="No movement in 180+ days — capital tied up"
         actions={
-          <ReportToolbar mode="asOf" reportName="Dead Stock" asOfDate={asOf} onAsOfChange={setAsOf} branchId={branchId} onBranchChange={setBranchId} />
+          <ReportToolbar mode="asOf" reportName="Dead Stock" asOfDate={asOf} onAsOfChange={setAsOf} locationId={locationId} onLocationChange={setLocationId} />
         }
       />
 

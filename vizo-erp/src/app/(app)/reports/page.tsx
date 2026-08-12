@@ -21,7 +21,7 @@ const REPORTS = [
   { category: "Purchases", name: "Purchase Summary",     href: "/reports/sales-summary",    icon: Truck,        description: "Purchases by supplier and period" },
   { category: "Purchases", name: "Purchase by Supplier", href: "/reports/sales-summary",    icon: Users,        description: "Supplier performance" },
 
-  { category: "Inventory", name: "Inventory Valuation",  href: "/reports/sales-summary",    icon: Package,      description: "Current stock value per warehouse" },
+  { category: "Inventory", name: "Inventory Valuation",  href: "/reports/sales-summary",    icon: Package,      description: "Current stock value per location" },
   { category: "Inventory", name: "Slow Moving",           href: "/reports/slow-moving",      icon: AlertTriangle,description: "SKUs with low movement", featured: true },
   { category: "Inventory", name: "Dead Stock",            href: "/reports/dead-stock",       icon: Archive,      description: "No movement in 180+ days", featured: true },
   { category: "Inventory", name: "Stock Movements Log",   href: "/inventory/movements",      icon: FileText,     description: "Detailed inventory ledger" },

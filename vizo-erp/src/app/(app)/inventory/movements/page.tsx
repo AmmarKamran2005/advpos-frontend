@@ -19,7 +19,7 @@ type Movement = {
   sku: string;
   type: "PURCHASE" | "SALE" | "TRANSFER_OUT" | "TRANSFER_IN" | "ADJUSTMENT" | "SALE_RETURN" | "PURCHASE_RETURN";
   reference: string;
-  warehouse: string;
+  location: string;
   qty: number;
   balance: number;
   user: string;
@@ -36,14 +36,14 @@ const TYPE_VARIANT: Record<Movement["type"], "success" | "danger" | "info" | "wa
 };
 
 const MOVEMENTS: Movement[] = [
-  { id: 1,  date: "2026-04-30", time: "11:42 AM", product: "VIZO Titan T9 Wireless Earbuds — Black", sku: "VZ-TIT-T9-BLK",  type: "SALE",         reference: "ORD-KHI-26-0142", warehouse: "KHI-WH-01", qty: -12, balance: 1240, user: "Sara Khan" },
-  { id: 2,  date: "2026-04-30", time: "10:15 AM", product: "VIZO PowerX 20000mAh Power Bank",         sku: "VZ-PWX-20K-BLK", type: "SALE",         reference: "ORD-LHR-26-0089", warehouse: "LHR-WH-01", qty: -5,  balance: 340,  user: "Sara Khan" },
-  { id: 3,  date: "2026-04-29", time: "04:20 PM", product: "VIZO VOLT 65W GaN Charger",               sku: "VZ-VLT-65W-PD",  type: "PURCHASE",     reference: "GRN-KHI-26-0089", warehouse: "KHI-WH-01", qty: 240, balance: 410,  user: "Bilal Ahmed" },
-  { id: 4,  date: "2026-04-29", time: "02:00 PM", product: "VIZO VR Type-C Cable 1.5m",               sku: "VZ-VR-TC-1.5M",  type: "TRANSFER_OUT", reference: "TRF-KHI-26-0012", warehouse: "KHI-WH-01", qty: -100,balance: 1840, user: "Bilal Ahmed" },
-  { id: 5,  date: "2026-04-29", time: "02:00 PM", product: "VIZO VR Type-C Cable 1.5m",               sku: "VZ-VR-TC-1.5M",  type: "TRANSFER_IN",  reference: "TRF-KHI-26-0012", warehouse: "LHR-WH-01", qty: 100, balance: 1940, user: "Bilal Ahmed" },
-  { id: 6,  date: "2026-04-28", time: "05:30 PM", product: "VIZO VSP Bluetooth Speaker Mini — Red",   sku: "VZ-VSP-MINI-RED", type: "ADJUSTMENT",   reference: "ADJ-KHI-26-0034", warehouse: "KHI-WH-01", qty: -3,  balance: 840,  user: "Hassan Raza" },
-  { id: 7,  date: "2026-04-28", time: "11:00 AM", product: "VIZO Titan T15 Pro ANC Earbuds",          sku: "VZ-TIT-T15-PRO", type: "SALE",         reference: "ORD-ISB-26-0034", warehouse: "ISB-WH-01", qty: -8,  balance: 340,  user: "Bilal Ahmed" },
-  { id: 8,  date: "2026-04-27", time: "03:15 PM", product: "VIZO PowerX MagSafe 5000mAh",             sku: "VZ-PWX-MAGSAFE", type: "SALE_RETURN",  reference: "RET-KHI-26-0008", warehouse: "KHI-WH-01", qty: 2,   balance: 120,  user: "Hassan Raza" },
+  { id: 1,  date: "2026-04-30", time: "11:42 AM", product: "VIZO Titan T9 Wireless Earbuds — Black", sku: "VZ-TIT-T9-BLK",  type: "SALE",         reference: "ORD-26-0142", location: "LOC-01", qty: -12, balance: 1240, user: "Sara Khan" },
+  { id: 2,  date: "2026-04-30", time: "10:15 AM", product: "VIZO PowerX 20000mAh Power Bank",         sku: "VZ-PWX-20K-BLK", type: "SALE",         reference: "ORD-26-0089", location: "LOC-03", qty: -5,  balance: 340,  user: "Sara Khan" },
+  { id: 3,  date: "2026-04-29", time: "04:20 PM", product: "VIZO VOLT 65W GaN Charger",               sku: "VZ-VLT-65W-PD",  type: "PURCHASE",     reference: "GRN-26-0089", location: "LOC-01", qty: 240, balance: 410,  user: "Bilal Ahmed" },
+  { id: 4,  date: "2026-04-29", time: "02:00 PM", product: "VIZO VR Type-C Cable 1.5m",               sku: "VZ-VR-TC-1.5M",  type: "TRANSFER_OUT", reference: "TRF-26-0012", location: "LOC-01", qty: -100,balance: 1840, user: "Bilal Ahmed" },
+  { id: 5,  date: "2026-04-29", time: "02:00 PM", product: "VIZO VR Type-C Cable 1.5m",               sku: "VZ-VR-TC-1.5M",  type: "TRANSFER_IN",  reference: "TRF-26-0012", location: "LOC-03", qty: 100, balance: 1940, user: "Bilal Ahmed" },
+  { id: 6,  date: "2026-04-28", time: "05:30 PM", product: "VIZO VSP Bluetooth Speaker Mini — Red",   sku: "VZ-VSP-MINI-RED", type: "ADJUSTMENT",   reference: "ADJ-26-0034", location: "LOC-01", qty: -3,  balance: 840,  user: "Hassan Raza" },
+  { id: 7,  date: "2026-04-28", time: "11:00 AM", product: "VIZO Titan T15 Pro ANC Earbuds",          sku: "VZ-TIT-T15-PRO", type: "SALE",         reference: "ORD-26-0034", location: "LOC-02", qty: -8,  balance: 340,  user: "Bilal Ahmed" },
+  { id: 8,  date: "2026-04-27", time: "03:15 PM", product: "VIZO PowerX MagSafe 5000mAh",             sku: "VZ-PWX-MAGSAFE", type: "SALE_RETURN",  reference: "SR-26-0008", location: "LOC-01", qty: 2,   balance: 120,  user: "Hassan Raza" },
 ];
 
 export default function MovementsPage() {
@@ -52,7 +52,7 @@ export default function MovementsPage() {
   const monthAgo = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
   const [from, setFrom] = React.useState(monthAgo);
   const [to, setTo] = React.useState(today);
-  const [branchId, setBranchId] = React.useState<number | null>(null);
+  const [locationId, setLocationId] = React.useState<number | null>(null);
 
   const filtered = MOVEMENTS.filter((m) =>
     !search ||
@@ -78,7 +78,7 @@ export default function MovementsPage() {
     },
     { key: "type", header: "Type", cell: (m) => <Badge variant={TYPE_VARIANT[m.type]}>{m.type.replace("_", " ")}</Badge> },
     { key: "reference", header: "Reference", cell: (m) => <span className="tabular text-xs font-medium text-navy-900 dark:text-white">{m.reference}</span> },
-    { key: "warehouse", header: "Warehouse", cell: (m) => <span className="text-xs text-slate-600 dark:text-slate-300">{m.warehouse}</span> },
+    { key: "location", header: "Location", cell: (m) => <span className="text-xs text-slate-600 dark:text-slate-300">{m.location}</span> },
     { key: "qty", header: "Qty", align: "right", cell: (m) => (
         <span className={cn("inline-flex items-center gap-1 tabular text-sm font-bold",
           m.qty > 0 ? "text-success" : "text-danger"
@@ -99,7 +99,7 @@ export default function MovementsPage() {
         title="Stock Movements"
         subtitle="Append-only ledger of all inventory changes"
         actions={
-          <ReportToolbar mode="range" reportName="Stock Movements" fromDate={from} toDate={to} onRangeChange={(f, t) => { setFrom(f); setTo(t); }} branchId={branchId} onBranchChange={setBranchId} />
+          <ReportToolbar mode="range" reportName="Stock Movements" fromDate={from} toDate={to} onRangeChange={(f, t) => { setFrom(f); setTo(t); }} locationId={locationId} onLocationChange={setLocationId} />
         }
       />
 

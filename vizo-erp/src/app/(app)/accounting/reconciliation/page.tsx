@@ -31,11 +31,11 @@ const BANK_LINES = [
 ];
 
 const SYSTEM_LINES = [
-  { id: 1, date: "2026-04-30", entry: "VCH-KHI-26-0089", description: "Bank receipt — Hafeez Center #28",  amount: 100000,  type: "receipt" as const },
-  { id: 2, date: "2026-04-29", entry: "VCH-KHI-26-0088", description: "Bank payment — Pak Accessories",     amount: -320000, type: "payment" as const },
-  { id: 3, date: "2026-04-29", entry: "VCH-KHI-26-0090", description: "Bank receipt — Star Communications", amount: 240000,  type: "receipt" as const },
-  { id: 4, date: "2026-04-27", entry: "VCH-KHI-26-0091", description: "Bank receipt — Mobilink Connect",    amount: 180000,  type: "receipt" as const },
-  { id: 5, date: "2026-04-26", entry: "VCH-KHI-26-0086", description: "Cash withdrawal for petty cash",     amount: -25000,  type: "payment" as const },
+  { id: 1, date: "2026-04-30", entry: "VCH-26-0089", description: "Bank receipt — Hafeez Center #28",  amount: 100000,  type: "receipt" as const },
+  { id: 2, date: "2026-04-29", entry: "VCH-26-0088", description: "Bank payment — Pak Accessories",     amount: -320000, type: "payment" as const },
+  { id: 3, date: "2026-04-29", entry: "VCH-26-0090", description: "Bank receipt — Star Communications", amount: 240000,  type: "receipt" as const },
+  { id: 4, date: "2026-04-27", entry: "VCH-26-0091", description: "Bank receipt — Mobilink Connect",    amount: 180000,  type: "receipt" as const },
+  { id: 5, date: "2026-04-26", entry: "VCH-26-0086", description: "Cash withdrawal for petty cash",     amount: -25000,  type: "payment" as const },
 ];
 
 export default function ReconciliationPage() {

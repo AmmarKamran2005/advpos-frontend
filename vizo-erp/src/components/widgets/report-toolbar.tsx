@@ -1,12 +1,12 @@
 "use client";
 
 import * as React from "react";
-import { Calendar, Download, Printer, Building2, Check } from "lucide-react";
+import { Calendar, Download, Printer, MapPin, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { branchesAdmin } from "@/data/admin";
+import { activeLocations, getLocation } from "@/data/settings";
 import { toast } from "@/components/ui/toaster";
 import { formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -23,9 +23,9 @@ export interface ReportToolbarProps {
   fromDate?: string;
   toDate?: string;
   onRangeChange?: (from: string, to: string) => void;
-  /** Branch selector */
-  branchId?: number | null;
-  onBranchChange?: (id: number | null) => void;
+  /** Location selector */
+  locationId?: number | null;
+  onLocationChange?: (id: number | null) => void;
 }
 
 const PRESETS = [
@@ -59,20 +59,26 @@ function applyPreset(preset: typeof PRESETS[number]): { from: string; to: string
 }
 
 export function ReportToolbar({
-  mode, reportName, asOfDate, onAsOfChange, fromDate, toDate, onRangeChange, branchId, onBranchChange,
+  mode, reportName, asOfDate, onAsOfChange, fromDate, toDate, onRangeChange, locationId, onLocationChange,
 }: ReportToolbarProps) {
   const [datePickerOpen, setDatePickerOpen] = React.useState(false);
-  const [branchOpen, setBranchOpen] = React.useState(false);
+  const [locationOpen, setLocationOpen] = React.useState(false);
 
   const [tempAsOf, setTempAsOf] = React.useState(asOfDate ?? "");
   const [tempFrom, setTempFrom] = React.useState(fromDate ?? "");
   const [tempTo,   setTempTo]   = React.useState(toDate   ?? "");
 
-  React.useEffect(() => { setTempAsOf(asOfDate ?? ""); }, [asOfDate]);
-  React.useEffect(() => { setTempFrom(fromDate ?? ""); }, [fromDate]);
-  React.useEffect(() => { setTempTo(toDate     ?? ""); }, [toDate]);
+  /* Re-seed the draft values when the applied dates change underneath us. */
+  const appliedKey = `${asOfDate}|${fromDate}|${toDate}`;
+  const [seededFrom, setSeededFrom] = React.useState(appliedKey);
+  if (seededFrom !== appliedKey) {
+    setSeededFrom(appliedKey);
+    setTempAsOf(asOfDate ?? "");
+    setTempFrom(fromDate ?? "");
+    setTempTo(toDate ?? "");
+  }
 
-  const branch = branchId ? branchesAdmin.find((b) => b.id === branchId) : null;
+  const location = locationId ? getLocation(locationId) : null;
 
   function applyDate() {
     if (mode === "asOf") onAsOfChange?.(tempAsOf);
@@ -138,40 +144,40 @@ export function ReportToolbar({
         </PopoverContent>
       </Popover>
 
-      {/* Branch selector */}
-      {onBranchChange && (
-        <Popover open={branchOpen} onOpenChange={setBranchOpen}>
+      {/* Location selector */}
+      {onLocationChange && (
+        <Popover open={locationOpen} onOpenChange={setLocationOpen}>
           <PopoverTrigger asChild>
             <Button variant="secondary" size="md" className="gap-1.5">
-              <Building2 />
-              {branch ? branch.name : "All Branches"}
+              <MapPin />
+              {location ? location.name : "All Locations"}
             </Button>
           </PopoverTrigger>
           <PopoverContent align="end" className="w-64 p-0">
-            <div className="px-3 py-2 text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-navy-700">Branch</div>
+            <div className="px-3 py-2 text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-navy-700">Location</div>
             <button
-              onClick={() => { onBranchChange?.(null); setBranchOpen(false); toast.success("Showing all branches (consolidated)"); }}
+              onClick={() => { onLocationChange?.(null); setLocationOpen(false); toast.success("Showing all locations"); }}
               className={cn("w-full flex items-center justify-between px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-navy-700",
-                !branchId && "text-brand-yellow font-semibold"
+                !locationId && "text-brand-yellow font-semibold"
               )}
             >
-              <span>All Branches (consolidated)</span>
-              {!branchId && <Check className="size-3.5 text-brand-yellow" />}
+              <span>All Locations</span>
+              {!locationId && <Check className="size-3.5 text-brand-yellow" />}
             </button>
             <div className="border-t border-slate-100 dark:border-navy-700">
-              {branchesAdmin.map((b) => (
+              {activeLocations().map((l) => (
                 <button
-                  key={b.id}
-                  onClick={() => { onBranchChange?.(b.id); setBranchOpen(false); toast.success(`Filtered to ${b.name}`); }}
+                  key={l.id}
+                  onClick={() => { onLocationChange?.(l.id); setLocationOpen(false); toast.success(`Filtered to ${l.name}`); }}
                   className={cn("w-full flex items-center justify-between px-3 py-2 text-sm hover:bg-slate-50 dark:hover:bg-navy-700",
-                    b.id === branchId && "text-brand-yellow font-semibold"
+                    l.id === locationId && "text-brand-yellow font-semibold"
                   )}
                 >
                   <div>
-                    <div>{b.name}</div>
-                    <div className="text-2xs text-slate-500 dark:text-slate-400 tabular">{b.code}</div>
+                    <div>{l.name}</div>
+                    <div className="text-2xs text-slate-500 dark:text-slate-400 tabular">{l.code}</div>
                   </div>
-                  {b.id === branchId && <Check className="size-3.5 text-brand-yellow" />}
+                  {l.id === locationId && <Check className="size-3.5 text-brand-yellow" />}
                 </button>
               ))}
             </div>

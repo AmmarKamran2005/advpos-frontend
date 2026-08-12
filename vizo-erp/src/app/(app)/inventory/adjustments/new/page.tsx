@@ -17,7 +17,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from "@/components/ui/command";
 import { vizoResolver } from "@/lib/zod-resolver";
 import { products } from "@/data/products";
-import { warehouses } from "@/data/admin";
+import { activeLocations } from "@/data/settings";
 import { toast } from "@/components/ui/toaster";
 import { cn } from "@/lib/utils";
 
@@ -30,7 +30,7 @@ const ItemSchema = z.object({
 });
 
 const Schema = z.object({
-  warehouseId: z.coerce.number().positive(),
+  locationId: z.coerce.number().positive(),
   date: z.string().min(1),
   reason: z.enum(["PHYSICAL_COUNT", "DAMAGED", "EXPIRED", "FOUND", "WRITE_OFF", "OTHER"]),
   reasonNotes: z.string().min(5).max(500),
@@ -45,7 +45,7 @@ export default function NewAdjustmentPage() {
   const form = useForm<Form>({
     resolver: vizoResolver(Schema),
     defaultValues: {
-      warehouseId: warehouses[0]?.id ?? 1,
+      locationId: activeLocations()[0]?.id ?? 1,
       date: new Date().toISOString().slice(0, 10),
       reason: "PHYSICAL_COUNT",
       reasonNotes: "",
@@ -93,9 +93,9 @@ export default function NewAdjustmentPage() {
             <Card>
               <CardBody>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <FormField control={form.control} name="warehouseId" render={({ field }) => (
-                    <FormItem><FormLabel required>Warehouse</FormLabel><FormControl>
-                      <SelectNative {...field}>{warehouses.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}</SelectNative>
+                  <FormField control={form.control} name="locationId" render={({ field }) => (
+                    <FormItem><FormLabel required>Location</FormLabel><FormControl>
+                      <SelectNative {...field}>{activeLocations().map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}</SelectNative>
                     </FormControl><FormMessage /></FormItem>
                   )} />
                   <FormField control={form.control} name="date" render={({ field }) => (

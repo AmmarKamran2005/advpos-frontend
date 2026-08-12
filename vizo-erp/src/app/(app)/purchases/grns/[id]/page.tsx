@@ -15,6 +15,7 @@ import { grns, GRN_STATUS_VARIANT } from "@/data/purchases";
 import { formatMoney, formatDate } from "@/lib/format";
 import { toast } from "@/components/ui/toaster";
 import { cn } from "@/lib/utils";
+import { statusLabel } from "@/lib/labels";
 
 const MOCK_LINES = [
   { id: 1, sku: "VZ-TIT-T9-BLK",   name: "VIZO Titan T9 Wireless Earbuds — Black", ordered: 100, received: 100, accepted: 100, damaged: 0, batch: "TIT-2026-04", expiry: null,        unitCost: 580,  total: 58000 },
@@ -40,10 +41,10 @@ export default function GRNDetailPage() {
         title={
           <div className="flex items-center gap-3 flex-wrap">
             <span>{grn.grnNo}</span>
-            <StatusPill variant={GRN_STATUS_VARIANT[grn.status]}>{grn.status}</StatusPill>
+            <StatusPill variant={GRN_STATUS_VARIANT[grn.status]}>{statusLabel(grn.status)}</StatusPill>
           </div>
         }
-        subtitle={`Received ${formatDate(grn.receiptDate)} · ${grn.warehouse}`}
+        subtitle={`Received ${formatDate(grn.receiptDate)} · ${grn.location}`}
         actions={
           <>
             <Button variant="ghost" asChild><Link href="/purchases/grns"><ArrowLeft />Back</Link></Button>
@@ -71,7 +72,7 @@ export default function GRNDetailPage() {
                     <h4 className="text-sm font-semibold text-warning-dark dark:text-warning-light">Damaged units detected</h4>
                     <p className="text-sm text-warning-dark/80 dark:text-warning-light/80 mt-1">
                       <span className="font-bold">{damaged}</span> units across {MOCK_LINES.filter((l) => l.damaged > 0).length} SKUs were damaged.
-                      These will be moved to the Damaged Goods warehouse and a debit note suggestion will be created for the supplier.
+                      These will be moved to the Damaged Goods location and a debit note suggestion will be created for the supplier.
                     </p>
                   </div>
                 </div>
@@ -124,7 +125,7 @@ export default function GRNDetailPage() {
                   <div className="flex-1">
                     <h4 className="text-sm font-semibold text-success-dark dark:text-success-light">GRN Posted Successfully</h4>
                     <p className="text-sm text-success-dark/80 dark:text-success-light/80 mt-1">
-                      Stock has been received into <span className="font-bold">{grn.warehouse}</span>. Journal entry posted automatically:
+                      Stock has been received into <span className="font-bold">{grn.location}</span>. Journal entry posted automatically:
                     </p>
                     <div className="mt-3 p-3 bg-white/50 dark:bg-navy-800/50 rounded-lg text-xs font-mono">
                       <div>DR &nbsp;Inventory &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{formatMoney(grn.totalValue)}</div>
@@ -161,7 +162,7 @@ export default function GRNDetailPage() {
                 <Meta label="PO Reference" value={<Link href={`/purchases/orders/${grn.poId}`} className="text-brand-yellow hover:underline tabular">{grn.poNo}</Link>} />
                 <Meta label="Delivery Note" value={<span className="tabular">{grn.deliveryNoteNo}</span>} />
                 <Meta label="Vehicle" value={<span className="tabular">{grn.vehicleNo}</span>} />
-                <Meta label="Warehouse" value={grn.warehouse} />
+                <Meta label="Location" value={grn.location} />
                 <Meta label="Received By" value={grn.receivedBy} />
               </dl>
             </CardBody>
@@ -176,7 +177,7 @@ export default function GRNDetailPage() {
         description="Stock will be increased and a journal entry will be auto-posted (DR Inventory / CR GR-IR). This cannot be undone."
         variant="info"
         confirmLabel="Yes, post GRN"
-        onConfirm={() => { toast.success("GRN posted", { description: `${grn.unitsAccepted} units added to ${grn.warehouse}.` }); setConfirmPost(false); }}
+        onConfirm={() => { toast.success("GRN posted", { description: `${grn.unitsAccepted} units added to ${grn.location}.` }); setConfirmPost(false); }}
       />
 
       <ConfirmDialog

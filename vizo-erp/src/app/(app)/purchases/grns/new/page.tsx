@@ -17,7 +17,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from "@/components/ui/command";
 import { vizoResolver } from "@/lib/zod-resolver";
 import { purchaseOrders } from "@/data/purchases";
-import { warehouses } from "@/data/admin";
+import { activeLocations } from "@/data/settings";
 import { toast } from "@/components/ui/toaster";
 import { formatMoney, formatDate } from "@/lib/format";
 
@@ -41,7 +41,7 @@ const ItemSchema = z.object({
 
 const Schema = z.object({
   poId: z.coerce.number({ message: "Pick a PO" }).positive(),
-  warehouseId: z.coerce.number().positive(),
+  locationId: z.coerce.number().positive(),
   receiptDate: z.string().min(1),
   deliveryNoteNo: z.string().min(1, "Delivery note no. required"),
   vehicleNo: z.string().optional().or(z.literal("")),
@@ -59,7 +59,7 @@ export default function NewGRNPage() {
     resolver: vizoResolver(Schema),
     defaultValues: {
       poId: 0 as unknown as number,
-      warehouseId: warehouses[0]?.id ?? 1,
+      locationId: activeLocations()[0]?.id ?? 1,
       receiptDate: new Date().toISOString().slice(0, 10),
       deliveryNoteNo: "",
       vehicleNo: "",
@@ -160,9 +160,9 @@ export default function NewGRNPage() {
                       <FormField control={form.control} name="receiptDate" render={({ field }) => (
                         <FormItem><FormLabel required>Receipt date</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>
                       )} />
-                      <FormField control={form.control} name="warehouseId" render={({ field }) => (
-                        <FormItem><FormLabel required>Receiving warehouse</FormLabel><FormControl>
-                          <SelectNative {...field}>{warehouses.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}</SelectNative>
+                      <FormField control={form.control} name="locationId" render={({ field }) => (
+                        <FormItem><FormLabel required>Receiving location</FormLabel><FormControl>
+                          <SelectNative {...field}>{activeLocations().map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}</SelectNative>
                         </FormControl><FormMessage /></FormItem>
                       )} />
                       <FormField control={form.control} name="deliveryNoteNo" render={({ field }) => (
@@ -178,7 +178,7 @@ export default function NewGRNPage() {
                 <Card>
                   <CardBody>
                     <h3 className="text-sm font-semibold text-navy-900 dark:text-white mb-3">Items Received</h3>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">Per-line: enter accepted qty + any damaged qty. Damaged units go to the damaged-goods warehouse and a debit-note suggestion is created.</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">Per-line: enter accepted qty + any damaged qty. Damaged units go to the damaged-goods location and a debit-note suggestion is created.</p>
                     <div className="space-y-3">
                       {fields.map((f, i) => <GRNRow key={f.id} idx={i} control={form.control} />)}
                     </div>

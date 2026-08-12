@@ -27,7 +27,7 @@ export default function BrandsPage() {
       <PageHeader
         breadcrumbs={[{ label: "Inventory" }, { label: "Brands" }]}
         title="Brands"
-        subtitle="VIZO product lines"
+        subtitle="Which handset family each item is made for"
         actions={
           <Button variant="accent" size="md" className="gap-1.5" onClick={() => setDialog({ mode: "create" })}>
             <Plus />

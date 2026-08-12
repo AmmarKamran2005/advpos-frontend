@@ -11,6 +11,7 @@ import { DataTable, type Column } from "@/components/ui/data-table";
 import { FilterBar } from "@/components/ui/filter-bar";
 import { expenses } from "@/data/accounting";
 import { formatMoney, formatDate } from "@/lib/format";
+import { statusLabel } from "@/lib/labels";
 
 type Row = (typeof expenses)[number];
 
@@ -25,10 +26,10 @@ export default function ExpensesPage() {
     { key: "date",      header: "Date",      cell: (e) => <span className="text-xs text-slate-500 dark:text-slate-400">{formatDate(e.date)}</span> },
     { key: "category",  header: "Category",  cell: (e) => <Badge variant="muted">{e.category}</Badge> },
     { key: "vendor",    header: "Vendor",    cell: (e) => <span className="text-sm text-slate-700 dark:text-slate-200">{e.vendor}</span> },
-    { key: "branch",    header: "Branch",    cell: (e) => <span className="text-xs text-slate-600 dark:text-slate-300">{e.branch}</span> },
+    { key: "location",    header: "Location",    cell: (e) => <span className="text-xs text-slate-600 dark:text-slate-300">{e.location}</span> },
     { key: "paidVia",   header: "Paid Via",  cell: (e) => <Badge variant="info">{e.paidVia}</Badge> },
     { key: "amount",    header: "Amount",    align: "right", cell: (e) => <span className="tabular text-sm font-semibold text-danger">{formatMoney(e.amount)}</span> },
-    { key: "status",    header: "Status",    cell: (e) => <StatusPill variant={e.status === "POSTED" ? "success" : "muted"}>{e.status}</StatusPill> },
+    { key: "status",    header: "Status",    cell: (e) => <StatusPill variant={e.status === "POSTED" ? "success" : "muted"}>{statusLabel(e.status)}</StatusPill> },
   ];
 
   return (

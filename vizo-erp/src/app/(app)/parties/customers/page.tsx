@@ -147,7 +147,7 @@ export default function CustomersPage() {
       <PageHeader
         breadcrumbs={[{ label: "Parties", href: "/parties" }, { label: "Customers" }]}
         title="Customers"
-        subtitle={`${customers.length} customers across all branches`}
+        subtitle={`${customers.length} customers across all locationes`}
         actions={
           <Button variant="accent" size="md" className="gap-1.5" asChild>
             <Link href="/parties/new?type=customer">

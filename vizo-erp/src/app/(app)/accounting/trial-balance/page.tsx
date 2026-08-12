@@ -7,12 +7,12 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardBody } from "@/components/ui/card";
 import { ReportToolbar } from "@/components/widgets/report-toolbar";
 import { accounts } from "@/data/accounting";
-import { branchesAdmin } from "@/data/admin";
 import { formatMoney, formatDate } from "@/lib/format";
+import { getLocation } from "@/data/settings";
 
 export default function TrialBalancePage() {
   const [asOfDate, setAsOfDate] = React.useState(new Date().toISOString().slice(0, 10));
-  const [branchId, setBranchId] = React.useState<number | null>(null);
+  const [locationId, setLocationId] = React.useState<number | null>(null);
 
   const leaves = accounts.filter((a) => !a.isGroup);
   const debitTotal = leaves.filter((a) => ["ASSET", "EXPENSE"].includes(a.type)).reduce((s, a) => s + a.balance, 0);
@@ -23,15 +23,15 @@ export default function TrialBalancePage() {
       <PageHeader
         breadcrumbs={[{ label: "Accounting" }, { label: "Trial Balance" }]}
         title="Trial Balance"
-        subtitle={`As of ${formatDate(asOfDate)} · ${branchId ? branchesAdmin.find((b) => b.id === branchId)?.name : "All Branches (Consolidated)"}`}
+        subtitle={`As of ${formatDate(asOfDate)} · ${locationId ? getLocation(locationId)?.name : "All Locations"}`}
         actions={
           <ReportToolbar
             mode="asOf"
             reportName="Trial Balance"
             asOfDate={asOfDate}
             onAsOfChange={setAsOfDate}
-            branchId={branchId}
-            onBranchChange={setBranchId}
+            locationId={locationId}
+            onLocationChange={setLocationId}
           />
         }
       />
@@ -42,7 +42,7 @@ export default function TrialBalancePage() {
             <h2 className="text-xl font-bold text-navy-900 dark:text-white">VIZO Trading Company (Pvt.) Ltd.</h2>
             <h3 className="text-lg font-semibold text-navy-900 dark:text-white mt-1">Trial Balance</h3>
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-              As of {formatDate(asOfDate)} · {branchId ? branchesAdmin.find((b) => b.id === branchId)?.name : "All Branches"}
+              As of {formatDate(asOfDate)} · {locationId ? getLocation(locationId)?.name : "All Locations"}
             </p>
           </div>
 

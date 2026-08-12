@@ -17,7 +17,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from "@/components/ui/command";
 import { vizoResolver } from "@/lib/zod-resolver";
 import { products } from "@/data/products";
-import { warehouses } from "@/data/admin";
+import { activeLocations } from "@/data/settings";
 import { toast } from "@/components/ui/toaster";
 
 const ItemSchema = z.object({
@@ -28,12 +28,12 @@ const ItemSchema = z.object({
 });
 
 const Schema = z.object({
-  fromWarehouseId: z.coerce.number().positive("Pick source"),
-  toWarehouseId:   z.coerce.number().positive("Pick destination"),
+  fromLocationId: z.coerce.number().positive("Pick source"),
+  toLocationId:   z.coerce.number().positive("Pick destination"),
   date: z.string().min(1),
   items: z.array(ItemSchema).min(1, "Add at least one item"),
   notes: z.string().max(500).optional(),
-}).refine((d) => d.fromWarehouseId !== d.toWarehouseId, { message: "Source and destination must differ", path: ["toWarehouseId"] });
+}).refine((d) => d.fromLocationId !== d.toLocationId, { message: "Source and destination must differ", path: ["toLocationId"] });
 
 type Form = z.infer<typeof Schema>;
 
@@ -44,8 +44,8 @@ export default function NewTransferPage() {
   const form = useForm<Form>({
     resolver: vizoResolver(Schema),
     defaultValues: {
-      fromWarehouseId: warehouses[0]?.id ?? 1,
-      toWarehouseId: warehouses[1]?.id ?? 2,
+      fromLocationId: activeLocations()[0]?.id ?? 1,
+      toLocationId: activeLocations()[1]?.id ?? 2,
       date: new Date().toISOString().slice(0, 10),
       items: [],
       notes: "",
@@ -54,10 +54,10 @@ export default function NewTransferPage() {
 
   const { fields, append, remove } = useFieldArray({ control: form.control, name: "items" });
   const items = form.watch("items");
-  const fromId = form.watch("fromWarehouseId");
-  const toId = form.watch("toWarehouseId");
-  const fromWh = warehouses.find((w) => w.id === fromId);
-  const toWh   = warehouses.find((w) => w.id === toId);
+  const fromId = form.watch("fromLocationId");
+  const toId = form.watch("toLocationId");
+  const fromWh = activeLocations().find((w) => w.id === fromId);
+  const toWh   = activeLocations().find((w) => w.id === toId);
 
   function pickProduct(id: number) {
     const p = products.find((x) => x.id === id);
@@ -77,7 +77,7 @@ export default function NewTransferPage() {
       <PageHeader
         breadcrumbs={[{ label: "Inventory" }, { label: "Transfers", href: "/inventory/transfers" }, { label: "New" }]}
         title="New Stock Transfer"
-        subtitle="Move inventory between warehouses"
+        subtitle="Move inventory between locations"
         actions={
           <>
             <Button variant="ghost" asChild><Link href="/inventory/transfers"><ArrowLeft />Back</Link></Button>
@@ -95,17 +95,17 @@ export default function NewTransferPage() {
               <CardBody>
                 <h3 className="text-sm font-semibold text-navy-900 dark:text-white mb-3">Route</h3>
                 <div className="grid grid-cols-12 gap-3 items-end">
-                  <FormField control={form.control} name="fromWarehouseId" render={({ field }) => (
+                  <FormField control={form.control} name="fromLocationId" render={({ field }) => (
                     <FormItem className="col-span-12 sm:col-span-5"><FormLabel required>From</FormLabel><FormControl>
-                      <SelectNative {...field}>{warehouses.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}</SelectNative>
+                      <SelectNative {...field}>{activeLocations().map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}</SelectNative>
                     </FormControl><FormMessage /></FormItem>
                   )} />
                   <div className="col-span-12 sm:col-span-2 flex items-center justify-center pb-2">
                     <ArrowRight className="size-5 text-brand-yellow" />
                   </div>
-                  <FormField control={form.control} name="toWarehouseId" render={({ field }) => (
+                  <FormField control={form.control} name="toLocationId" render={({ field }) => (
                     <FormItem className="col-span-12 sm:col-span-5"><FormLabel required>To</FormLabel><FormControl>
-                      <SelectNative {...field}>{warehouses.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}</SelectNative>
+                      <SelectNative {...field}>{activeLocations().map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}</SelectNative>
                     </FormControl><FormMessage /></FormItem>
                   )} />
                   <FormField control={form.control} name="date" render={({ field }) => (

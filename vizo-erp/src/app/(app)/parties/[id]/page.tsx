@@ -30,28 +30,29 @@ import { toast } from "@/components/ui/toaster";
 import { getParty } from "@/data/parties";
 import { formatCompact, formatDate, formatMoney } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { statusLabel } from "@/lib/labels";
 
 /* Mock per-party transactions */
 const mockOrders = [
-  { id: 1, orderNo: "ORD-KHI-26-0142", date: "2026-04-30", amount: 145000, status: "Dispatched",  variant: "success" as const },
-  { id: 2, orderNo: "ORD-KHI-26-0128", date: "2026-04-22", amount: 88000,  status: "Delivered",   variant: "success" as const },
-  { id: 3, orderNo: "ORD-KHI-26-0114", date: "2026-04-15", amount: 215500, status: "Delivered",   variant: "success" as const },
-  { id: 4, orderNo: "ORD-KHI-26-0098", date: "2026-04-08", amount: 64200,  status: "Delivered",   variant: "success" as const },
+  { id: 1, orderNo: "ORD-26-0142", date: "2026-04-30", amount: 145000, status: "Dispatched",  variant: "success" as const },
+  { id: 2, orderNo: "ORD-26-0128", date: "2026-04-22", amount: 88000,  status: "Delivered",   variant: "success" as const },
+  { id: 3, orderNo: "ORD-26-0114", date: "2026-04-15", amount: 215500, status: "Delivered",   variant: "success" as const },
+  { id: 4, orderNo: "ORD-26-0098", date: "2026-04-08", amount: 64200,  status: "Delivered",   variant: "success" as const },
 ];
 
 const mockInvoices = [
-  { id: 1, invoiceNo: "INV-KHI-26-0142", date: "2026-04-30", dueDate: "2026-05-30", amount: 145000, paid: 0,      status: "Unpaid",   variant: "warning" as const },
-  { id: 2, invoiceNo: "INV-KHI-26-0128", date: "2026-04-22", dueDate: "2026-05-22", amount: 88000,  paid: 88000,  status: "Paid",     variant: "success" as const },
-  { id: 3, invoiceNo: "INV-KHI-26-0114", date: "2026-04-15", dueDate: "2026-05-15", amount: 215500, paid: 100000, status: "Partial",  variant: "info" as const },
-  { id: 4, invoiceNo: "INV-KHI-26-0098", date: "2026-04-08", dueDate: "2026-05-08", amount: 64200,  paid: 64200,  status: "Paid",     variant: "success" as const },
+  { id: 1, invoiceNo: "INV-26-0142", date: "2026-04-30", dueDate: "2026-05-30", amount: 145000, paid: 0,      status: "Unpaid",   variant: "warning" as const },
+  { id: 2, invoiceNo: "INV-26-0128", date: "2026-04-22", dueDate: "2026-05-22", amount: 88000,  paid: 88000,  status: "Paid",     variant: "success" as const },
+  { id: 3, invoiceNo: "INV-26-0114", date: "2026-04-15", dueDate: "2026-05-15", amount: 215500, paid: 100000, status: "Partial",  variant: "info" as const },
+  { id: 4, invoiceNo: "INV-26-0098", date: "2026-04-08", dueDate: "2026-05-08", amount: 64200,  paid: 64200,  status: "Paid",     variant: "success" as const },
 ];
 
 const mockLedger = [
-  { id: 1, date: "2026-04-30", reference: "INV-KHI-26-0142", description: "Sales Invoice",      debit: 145000, credit: 0,      balance: 245000 },
-  { id: 2, date: "2026-04-25", reference: "VCH-KHI-26-0089", description: "Bank Receipt",       debit: 0,      credit: 100000, balance: 100000 },
-  { id: 3, date: "2026-04-22", reference: "INV-KHI-26-0128", description: "Sales Invoice",      debit: 88000,  credit: 0,      balance: 200000 },
-  { id: 4, date: "2026-04-22", reference: "VCH-KHI-26-0085", description: "Cash Receipt",       debit: 0,      credit: 88000,  balance: 112000 },
-  { id: 5, date: "2026-04-15", reference: "INV-KHI-26-0114", description: "Sales Invoice",      debit: 215500, credit: 0,      balance: 200000 },
+  { id: 1, date: "2026-04-30", reference: "INV-26-0142", description: "Sales Invoice",      debit: 145000, credit: 0,      balance: 245000 },
+  { id: 2, date: "2026-04-25", reference: "VCH-26-0089", description: "Bank Receipt",       debit: 0,      credit: 100000, balance: 100000 },
+  { id: 3, date: "2026-04-22", reference: "INV-26-0128", description: "Sales Invoice",      debit: 88000,  credit: 0,      balance: 200000 },
+  { id: 4, date: "2026-04-22", reference: "VCH-26-0085", description: "Cash Receipt",       debit: 0,      credit: 88000,  balance: 112000 },
+  { id: 5, date: "2026-04-15", reference: "INV-26-0114", description: "Sales Invoice",      debit: 215500, credit: 0,      balance: 200000 },
 ];
 
 const mockVisits = [
@@ -87,7 +88,7 @@ export default function PartyDetailPage() {
     { key: "orderNo", header: "Order #", cell: (o) => <span className="tabular text-sm font-medium text-navy-900 dark:text-white">{o.orderNo}</span> },
     { key: "date",    header: "Date",    cell: (o) => <span className="text-xs text-slate-500 dark:text-slate-400">{formatDate(o.date)}</span> },
     { key: "amount",  header: "Amount",  align: "right", cell: (o) => <span className="tabular text-sm font-semibold text-navy-900 dark:text-white">{formatMoney(o.amount)}</span> },
-    { key: "status",  header: "Status",  cell: (o) => <StatusPill variant={o.variant}>{o.status}</StatusPill> },
+    { key: "status",  header: "Status",  cell: (o) => <StatusPill variant={o.variant}>{statusLabel(o.status)}</StatusPill> },
   ];
 
   const invoiceColumns: Column<(typeof mockInvoices)[number]>[] = [
@@ -97,7 +98,7 @@ export default function PartyDetailPage() {
     { key: "amount",    header: "Amount",    align: "right", cell: (i) => <span className="tabular text-sm font-semibold text-navy-900 dark:text-white">{formatMoney(i.amount)}</span> },
     { key: "paid",      header: "Paid",      align: "right", cell: (i) => <span className="tabular text-sm text-success">{formatMoney(i.paid)}</span> },
     { key: "balance",   header: "Balance",   align: "right", cell: (i) => <span className="tabular text-sm font-semibold text-warning">{formatMoney(i.amount - i.paid)}</span> },
-    { key: "status",    header: "Status",    cell: (i) => <StatusPill variant={i.variant}>{i.status}</StatusPill> },
+    { key: "status",    header: "Status",    cell: (i) => <StatusPill variant={i.variant}>{statusLabel(i.status)}</StatusPill> },
   ];
 
   const ledgerColumns: Column<(typeof mockLedger)[number]>[] = [

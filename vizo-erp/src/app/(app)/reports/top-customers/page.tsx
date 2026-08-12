@@ -29,7 +29,7 @@ const totalRevenue = TOP.reduce((s, t) => s + t.revenue, 0);
 export default function TopCustomersPage() {
   const [from, setFrom] = React.useState(() => new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10));
   const [to, setTo] = React.useState(() => new Date().toISOString().slice(0, 10));
-  const [branchId, setBranchId] = React.useState<number | null>(null);
+  const [locationId, setLocationId] = React.useState<number | null>(null);
 
   return (
     <>
@@ -38,7 +38,7 @@ export default function TopCustomersPage() {
         title="Top Customers"
         subtitle="Last 90 days · Revenue ranking"
         actions={
-          <ReportToolbar mode="range" reportName="Top Customers" fromDate={from} toDate={to} onRangeChange={(f, t) => { setFrom(f); setTo(t); }} branchId={branchId} onBranchChange={setBranchId} />
+          <ReportToolbar mode="range" reportName="Top Customers" fromDate={from} toDate={to} onRangeChange={(f, t) => { setFrom(f); setTo(t); }} locationId={locationId} onLocationChange={setLocationId} />
         }
       />
 

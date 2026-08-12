@@ -1,28 +1,25 @@
 /**
- * VIZO ERP — Mock Data (mobile accessories distribution)
+ * AdvPOS — Mock data (mobile accessories distribution)
  * --------------------------------------------------------------------------
- * VIZO distributes its own brand of mobile accessories: Titan, PowerX, VSP,
- * VR series, VOLT — earbuds, chargers, cables, power banks, speakers, etc.
- * HQ: Kohinoor Market, Saddar, Karachi.
+ * The sample tenant is VIZO Pakistan: own-brand mobile accessories sold from
+ * one premises split into three stock locations — Warehouse, Order Department
+ * and Shop 2. Configuration (locations, roles, policies) lives in settings.ts.
  *
- * This will be replaced by real API calls when backend is integrated.
+ * This will be replaced by real API calls when the backend is integrated.
  */
 
-export type Branch = {
-  id: number;
-  code: string;
-  name: string;
-  city: string;
-};
+import type { RoleKey } from "./settings";
 
 export type CurrentUser = {
   id: number;
   fullName: string;
   email: string;
-  role: string;
+  role: RoleKey;
+  roleLabel: string;
   initials: string;
   avatarUrl: string | null;
-  branchId: number;
+  /** Location this user works out of. */
+  locationId: number;
 };
 
 export type AppNotification = {
@@ -40,40 +37,76 @@ export type QuickCreateItem = {
   icon: string;
   href: string;
   shortcut: string;
+  /** Only offered to roles holding this capability. */
+  perm: string;
 };
 
-export const currentUser: CurrentUser = {
-  id: 1,
-  fullName: "Umer Memon",
-  email: "umer@vizo.com.pk",
-  role: "SuperAdmin",
-  initials: "UM",
-  avatarUrl: null,
-  branchId: 1,
+/**
+ * One demo account per role. The role switcher in the top bar swaps between
+ * them so the whole app can be reviewed through each person's eyes.
+ */
+export const demoUsers: Record<RoleKey, CurrentUser> = {
+  "super-admin": {
+    id: 1,
+    fullName: "Umer Memon",
+    email: "umer@vizo.com.pk",
+    role: "super-admin",
+    roleLabel: "Super Admin",
+    initials: "UM",
+    avatarUrl: null,
+    locationId: 1,
+  },
+  accountant: {
+    id: 2,
+    fullName: "Hassan Raza",
+    email: "hassan@vizo.com.pk",
+    role: "accountant",
+    roleLabel: "Accountant",
+    initials: "HR",
+    avatarUrl: null,
+    locationId: 1,
+  },
+  "order-dept": {
+    id: 4,
+    fullName: "Bilal Ahmed",
+    email: "bilal@vizo.com.pk",
+    role: "order-dept",
+    roleLabel: "Order Department",
+    initials: "BA",
+    avatarUrl: null,
+    locationId: 2,
+  },
+  sales: {
+    id: 7,
+    fullName: "Zara Malik",
+    email: "zara@vizo.com.pk",
+    role: "sales",
+    roleLabel: "Sales",
+    initials: "ZM",
+    avatarUrl: null,
+    locationId: 3,
+  },
 };
 
-export const branches: Branch[] = [
-  { id: 1, code: "KHI", name: "Karachi Head Office", city: "Karachi · Saddar" },
-  { id: 2, code: "LHR", name: "Lahore Branch",       city: "Lahore · Hafeez Center" },
-  { id: 3, code: "ISB", name: "Islamabad Branch",    city: "Islamabad · Blue Area" },
-];
+export const currentUser: CurrentUser = demoUsers["super-admin"];
 
 export const notifications: AppNotification[] = [
-  { id: 1, type: "warning", icon: "alert-triangle", title: "3 orders on credit hold",   body: "Pending your override decision",    time: "2 min ago",  unread: true  },
-  { id: 2, type: "info",    icon: "package",        title: "GRN-KHI-26-0089 received",  body: "From China Mobile Plaza, 240 units", time: "15 min ago", unread: true  },
-  { id: 3, type: "success", icon: "banknote",       title: "Payment received",          body: "PKR 1,45,000 from Hafeez Center #28", time: "1 hour ago", unread: true  },
-  { id: 4, type: "danger",  icon: "clock",          title: "7 invoices overdue",        body: "AR aging 60+ days needs attention", time: "3 hours ago", unread: false },
-  { id: 5, type: "info",    icon: "database",       title: "Backup completed",          body: "Daily backup successful — 1.2 GB",  time: "Yesterday",  unread: false },
+  { id: 1, type: "warning", icon: "alert-triangle", title: "3 orders crossed their limit", body: "Waiting for your approval",                 time: "2 min ago",  unread: true  },
+  { id: 2, type: "info",    icon: "package",        title: "Stock received GRN-26-0089",   body: "From China Mobile Plaza — 240 pcs",         time: "15 min ago", unread: true  },
+  { id: 3, type: "success", icon: "banknote",       title: "Money received",               body: "PKR 1,45,000 from Hafeez Center #28",       time: "1 hour ago", unread: true  },
+  { id: 4, type: "danger",  icon: "clock",          title: "7 invoices overdue",           body: "Recovery 60+ days needs attention",         time: "3 hours ago", unread: false },
+  { id: 5, type: "info",    icon: "send",           title: "Delivery booked with TCS",     body: "INV-26-8861 — tracking 7841203355",         time: "5 hours ago", unread: false },
+  { id: 6, type: "info",    icon: "database",       title: "Backup completed",             body: "Daily backup successful — 1.2 GB",          time: "Yesterday",  unread: false },
 ];
 
 export const quickCreate: QuickCreateItem[] = [
-  { label: "New Order",          icon: "shopping-cart", href: "/sales/orders/new",        shortcut: "O" },
-  { label: "New Invoice",        icon: "file-text",     href: "/sales/invoices/new",      shortcut: "I" },
-  { label: "New Purchase Order", icon: "truck",         href: "/purchases/orders/new",    shortcut: "P" },
-  { label: "New GRN",            icon: "package",       href: "/purchases/grns/new",      shortcut: "G" },
-  { label: "New Voucher",        icon: "banknote",      href: "/accounting/vouchers/new", shortcut: "V" },
-  { label: "New Party",          icon: "user-plus",     href: "/parties/new",             shortcut: "C" },
-  { label: "New Product",        icon: "box",           href: "/inventory/products/new",  shortcut: "R" },
+  { label: "Customer Order",   icon: "shopping-cart", href: "/sales/orders/new",        shortcut: "O", perm: "orders.create" },
+  { label: "Sale Invoice",     icon: "file-text",     href: "/sales/invoices/new",      shortcut: "I", perm: "invoices.create" },
+  { label: "Order to Supplier",icon: "truck",         href: "/purchases/orders/new",    shortcut: "P", perm: "purchases.manage" },
+  { label: "Stock Received",   icon: "package",       href: "/purchases/grns/new",      shortcut: "G", perm: "receipts.stock" },
+  { label: "Money Received",   icon: "banknote",      href: "/accounting/vouchers/new", shortcut: "V", perm: "money.manage" },
+  { label: "Customer",         icon: "user-plus",     href: "/parties/new",             shortcut: "C", perm: "customers.manage" },
+  { label: "Item",             icon: "box",           href: "/inventory/products/new",  shortcut: "R", perm: "products.manage" },
 ];
 
 /* ───────────────────────── Dashboard widgets data ───────────────────────── */
@@ -99,15 +132,14 @@ export const salesTrendData = [
   { date: "May 1",  revenue: 842500 },
 ];
 
-export const branchPerformance = [
-  { branch: "Karachi",   revenue: 12400000, target: 16000000, color: "var(--color-brand-yellow)" },
-  { branch: "Lahore",    revenue: 6850000,  target: 12500000, color: "var(--color-info)" },
-  { branch: "Islamabad", revenue: 2570000,  target: 6000000,  color: "var(--color-success)" },
+/** Sales split by the location the goods went out from. */
+export const locationPerformance = [
+  { location: "Order Department", revenue: 12400000, target: 16000000, color: "var(--color-brand-yellow)" },
+  { location: "Shop 2",           revenue: 6850000,  target: 9500000,  color: "var(--color-info)" },
+  { location: "Warehouse",       revenue: 2570000,  target: 4000000,  color: "var(--color-success)" },
 ];
 
-/* ───────────── Top Products (VIZO mobile accessories) ─────────────
-   Real VIZO product lines: Titan · PowerX · VSP · VR · VOLT
-*/
+/* ───────────── Top items ───────────── */
 export const topProducts = [
   { rank: 1, name: "VIZO Titan T9 Wireless Earbuds",     sku: "VZ-TIT-T9-BLK",    units: 248, revenue: 242000, deltaPercent: 18 },
   { rank: 2, name: "VIZO VOLT 65W Type-C Charger",       sku: "VZ-VLT-65W-PD",    units: 412, revenue: 185000, deltaPercent: 9  },
@@ -117,28 +149,28 @@ export const topProducts = [
 ];
 
 export const stockAlerts = [
-  { kind: "danger",  title: "Out of stock", subtitle: "3 SKUs in Lahore warehouse have zero stock",   cta: "View list",      icon: "alert-circle" },
-  { kind: "warning", title: "Low stock",    subtitle: "9 SKUs below reorder level across branches",   cta: "Review reorder", icon: "trending-down" },
-  { kind: "info",    title: "Dead stock",   subtitle: "PKR 18.2L tied up in 24 SKUs (180+ days)",     cta: "Plan clearance", icon: "archive" },
+  { kind: "danger",  title: "Out of stock", subtitle: "3 items sitting at zero across all locations",  cta: "View list",      icon: "alert-circle" },
+  { kind: "warning", title: "Low stock",    subtitle: "9 items below their minimum quantity",          cta: "Review reorder", icon: "trending-down" },
+  { kind: "info",    title: "Not selling",  subtitle: "PKR 18.2L tied up in 24 items (180+ days)",     cta: "Plan clearance", icon: "archive" },
 ];
 
 export const cashPosition = {
   total: 4780000,
   breakdown: [
-    { label: "Cash on Hand",   sublabel: "3 cashiers",                value: 840000,  color: "success", icon: "wallet"     },
-    { label: "Bank Accounts",  sublabel: "HBL · Meezan · UBL",        value: 3720000, color: "info",    icon: "landmark"   },
-    { label: "Mobile Wallets", sublabel: "Easypaisa · JazzCash",      value: 220000,  color: "yellow",  icon: "smartphone" },
+    { label: "Cash on Hand",   sublabel: "3 counters",           value: 840000,  color: "success", icon: "wallet"     },
+    { label: "Bank Accounts",  sublabel: "HBL · Meezan · UBL",   value: 3720000, color: "info",    icon: "landmark"   },
+    { label: "Mobile Wallets", sublabel: "Easypaisa · JazzCash", value: 220000,  color: "yellow",  icon: "smartphone" },
   ],
 };
 
-/* ───────────── Recent Orders (real customer types: mobile shops) ───────────── */
+/* ───────────── Recent orders ───────────── */
 export const recentOrders = [
-  { orderNo: "ORD-KHI-26-0142", customer: "Hafeez Center #28",     type: "Wholesaler",  initials: "HC", branch: "Karachi",   amount: 145000, status: "Dispatched",  statusVariant: "success" },
-  { orderNo: "ORD-LHR-26-0089", customer: "Mobile Zone Lahore",    type: "Retailer",    initials: "MZ", branch: "Lahore",    amount: 84500,  status: "Credit Hold", statusVariant: "warning" },
-  { orderNo: "ORD-KHI-26-0141", customer: "Saddar Mobile Plaza",   type: "Retailer",    initials: "SM", branch: "Karachi",   amount: 32750,  status: "Confirmed",   statusVariant: "info"    },
-  { orderNo: "ORD-ISB-26-0034", customer: "Blue Area Distributors",type: "Distributor", initials: "BA", branch: "Islamabad", amount: 218000, status: "Dispatched",  statusVariant: "success" },
-  { orderNo: "ORD-KHI-26-0140", customer: "Cellular World KHI",    type: "Wholesaler",  initials: "CW", branch: "Karachi",   amount: 56200,  status: "Packing",     statusVariant: "muted"   },
-  { orderNo: "ORD-LHR-26-0088", customer: "Faisal Mobile Mart",    type: "Retailer",    initials: "FM", branch: "Lahore",    amount: 18400,  status: "Delivered",   statusVariant: "success" },
+  { orderNo: "ORD-26-0142", customer: "Hafeez Center #28",      type: "Wholesaler",  initials: "HC", location: "Order Department", amount: 145000, status: "Dispatched",  statusVariant: "success" },
+  { orderNo: "ORD-26-0089", customer: "Mobile Zone Lahore",     type: "Retailer",    initials: "MZ", location: "Order Department", amount: 84500,  status: "Limit Cross", statusVariant: "warning" },
+  { orderNo: "ORD-26-0141", customer: "Saddar Mobile Plaza",    type: "Retailer",    initials: "SM", location: "Shop 2",           amount: 32750,  status: "Confirmed",   statusVariant: "info"    },
+  { orderNo: "ORD-26-0034", customer: "Blue Area Distributors", type: "Distributor", initials: "BA", location: "Warehouse",        amount: 218000, status: "Dispatched",  statusVariant: "success" },
+  { orderNo: "ORD-26-0140", customer: "Cellular World KHI",     type: "Wholesaler",  initials: "CW", location: "Order Department", amount: 56200,  status: "Packing",     statusVariant: "muted"   },
+  { orderNo: "ORD-26-0088", customer: "Faisal Mobile Mart",     type: "Retailer",    initials: "FM", location: "Shop 2",           amount: 18400,  status: "Delivered",   statusVariant: "success" },
 ];
 
 /* ───────────── Activity feed ───────────── */
@@ -149,29 +181,29 @@ export type ActivityItem = {
   target?: string;
   detail: string;
   time: string;
-  branch?: string;
+  location?: string;
   iconKind: "success" | "warning" | "info" | "danger" | "accent";
   icon: string;
 };
 
 export const recentActivity: ActivityItem[] = [
-  { id: 1, user: "Sara Khan",    action: "dispatched order",        target: "ORD-KHI-26-0142", detail: "Invoice INV-KHI-26-0142 generated automatically",    time: "2 min ago",   branch: "Karachi", iconKind: "success", icon: "check" },
-  { id: 2, user: "System",       action: "placed order on",         target: "credit hold",     detail: "Mobile Zone Lahore exceeded credit limit by PKR 12,400", time: "15 min ago", branch: "Lahore",  iconKind: "warning", icon: "alert-triangle" },
-  { id: 3, user: "Bilal Ahmed",  action: "received GRN",            target: "GRN-KHI-26-0089", detail: "From China Mobile Plaza · 240 units · PKR 4,82,000", time: "1 hour ago",  branch: "Karachi", iconKind: "info",    icon: "package" },
-  { id: 4, user: "Hassan Raza",  action: "recorded payment of",     target: "PKR 1,45,000",    detail: "Hafeez Center #28 · Bank transfer · Allocated to 3 invoices", time: "2 hours ago", branch: "Karachi", iconKind: "success", icon: "banknote" },
-  { id: 5, user: "You",          action: "added new customer",      target: "Quetta Cellular",  detail: "Retailer · Credit limit PKR 50,000 · NET 15",        time: "3 hours ago",                       iconKind: "accent",  icon: "user-plus" },
+  { id: 1, user: "Bilal Ahmed", action: "dispatched order",     target: "ORD-26-0142", detail: "Invoice INV-26-8867 generated automatically",              time: "2 min ago",   location: "Order Department", iconKind: "success", icon: "check" },
+  { id: 2, user: "System",      action: "flagged",              target: "limit cross", detail: "Mobile Zone crossed its limit by PKR 12,400",              time: "15 min ago",  location: "Order Department", iconKind: "warning", icon: "alert-triangle" },
+  { id: 3, user: "Bilal Ahmed", action: "received stock",       target: "GRN-26-0089", detail: "From China Mobile Plaza — 240 pcs — PKR 4,82,000",         time: "1 hour ago",  location: "Warehouse",        iconKind: "info",    icon: "package" },
+  { id: 4, user: "Hassan Raza", action: "recorded money from",  target: "PKR 1,45,000",detail: "Hafeez Center #28 — Bank — allocated to 3 invoices",       time: "2 hours ago", location: "Order Department", iconKind: "success", icon: "banknote" },
+  { id: 5, user: "Zara Malik",  action: "added new customer",   target: "Quetta Cellular", detail: "Retailer — limit PKR 50,000 — 15 days",                time: "3 hours ago", location: "Shop 2",           iconKind: "accent",  icon: "user-plus" },
 ];
 
-/* ───────────── AI Insight (daily briefing) ───────────── */
-export const aiInsight = {
+/* ───────────── Daily briefing ───────────── */
+export const dailyBriefing = {
   text: [
     { content: "Sales are " },
     { content: "up 12% week-over-week", highlight: true },
-    { content: ", driven mainly by " },
-    { content: "Karachi branch", bold: true },
+    { content: ", driven mainly by the " },
+    { content: "Order Department", bold: true },
     { content: ". However, " },
-    { content: "3 wholesalers in Lahore", highlight: true },
-    { content: " have crossed their credit limit — recommend collections action this week. Slow-moving stock value is at " },
+    { content: "3 wholesalers", highlight: true },
+    { content: " have crossed their credit limit — recommend collections action this week. Slow-selling stock value is at " },
     { content: "PKR 18.2L", highlight: true },
     { content: "; consider a clearance promotion." },
   ],

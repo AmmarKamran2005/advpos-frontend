@@ -1,9 +1,10 @@
+import Link from "next/link";
 import {
   TrendingUp,
   Banknote,
   Clock,
   Receipt,
-  Sparkles,
+  Lightbulb,
   Calendar,
   Download,
   RefreshCw,
@@ -29,16 +30,17 @@ import { StatCard } from "@/components/widgets/stat-card";
 import { SalesTrendChart } from "@/components/widgets/sales-trend-chart";
 import {
   dashboardStats,
-  branchPerformance,
+  locationPerformance,
   topProducts,
   stockAlerts,
   cashPosition,
   recentOrders,
   recentActivity,
-  aiInsight,
+  dailyBriefing,
   currentUser,
 } from "@/data/mock";
 import { formatCompact, formatMoney, formatNumber, formatPercent } from "@/lib/format";
+import { statusLabel } from "@/lib/labels";
 import { cn } from "@/lib/utils";
 
 const STOCK_ALERT_STYLES = {
@@ -100,7 +102,7 @@ export default function DashboardPage() {
             {greeting}, {currentUser.fullName.split(" ")[0]} 👋
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-            Here&apos;s what&apos;s happening across all branches today, {todayLabel}.
+            Here&apos;s what&apos;s happening today, {todayLabel}.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -180,25 +182,24 @@ export default function DashboardPage() {
         />
       </div>
 
-      {/* ───────── AI Insight Banner ───────── */}
+      {/* ───────── Daily Briefing ───────── */}
       <Card className="mb-6 relative overflow-hidden bg-gradient-to-br from-navy-900 to-navy-800 dark:from-navy-900 dark:to-navy-950 text-white border-navy-800">
         <div className="absolute -top-10 -right-10 size-40 bg-brand-yellow/10 rounded-full blur-3xl" />
         <div className="absolute top-1/2 right-1/3 size-24 bg-brand-yellow/5 rounded-full blur-2xl" />
         <div className="relative flex flex-col lg:flex-row lg:items-center gap-4 p-5">
           <div className="flex-shrink-0">
             <div className="size-12 rounded-xl bg-brand-yellow/15 flex items-center justify-center">
-              <Sparkles className="size-5 text-brand-yellow" />
+              <Lightbulb className="size-5 text-brand-yellow" />
             </div>
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
               <span className="text-2xs font-bold uppercase tracking-wider text-brand-yellow">
-                AI Insight · Daily Briefing
+                Daily Briefing
               </span>
-              <Badge variant="accent">New</Badge>
             </div>
             <p className="text-sm leading-relaxed text-slate-200">
-              {aiInsight.text.map((seg, i) => (
+              {dailyBriefing.text.map((seg, i) => (
                 <span
                   key={i}
                   className={cn(
@@ -212,15 +213,17 @@ export default function DashboardPage() {
             </p>
           </div>
           <div className="flex-shrink-0">
-            <Button variant="accent" size="sm">
-              Ask follow-up
-              <ArrowRight />
+            <Button variant="accent" size="sm" asChild>
+              <Link href="/reports">
+                Open reports
+                <ArrowRight />
+              </Link>
             </Button>
           </div>
         </div>
       </Card>
 
-      {/* ───────── Sales Trend + Branch Performance ───────── */}
+      {/* ───────── Sales Trend + Sales by Location ───────── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
         {/* Sales Trend (2/3) */}
         <Card className="lg:col-span-2 p-0 overflow-hidden">
@@ -230,7 +233,7 @@ export default function DashboardPage() {
                 Sales Trend
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                Last 30 days · all branches
+                Last 30 days · all locations
               </p>
             </div>
             <div className="flex items-center gap-1 text-xs">
@@ -280,22 +283,22 @@ export default function DashboardPage() {
           </div>
         </Card>
 
-        {/* Branch Performance */}
+        {/* Sales by Location */}
         <Card className="p-0 overflow-hidden">
           <CardBody>
             <div className="mb-4">
               <h3 className="text-base font-semibold text-navy-900 dark:text-white">
-                Branch Performance
+                Sales by Location
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                 Revenue this month
               </p>
             </div>
             <div className="space-y-4">
-              {branchPerformance.map((b) => {
+              {locationPerformance.map((b) => {
                 const pct = (b.revenue / b.target) * 100;
                 return (
-                  <div key={b.branch}>
+                  <div key={b.location}>
                     <div className="flex items-center justify-between mb-1.5">
                       <div className="flex items-center gap-2">
                         <span
@@ -303,7 +306,7 @@ export default function DashboardPage() {
                           style={{ backgroundColor: b.color }}
                         />
                         <span className="text-sm font-medium text-navy-900 dark:text-white">
-                          {b.branch}
+                          {b.location}
                         </span>
                       </div>
                       <span className="text-sm font-bold tabular text-navy-900 dark:text-white">
@@ -512,7 +515,7 @@ export default function DashboardPage() {
                 Recent Orders
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                Last 6 orders across all branches
+                Last 6 orders across all locations
               </p>
             </div>
             <a
@@ -533,7 +536,7 @@ export default function DashboardPage() {
                     Customer
                   </th>
                   <th className="text-left text-2xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 px-4 py-2.5">
-                    Branch
+                    Location
                   </th>
                   <th className="text-right text-2xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 px-4 py-2.5">
                     Amount
@@ -567,7 +570,7 @@ export default function DashboardPage() {
                       </div>
                     </td>
                     <td className="px-4 py-3 text-xs text-slate-600 dark:text-slate-300">
-                      {o.branch}
+                      {o.location}
                     </td>
                     <td className="px-4 py-3 text-right text-sm tabular font-semibold text-navy-900 dark:text-white">
                       {formatNumber(o.amount).replace(/^/, "PKR ")}
@@ -576,7 +579,7 @@ export default function DashboardPage() {
                       <StatusPill
                         variant={o.statusVariant as "success" | "warning" | "info" | "muted"}
                       >
-                        {o.status}
+                        {statusLabel(o.status)}
                       </StatusPill>
                     </td>
                     <td className="px-4 py-3 text-right">
@@ -641,7 +644,7 @@ export default function DashboardPage() {
                     </div>
                     <div className="text-2xs text-slate-400 dark:text-slate-500 mt-1">
                       {a.time}
-                      {a.branch && ` · ${a.branch}`}
+                      {a.location && ` · ${a.location}`}
                     </div>
                   </div>
                 </div>

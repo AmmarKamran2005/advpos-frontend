@@ -47,7 +47,7 @@ export default function SlowMovingPage() {
 
   const [from, setFrom] = React.useState(() => new Date(Date.now() - 60 * 86400000).toISOString().slice(0, 10));
   const [to, setTo] = React.useState(() => new Date().toISOString().slice(0, 10));
-  const [branchId, setBranchId] = React.useState<number | null>(null);
+  const [locationId, setLocationId] = React.useState<number | null>(null);
 
   return (
     <>
@@ -56,7 +56,7 @@ export default function SlowMovingPage() {
         title="Slow Moving Stock"
         subtitle="SKUs with low movement in last 60 days"
         actions={
-          <ReportToolbar mode="range" reportName="Slow Moving Stock" fromDate={from} toDate={to} onRangeChange={(f, t) => { setFrom(f); setTo(t); }} branchId={branchId} onBranchChange={setBranchId} />
+          <ReportToolbar mode="range" reportName="Slow Moving Stock" fromDate={from} toDate={to} onRangeChange={(f, t) => { setFrom(f); setTo(t); }} locationId={locationId} onLocationChange={setLocationId} />
         }
       />
 

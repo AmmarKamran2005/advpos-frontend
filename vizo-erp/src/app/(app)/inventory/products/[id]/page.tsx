@@ -22,7 +22,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/empty-state";
 import { getProduct, getCategory, getBrand } from "@/data/products";
-import { warehouses } from "@/data/admin";
+import { activeLocations } from "@/data/settings";
 import { formatMoney, formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -49,12 +49,12 @@ export default function ProductDetailPage() {
   const brand = getBrand(product.brandId);
   const margin = ((product.salePrice - product.costPrice) / product.salePrice) * 100;
 
-  /* Stock per warehouse (mock split) */
-  const stockByWh = warehouses
-    .filter((w) => w.code !== "KHI-WH-02")
+  /* Stock per location (mock split) */
+  const stockByWh = activeLocations()
+    .filter((w) => w.code !== "LOC-01")
     .map((w, i) => ({
       id: w.id,
-      warehouse: w.name,
+      location: w.name,
       qty: Math.floor(product.totalStock * [0.5, 0.3, 0.2][i % 3]),
       reserved: Math.floor(product.totalStock * [0.05, 0.03, 0.02][i % 3]),
       available: 0,
@@ -64,15 +64,15 @@ export default function ProductDetailPage() {
 
   /* Mock recent movements */
   const movements = [
-    { id: 1, date: "2026-04-30", type: "SALE",         qty: -12, ref: "ORD-KHI-26-0142", warehouse: "KHI-WH-01", balance: product.totalStock },
-    { id: 2, date: "2026-04-29", type: "PURCHASE",     qty: 240, ref: "GRN-KHI-26-0089", warehouse: "KHI-WH-01", balance: product.totalStock + 12 },
-    { id: 3, date: "2026-04-28", type: "SALE",         qty: -24, ref: "ORD-LHR-26-0088", warehouse: "LHR-WH-01", balance: product.totalStock - 228 },
-    { id: 4, date: "2026-04-25", type: "TRANSFER_OUT", qty: -50, ref: "TRF-KHI-26-0012", warehouse: "KHI-WH-01", balance: product.totalStock - 204 },
-    { id: 5, date: "2026-04-25", type: "TRANSFER_IN",  qty: 50,  ref: "TRF-KHI-26-0012", warehouse: "LHR-WH-01", balance: product.totalStock - 154 },
+    { id: 1, date: "2026-04-30", type: "SALE",         qty: -12, ref: "ORD-26-0142", location: "LOC-01", balance: product.totalStock },
+    { id: 2, date: "2026-04-29", type: "PURCHASE",     qty: 240, ref: "GRN-26-0089", location: "LOC-01", balance: product.totalStock + 12 },
+    { id: 3, date: "2026-04-28", type: "SALE",         qty: -24, ref: "ORD-26-0088", location: "LOC-03", balance: product.totalStock - 228 },
+    { id: 4, date: "2026-04-25", type: "TRANSFER_OUT", qty: -50, ref: "TRF-26-0012", location: "LOC-01", balance: product.totalStock - 204 },
+    { id: 5, date: "2026-04-25", type: "TRANSFER_IN",  qty: 50,  ref: "TRF-26-0012", location: "LOC-03", balance: product.totalStock - 154 },
   ];
 
   const stockColumns: Column<(typeof stockByWh)[number]>[] = [
-    { key: "warehouse", header: "Warehouse", cell: (r) => <span className="text-sm font-medium text-navy-900 dark:text-white">{r.warehouse}</span> },
+    { key: "location", header: "Location", cell: (r) => <span className="text-sm font-medium text-navy-900 dark:text-white">{r.location}</span> },
     { key: "qty",       header: "On Hand",   align: "right", cell: (r) => <span className="tabular text-sm font-semibold text-navy-900 dark:text-white">{r.qty}</span> },
     { key: "reserved",  header: "Reserved",  align: "right", cell: (r) => <span className="tabular text-sm text-warning">{r.reserved}</span> },
     { key: "available", header: "Available", align: "right", cell: (r) => <span className="tabular text-sm font-semibold text-success">{r.available}</span> },
@@ -88,7 +88,7 @@ export default function ProductDetailPage() {
       }
     },
     { key: "ref",       header: "Reference", cell: (m) => <span className="tabular text-xs font-medium text-navy-900 dark:text-white">{m.ref}</span> },
-    { key: "warehouse", header: "Warehouse", cell: (m) => <span className="text-xs text-slate-600 dark:text-slate-300">{m.warehouse}</span> },
+    { key: "location", header: "Location", cell: (m) => <span className="text-xs text-slate-600 dark:text-slate-300">{m.location}</span> },
     { key: "qty",       header: "Qty",       align: "right", cell: (m) => (
         <span className={cn("tabular text-sm font-bold inline-flex items-center gap-1",
           m.qty > 0 ? "text-success" : "text-danger"
@@ -152,7 +152,7 @@ export default function ProductDetailPage() {
         <Card className="p-4">
           <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Total Stock</div>
           <div className="text-2xl tabular font-bold text-navy-900 dark:text-white mt-1">{product.totalStock}</div>
-          <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">RP {product.reorderLevel}</div>
+          <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">RP {product.minQty}</div>
         </Card>
         <Card className="p-4">
           <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Sale Price</div>
@@ -177,7 +177,7 @@ export default function ProductDetailPage() {
 
       <Tabs defaultValue="stock" className="w-full">
         <TabsList className="overflow-x-auto scrollbar-thin flex-nowrap">
-          <TabsTrigger value="stock">Stock by Warehouse</TabsTrigger>
+          <TabsTrigger value="stock">Stock by Location</TabsTrigger>
           <TabsTrigger value="movements">Movements</TabsTrigger>
           <TabsTrigger value="pricing">Pricing</TabsTrigger>
           <TabsTrigger value="barcodes">Barcodes</TabsTrigger>

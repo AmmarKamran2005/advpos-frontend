@@ -119,7 +119,7 @@ export default function ProductsPage() {
           >
             {p.totalStock}
           </div>
-          <div className="text-2xs text-slate-500 dark:text-slate-400">RP {p.reorderLevel}</div>
+          <div className="text-2xs text-slate-500 dark:text-slate-400">RP {p.minQty}</div>
         </div>
       ),
     },

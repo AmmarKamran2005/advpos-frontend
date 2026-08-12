@@ -15,16 +15,16 @@ import { initials } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 const ACTIONS = [
-  { id: 1, user: "Sara Khan",     action: "DISPATCHED", entity: "Order ORD-KHI-26-0142",     time: "2 min ago",    ip: "182.181.45.22", branch: "Karachi",    severity: "info" as const },
-  { id: 2, user: "System",        action: "AUTO-POST",  entity: "Journal Entry JE-26-1042",  time: "2 min ago",    ip: "internal",      branch: "Karachi",    severity: "muted" as const },
-  { id: 3, user: "Hassan Raza",   action: "OVERRIDDEN", entity: "Credit Hold ORD-LHR-26-0089", time: "15 min ago", ip: "182.181.45.30", branch: "Lahore",     severity: "warning" as const },
-  { id: 4, user: "Bilal Ahmed",   action: "POSTED",     entity: "GRN-KHI-26-0089",            time: "1 hour ago",  ip: "182.181.45.45", branch: "Karachi",    severity: "info" as const },
-  { id: 5, user: "Hassan Raza",   action: "CREATED",    entity: "Voucher VCH-KHI-26-0089",    time: "2 hours ago", ip: "182.181.45.30", branch: "Karachi",    severity: "info" as const },
-  { id: 6, user: "Umer Memon",    action: "UPDATED",    entity: "Party VZ-C-0008 (credit limit)", time: "3 hours ago", ip: "182.181.45.10", branch: "Karachi", severity: "warning" as const },
-  { id: 7, user: "Umer Memon",    action: "CREATED",    entity: "Customer VZ-C-0024",         time: "3 hours ago", ip: "182.181.45.10", branch: "Karachi",    severity: "info" as const },
-  { id: 8, user: "Sara Khan",     action: "LOGIN",      entity: "User session",                time: "5 hours ago", ip: "182.181.45.22", branch: "Lahore",     severity: "muted" as const },
-  { id: 9, user: "Asad Ali",      action: "LOGIN_FAIL", entity: "Failed authentication",       time: "Yesterday",   ip: "39.40.123.55",  branch: "—",           severity: "danger" as const },
-  { id: 10, user: "Umer Memon",   action: "DELETED",    entity: "Product VZ-OLD-005",          time: "Yesterday",   ip: "182.181.45.10", branch: "Karachi",    severity: "danger" as const },
+  { id: 1, user: "Sara Khan",     action: "DISPATCHED", entity: "Order ORD-26-0142",     time: "2 min ago",    ip: "182.181.45.22", location: "Order Department",    severity: "info" as const },
+  { id: 2, user: "System",        action: "AUTO-POST",  entity: "Journal Entry JE-26-1042",  time: "2 min ago",    ip: "internal",      location: "Order Department",    severity: "muted" as const },
+  { id: 3, user: "Hassan Raza",   action: "OVERRIDDEN", entity: "Credit Hold ORD-26-0089", time: "15 min ago", ip: "182.181.45.30", location: "Shop 2",     severity: "warning" as const },
+  { id: 4, user: "Bilal Ahmed",   action: "POSTED",     entity: "GRN-26-0089",            time: "1 hour ago",  ip: "182.181.45.45", location: "Order Department",    severity: "info" as const },
+  { id: 5, user: "Hassan Raza",   action: "CREATED",    entity: "Voucher VCH-26-0089",    time: "2 hours ago", ip: "182.181.45.30", location: "Order Department",    severity: "info" as const },
+  { id: 6, user: "Umer Memon",    action: "UPDATED",    entity: "Party VZ-C-0008 (credit limit)", time: "3 hours ago", ip: "182.181.45.10", location: "Order Department", severity: "warning" as const },
+  { id: 7, user: "Umer Memon",    action: "CREATED",    entity: "Customer VZ-C-0024",         time: "3 hours ago", ip: "182.181.45.10", location: "Order Department",    severity: "info" as const },
+  { id: 8, user: "Sara Khan",     action: "LOGIN",      entity: "User session",                time: "5 hours ago", ip: "182.181.45.22", location: "Shop 2",     severity: "muted" as const },
+  { id: 9, user: "Asad Ali",      action: "LOGIN_FAIL", entity: "Failed authentication",       time: "Yesterday",   ip: "39.40.123.55",  location: "—",           severity: "danger" as const },
+  { id: 10, user: "Umer Memon",   action: "DELETED",    entity: "Product VZ-OLD-005",          time: "Yesterday",   ip: "182.181.45.10", location: "Order Department",    severity: "danger" as const },
 ];
 
 type Action = (typeof ACTIONS)[number];
@@ -124,10 +124,10 @@ export default function AuditLogPage() {
                   <span>{a.time}</span>
                   <span>·</span>
                   <span className="tabular">{a.ip}</span>
-                  {a.branch !== "—" && (
+                  {a.location !== "—" && (
                     <>
                       <span>·</span>
-                      <span>{a.branch}</span>
+                      <span>{a.location}</span>
                     </>
                   )}
                 </div>
@@ -158,7 +158,7 @@ export default function AuditLogPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                 <Meta icon={Clock} label="When" value={selected.time} />
                 <Meta icon={Globe} label="IP Address" value={selected.ip} />
-                <Meta icon={Building2} label="Branch" value={selected.branch} />
+                <Meta icon={Building2} label="Location" value={selected.location} />
                 <Meta icon={Filter} label="Severity" value={selected.severity} />
               </div>
               <div className="rounded-lg bg-slate-50 dark:bg-navy-800 p-3 text-xs font-mono text-slate-600 dark:text-slate-300 max-h-40 overflow-auto">

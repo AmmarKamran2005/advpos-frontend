@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ArrowLeft, Printer, AlertCircle, Banknote, X } from "lucide-react";
+import { ArrowLeft, Printer, AlertCircle, Banknote, X, Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardBody } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -16,13 +16,14 @@ import { purchaseInvoices, PI_STATUS_VARIANT } from "@/data/purchases";
 import { formatMoney, formatDate } from "@/lib/format";
 import { toast } from "@/components/ui/toaster";
 import { cn } from "@/lib/utils";
+import { statusLabel } from "@/lib/labels";
 
 export default function PIDetailPage() {
   const params = useParams<{ id: string }>();
   const id = parseInt(params.id ?? "1", 10);
   const pi = purchaseInvoices.find((p) => p.id === id);
   const [pay, setPay] = React.useState(false);
-  const [voidConfirm, setVoidConfirm] = React.useState(false);
+  const [deleteConfirm, setDeleteConfirm] = React.useState(false);
 
   if (!pi) return <EmptyState icon={AlertCircle} title="Purchase invoice not found" action={<Button asChild><Link href="/purchases/invoices">Back</Link></Button>} />;
 
@@ -33,7 +34,7 @@ export default function PIDetailPage() {
         title={
           <div className="flex items-center gap-3 flex-wrap">
             <span>{pi.invoiceNo}</span>
-            <StatusPill variant={PI_STATUS_VARIANT[pi.status]}>{pi.status}</StatusPill>
+            <StatusPill variant={PI_STATUS_VARIANT[pi.status]}>{statusLabel(pi.status)}</StatusPill>
           </div>
         }
         subtitle={`Issued ${formatDate(pi.invoiceDate)} · Due ${formatDate(pi.dueDate)} · Supplier ref ${pi.supplierInvoiceNo}`}
@@ -47,7 +48,7 @@ export default function PIDetailPage() {
               </Button>
             )}
             {pi.status !== "VOID" && (
-              <Button variant="ghost" className="text-danger" onClick={() => setVoidConfirm(true)}><X />Void</Button>
+              <Button variant="ghost" className="text-danger" onClick={() => setDeleteConfirm(true)}><Trash2 />Delete</Button>
             )}
           </>
         }
@@ -145,13 +146,13 @@ export default function PIDetailPage() {
         balanceAmount={pi.balance}
       />
       <ConfirmDialog
-        open={voidConfirm}
-        onOpenChange={setVoidConfirm}
-        title="Void this purchase invoice?"
+        open={deleteConfirm}
+        onOpenChange={setDeleteConfirm}
+        title="Delete this purchase invoice?"
         variant="danger"
-        confirmLabel="Yes, void invoice"
+        confirmLabel="Yes, delete invoice"
         requireReason
-        onConfirm={(r) => { toast.success("Invoice voided", { description: `Reason: ${r}` }); setVoidConfirm(false); }}
+        onConfirm={(r) => { toast.success("Invoice deleted", { description: `Reason: ${r}` }); setDeleteConfirm(false); }}
       />
     </>
   );

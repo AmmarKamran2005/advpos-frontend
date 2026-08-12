@@ -5,12 +5,12 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardBody } from "@/components/ui/card";
 import { ReportToolbar } from "@/components/widgets/report-toolbar";
 import { accounts } from "@/data/accounting";
-import { branchesAdmin } from "@/data/admin";
 import { formatMoney, formatDate } from "@/lib/format";
+import { getLocation } from "@/data/settings";
 
 export default function BalanceSheetPage() {
   const [asOfDate, setAsOfDate] = React.useState(new Date().toISOString().slice(0, 10));
-  const [branchId, setBranchId] = React.useState<number | null>(null);
+  const [locationId, setLocationId] = React.useState<number | null>(null);
 
   const assets = accounts.filter((a) => a.type === "ASSET" && !a.isGroup);
   const liabilities = accounts.filter((a) => a.type === "LIABILITY" && !a.isGroup);
@@ -25,15 +25,15 @@ export default function BalanceSheetPage() {
       <PageHeader
         breadcrumbs={[{ label: "Accounting" }, { label: "Balance Sheet" }]}
         title="Balance Sheet"
-        subtitle={`As of ${formatDate(asOfDate)} · ${branchId ? branchesAdmin.find((b) => b.id === branchId)?.name : "All Branches"}`}
+        subtitle={`As of ${formatDate(asOfDate)} · ${locationId ? getLocation(locationId)?.name : "All Locations"}`}
         actions={
           <ReportToolbar
             mode="asOf"
             reportName="Balance Sheet"
             asOfDate={asOfDate}
             onAsOfChange={setAsOfDate}
-            branchId={branchId}
-            onBranchChange={setBranchId}
+            locationId={locationId}
+            onLocationChange={setLocationId}
           />
         }
       />

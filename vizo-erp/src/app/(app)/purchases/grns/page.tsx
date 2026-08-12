@@ -12,6 +12,7 @@ import { DataTable, type Column } from "@/components/ui/data-table";
 import { FilterBar } from "@/components/ui/filter-bar";
 import { grns, GRN_STATUS_VARIANT, type GRN } from "@/data/purchases";
 import { formatMoney, formatDate } from "@/lib/format";
+import { statusLabel } from "@/lib/labels";
 
 export default function GRNsPage() {
   const [search, setSearch] = React.useState("");
@@ -37,7 +38,7 @@ export default function GRNsPage() {
     },
     { key: "deliveryNoteNo", header: "DN #", cell: (g) => <span className="tabular text-xs text-slate-600 dark:text-slate-300">{g.deliveryNoteNo}</span> },
     { key: "vehicleNo", header: "Vehicle", cell: (g) => <span className="tabular text-xs text-slate-600 dark:text-slate-300">{g.vehicleNo}</span> },
-    { key: "warehouse", header: "Warehouse", cell: (g) => <span className="text-xs text-slate-600 dark:text-slate-300">{g.warehouse}</span> },
+    { key: "location", header: "Location", cell: (g) => <span className="text-xs text-slate-600 dark:text-slate-300">{g.location}</span> },
     { key: "units", header: "Units", align: "right", cell: (g) => (
         <div className="text-right">
           <div className="tabular text-sm font-semibold text-navy-900 dark:text-white">{g.unitsAccepted}</div>
@@ -48,7 +49,7 @@ export default function GRNsPage() {
       )
     },
     { key: "totalValue", header: "Value", align: "right", cell: (g) => <span className="tabular text-sm font-semibold text-navy-900 dark:text-white">{formatMoney(g.totalValue)}</span> },
-    { key: "status", header: "Status", cell: (g) => <StatusPill variant={GRN_STATUS_VARIANT[g.status]}>{g.status}</StatusPill> },
+    { key: "status", header: "Status", cell: (g) => <StatusPill variant={GRN_STATUS_VARIANT[g.status]}>{statusLabel(g.status)}</StatusPill> },
   ];
 
   return (

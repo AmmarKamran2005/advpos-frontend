@@ -15,7 +15,7 @@ type Period = {
   id: number;
   period: string;
   year: number;
-  branch: string;
+  location: string;
   isClosed: boolean;
   draftCount: number;
   unreconciledCount: number;
@@ -26,10 +26,10 @@ type Period = {
 };
 
 const PERIODS: Period[] = [
-  { id: 1, period: "Apr 2026", year: 2026, branch: "All",       isClosed: false, draftCount: 1, unreconciledCount: 3, unpostedInvoicesCount: 0,  jeCount: 142 },
-  { id: 2, period: "Mar 2026", year: 2026, branch: "All",       isClosed: true,  draftCount: 0, unreconciledCount: 0, unpostedInvoicesCount: 0, closedBy: "Hassan Raza", closedAt: "2026-04-05", jeCount: 168 },
-  { id: 3, period: "Feb 2026", year: 2026, branch: "All",       isClosed: true,  draftCount: 0, unreconciledCount: 0, unpostedInvoicesCount: 0, closedBy: "Hassan Raza", closedAt: "2026-03-04", jeCount: 154 },
-  { id: 4, period: "Jan 2026", year: 2026, branch: "All",       isClosed: true,  draftCount: 0, unreconciledCount: 0, unpostedInvoicesCount: 0, closedBy: "Hassan Raza", closedAt: "2026-02-03", jeCount: 142 },
+  { id: 1, period: "Apr 2026", year: 2026, location: "All",       isClosed: false, draftCount: 1, unreconciledCount: 3, unpostedInvoicesCount: 0,  jeCount: 142 },
+  { id: 2, period: "Mar 2026", year: 2026, location: "All",       isClosed: true,  draftCount: 0, unreconciledCount: 0, unpostedInvoicesCount: 0, closedBy: "Hassan Raza", closedAt: "2026-04-05", jeCount: 168 },
+  { id: 3, period: "Feb 2026", year: 2026, location: "All",       isClosed: true,  draftCount: 0, unreconciledCount: 0, unpostedInvoicesCount: 0, closedBy: "Hassan Raza", closedAt: "2026-03-04", jeCount: 154 },
+  { id: 4, period: "Jan 2026", year: 2026, location: "All",       isClosed: true,  draftCount: 0, unreconciledCount: 0, unpostedInvoicesCount: 0, closedBy: "Hassan Raza", closedAt: "2026-02-03", jeCount: 142 },
 ];
 
 export default function PeriodClosePage() {
@@ -98,7 +98,7 @@ export default function PeriodClosePage() {
                       <h3 className="text-base font-semibold text-navy-900 dark:text-white">{p.period}</h3>
                       <div className="flex items-center gap-2 mt-1">
                         {p.isClosed ? <Badge variant="success">Closed</Badge> : ready ? <Badge variant="success">Ready</Badge> : <Badge variant="warning">{blockers} blocker{blockers === 1 ? "" : "s"}</Badge>}
-                        <span className="text-xs text-slate-500 dark:text-slate-400">{p.branch} · {p.jeCount} entries</span>
+                        <span className="text-xs text-slate-500 dark:text-slate-400">{p.location} · {p.jeCount} entries</span>
                       </div>
                     </div>
                   </div>
@@ -188,7 +188,7 @@ export default function PeriodClosePage() {
               </div>
             </div>
             <div className="mt-4 p-3 bg-info/5 border border-info/20 rounded-lg text-xs text-info-dark dark:text-info-light">
-              <strong>{closeTarget?.jeCount} journal entries</strong> across <strong>{closeTarget?.branch}</strong> will be locked.
+              <strong>{closeTarget?.jeCount} journal entries</strong> across <strong>{closeTarget?.location}</strong> will be locked.
             </div>
           </DialogBody>
           <DialogFooter>

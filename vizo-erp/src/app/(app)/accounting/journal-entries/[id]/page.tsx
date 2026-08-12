@@ -14,13 +14,14 @@ import { journalEntries, JE_STATUS_VARIANT, accounts } from "@/data/accounting";
 import { formatMoney, formatDate } from "@/lib/format";
 import { toast } from "@/components/ui/toaster";
 import { cn } from "@/lib/utils";
+import { statusLabel } from "@/lib/labels";
 
 const MOCK_LINES = [
-  { id: 1, accountCode: "1130", accountName: "Accounts Receivable",      debit: 145000, credit: 0,      branch: "Karachi", desc: "Hafeez Center #28 — INV-142" },
-  { id: 2, accountCode: "4001", accountName: "Sales Revenue",             debit: 0,      credit: 122881, branch: "Karachi", desc: "Sales tax exclusive" },
-  { id: 3, accountCode: "2110", accountName: "Output Sales Tax Payable",  debit: 0,      credit: 22119,  branch: "Karachi", desc: "GST 18%" },
-  { id: 4, accountCode: "5001", accountName: "Cost of Goods Sold",        debit: 84500,  credit: 0,      branch: "Karachi", desc: "Avg cost × qty" },
-  { id: 5, accountCode: "1140", accountName: "Inventory",                  debit: 0,      credit: 84500,  branch: "Karachi", desc: "Stock reduced" },
+  { id: 1, accountCode: "1130", accountName: "Accounts Receivable",      debit: 145000, credit: 0,      location: "Order Department", desc: "Hafeez Center #28 — INV-142" },
+  { id: 2, accountCode: "4001", accountName: "Sales Revenue",             debit: 0,      credit: 122881, location: "Order Department", desc: "Sales tax exclusive" },
+  { id: 3, accountCode: "2110", accountName: "Output Sales Tax Payable",  debit: 0,      credit: 22119,  location: "Order Department", desc: "GST 18%" },
+  { id: 4, accountCode: "5001", accountName: "Cost of Goods Sold",        debit: 84500,  credit: 0,      location: "Order Department", desc: "Avg cost × qty" },
+  { id: 5, accountCode: "1140", accountName: "Inventory",                  debit: 0,      credit: 84500,  location: "Order Department", desc: "Stock reduced" },
 ];
 
 export default function JEDetailPage() {
@@ -43,7 +44,7 @@ export default function JEDetailPage() {
         title={
           <div className="flex items-center gap-3 flex-wrap">
             <span>{je.entryNo}</span>
-            <StatusPill variant={JE_STATUS_VARIANT[je.status]}>{je.status}</StatusPill>
+            <StatusPill variant={JE_STATUS_VARIANT[je.status]}>{statusLabel(je.status)}</StatusPill>
             <Badge variant="muted">{je.entryType}</Badge>
           </div>
         }
@@ -87,7 +88,7 @@ export default function JEDetailPage() {
               <thead>
                 <tr className="bg-slate-50 dark:bg-navy-700/50 text-left">
                   <th className="text-2xs uppercase font-semibold text-slate-500 dark:text-slate-400 px-4 py-2">Account</th>
-                  <th className="text-2xs uppercase font-semibold text-slate-500 dark:text-slate-400 px-4 py-2">Branch</th>
+                  <th className="text-2xs uppercase font-semibold text-slate-500 dark:text-slate-400 px-4 py-2">Location</th>
                   <th className="text-2xs uppercase font-semibold text-slate-500 dark:text-slate-400 px-4 py-2">Description</th>
                   <th className="text-2xs uppercase font-semibold text-slate-500 dark:text-slate-400 px-4 py-2 text-right">Debit</th>
                   <th className="text-2xs uppercase font-semibold text-slate-500 dark:text-slate-400 px-4 py-2 text-right">Credit</th>
@@ -100,7 +101,7 @@ export default function JEDetailPage() {
                       <div className="text-sm font-medium text-navy-900 dark:text-white">{l.accountName}</div>
                       <div className="text-2xs tabular text-slate-500 dark:text-slate-400">{l.accountCode}</div>
                     </td>
-                    <td className="px-4 py-3 text-xs text-slate-600 dark:text-slate-300">{l.branch}</td>
+                    <td className="px-4 py-3 text-xs text-slate-600 dark:text-slate-300">{l.location}</td>
                     <td className="px-4 py-3 text-xs text-slate-500 dark:text-slate-400">{l.desc}</td>
                     <td className="px-4 py-3 text-right tabular text-sm font-semibold text-navy-900 dark:text-white">{l.debit > 0 ? formatMoney(l.debit) : "—"}</td>
                     <td className="px-4 py-3 text-right tabular text-sm font-semibold text-success">{l.credit > 0 ? formatMoney(l.credit) : "—"}</td>
@@ -131,7 +132,7 @@ export default function JEDetailPage() {
                 <Meta label="Entry #" value={<span className="tabular">{je.entryNo}</span>} />
                 <Meta label="Type" value={<Badge variant="muted">{je.entryType}</Badge>} />
                 <Meta label="Date" value={formatDate(je.entryDate)} />
-                <Meta label="Branch" value={je.branch} />
+                <Meta label="Location" value={je.location} />
                 <Meta label="Reference" value={<span className="tabular">{je.reference}</span>} />
                 <Meta label="Created By" value={je.createdBy} />
                 {je.postedBy && <Meta label="Posted By" value={je.postedBy} />}

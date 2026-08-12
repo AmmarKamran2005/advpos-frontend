@@ -13,12 +13,13 @@ import { ConfirmDialog } from "@/components/dialogs/confirm-dialog";
 import { expenses } from "@/data/accounting";
 import { formatMoney, formatDate } from "@/lib/format";
 import { toast } from "@/components/ui/toaster";
+import { statusLabel } from "@/lib/labels";
 
 export default function ExpenseDetailPage() {
   const params = useParams<{ id: string }>();
   const id = parseInt(params.id ?? "1", 10);
   const e = expenses.find((x) => x.id === id);
-  const [voidConfirm, setVoidConfirm] = React.useState(false);
+  const [deleteConfirm, setDeleteConfirm] = React.useState(false);
 
   if (!e) {
     return <EmptyState icon={AlertCircle} title="Expense not found" action={<Button asChild><Link href="/accounting/expenses">Back</Link></Button>} />;
@@ -31,7 +32,7 @@ export default function ExpenseDetailPage() {
         title={
           <div className="flex items-center gap-3 flex-wrap">
             <span>{e.expenseNo}</span>
-            <StatusPill variant={e.status === "POSTED" ? "success" : "muted"}>{e.status}</StatusPill>
+            <StatusPill variant={e.status === "POSTED" ? "success" : "muted"}>{statusLabel(e.status)}</StatusPill>
             <Badge variant="muted">{e.category}</Badge>
           </div>
         }
@@ -42,7 +43,7 @@ export default function ExpenseDetailPage() {
             <Button variant="ghost" className="gap-1.5" onClick={() => toast.info("Printing receipt…")}><Printer />Print</Button>
             <Button variant="secondary" className="gap-1.5" asChild><Link href={`/accounting/expenses/new?id=${e.id}`}><Edit3 />Edit</Link></Button>
             {e.status === "POSTED" && (
-              <Button variant="ghost" className="text-danger" onClick={() => setVoidConfirm(true)}><Trash2 />Void</Button>
+              <Button variant="ghost" className="text-danger" onClick={() => setDeleteConfirm(true)}><Trash2 />Delete</Button>
             )}
           </>
         }
@@ -65,7 +66,7 @@ export default function ExpenseDetailPage() {
 
               <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4 text-sm">
                 <Meta label="Date"     icon={Calendar}  value={formatDate(e.date)} />
-                <Meta label="Branch"    icon={Building2} value={e.branch} />
+                <Meta label="Location"    icon={Building2} value={e.location} />
                 <Meta label="Category"  icon={Tag}       value={e.category} />
                 <Meta label="Vendor"    icon={Receipt}   value={e.vendor} />
                 <Meta label="Account"                    value={e.account} />
@@ -121,15 +122,15 @@ export default function ExpenseDetailPage() {
       </div>
 
       <ConfirmDialog
-        open={voidConfirm}
-        onOpenChange={setVoidConfirm}
-        title="Void this expense?"
+        open={deleteConfirm}
+        onOpenChange={setDeleteConfirm}
+        title="Delete this expense?"
         description="A reversing journal entry will be posted automatically. The receipt and audit trail are preserved."
         variant="danger"
-        confirmLabel="Yes, void expense"
+        confirmLabel="Yes, delete expense"
         requireReason
-        reasonLabel="Reason for voiding"
-        onConfirm={(r) => { toast.success("Expense voided", { description: `Reason: ${r}` }); setVoidConfirm(false); }}
+        reasonLabel="Why are you deleting it?"
+        onConfirm={(r) => { toast.success("Expense deleted", { description: `Reason: ${r}` }); setDeleteConfirm(false); }}
       />
     </>
   );

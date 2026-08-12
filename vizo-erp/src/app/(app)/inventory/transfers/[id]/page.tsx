@@ -38,12 +38,12 @@ type Transfer = {
 };
 
 const TRANSFERS: Transfer[] = [
-  { id: 1, transferNo: "TRF-KHI-26-0014", date: "2026-04-30", fromWh: "Karachi Main",       toWh: "Lahore Distribution", itemCount: 8, totalUnits: 240, status: "IN_TRANSIT",       initiatedBy: "Hassan Raza", notes: "Urgent stock for Lahore launch event" },
-  { id: 2, transferNo: "TRF-KHI-26-0013", date: "2026-04-29", fromWh: "Karachi Main",       toWh: "Islamabad Hub",       itemCount: 5, totalUnits: 150, status: "RECEIVED",         initiatedBy: "Bilal Ahmed" },
-  { id: 3, transferNo: "TRF-KHI-26-0012", date: "2026-04-29", fromWh: "Karachi Main",       toWh: "Lahore Distribution", itemCount: 4, totalUnits: 100, status: "RECEIVED",         initiatedBy: "Hassan Raza" },
-  { id: 4, transferNo: "TRF-LHR-26-0008", date: "2026-04-28", fromWh: "Lahore Distribution", toWh: "Islamabad Hub",       itemCount: 3, totalUnits: 60,  status: "APPROVED",         initiatedBy: "Sara Khan" },
-  { id: 5, transferNo: "TRF-KHI-26-0011", date: "2026-04-25", fromWh: "Karachi Main",       toWh: "Lahore Distribution", itemCount: 6, totalUnits: 180, status: "PENDING_APPROVAL", initiatedBy: "Hassan Raza" },
-  { id: 6, transferNo: "TRF-KHI-26-0010", date: "2026-04-24", fromWh: "Karachi Main",       toWh: "Islamabad Hub",       itemCount: 2, totalUnits: 50,  status: "REJECTED",         initiatedBy: "Hassan Raza", notes: "Rejected — destination over capacity" },
+  { id: 1, transferNo: "TRF-26-0014", date: "2026-04-30", fromWh: "Karachi Main",       toWh: "Lahore Distribution", itemCount: 8, totalUnits: 240, status: "IN_TRANSIT",       initiatedBy: "Hassan Raza", notes: "Urgent stock for Lahore launch event" },
+  { id: 2, transferNo: "TRF-26-0013", date: "2026-04-29", fromWh: "Karachi Main",       toWh: "Islamabad Hub",       itemCount: 5, totalUnits: 150, status: "RECEIVED",         initiatedBy: "Bilal Ahmed" },
+  { id: 3, transferNo: "TRF-26-0012", date: "2026-04-29", fromWh: "Karachi Main",       toWh: "Lahore Distribution", itemCount: 4, totalUnits: 100, status: "RECEIVED",         initiatedBy: "Hassan Raza" },
+  { id: 4, transferNo: "TRF-26-0008", date: "2026-04-28", fromWh: "Lahore Distribution", toWh: "Islamabad Hub",       itemCount: 3, totalUnits: 60,  status: "APPROVED",         initiatedBy: "Sara Khan" },
+  { id: 5, transferNo: "TRF-26-0011", date: "2026-04-25", fromWh: "Karachi Main",       toWh: "Lahore Distribution", itemCount: 6, totalUnits: 180, status: "PENDING_APPROVAL", initiatedBy: "Hassan Raza" },
+  { id: 6, transferNo: "TRF-26-0010", date: "2026-04-24", fromWh: "Karachi Main",       toWh: "Islamabad Hub",       itemCount: 2, totalUnits: 50,  status: "REJECTED",         initiatedBy: "Hassan Raza", notes: "Rejected — destination over capacity" },
 ];
 
 const SAMPLE_ITEMS = [
@@ -271,13 +271,13 @@ export default function TransferDetailPage() {
       {/* Action confirmations */}
       <ConfirmDialog open={submitConfirm} onOpenChange={setSubmitConfirm}
         title="Submit for approval?"
-        description="The transfer will move to PENDING_APPROVAL. Branch manager will be notified."
+        description="The transfer will move to PENDING_APPROVAL. Location manager will be notified."
         variant="info" confirmLabel="Submit"
         onConfirm={() => { performAction("PENDING_APPROVAL", "Submitted for approval"); setSubmitConfirm(false); }} />
 
       <ConfirmDialog open={approveConfirm} onOpenChange={setApproveConfirm}
         title="Approve this transfer?"
-        description="Stock will be reserved at the source warehouse. The warehouse team can then ship."
+        description="Stock will be reserved at the source location. The location team can then ship."
         variant="info" confirmLabel="Approve"
         onConfirm={() => { performAction("APPROVED", "Transfer approved", "Stock reserved at source"); setApproveConfirm(false); }} />
 
@@ -293,7 +293,7 @@ export default function TransferDetailPage() {
 
       <ConfirmDialog open={shipConfirm} onOpenChange={setShipConfirm}
         title="Mark as shipped?"
-        description="Stock will be removed from the source warehouse and moved to Goods-in-Transit. A journal entry will be posted automatically."
+        description="Stock will be removed from the source location and moved to Goods-in-Transit. A journal entry will be posted automatically."
         variant="info" confirmLabel="Ship now"
         onConfirm={() => {
           performAction("IN_TRANSIT", "Transfer shipped", `${totalSent} units en route to ${t.toWh}`);

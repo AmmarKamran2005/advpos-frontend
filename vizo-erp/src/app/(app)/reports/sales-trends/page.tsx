@@ -34,7 +34,7 @@ export default function SalesTrendsPage() {
 
   const [from, setFrom] = React.useState(() => new Date(Date.now() - 180 * 86400000).toISOString().slice(0, 10));
   const [to, setTo] = React.useState(() => new Date().toISOString().slice(0, 10));
-  const [branchId, setBranchId] = React.useState<number | null>(null);
+  const [locationId, setLocationId] = React.useState<number | null>(null);
 
   const isDark = resolvedTheme === "dark";
   const tickColor = isDark ? "#94A3B8" : "#64748B";
@@ -47,7 +47,7 @@ export default function SalesTrendsPage() {
         title="Sales Trends"
         subtitle="By region and product · last 6 months"
         actions={
-          <ReportToolbar mode="range" reportName="Sales Trends" fromDate={from} toDate={to} onRangeChange={(f, t) => { setFrom(f); setTo(t); }} branchId={branchId} onBranchChange={setBranchId} />
+          <ReportToolbar mode="range" reportName="Sales Trends" fromDate={from} toDate={to} onRangeChange={(f, t) => { setFrom(f); setTo(t); }} locationId={locationId} onLocationChange={setLocationId} />
         }
       />
 
@@ -55,7 +55,7 @@ export default function SalesTrendsPage() {
         <Card>
           <CardBody>
             <div className="flex items-center justify-between mb-1">
-              <h3 className="text-base font-semibold text-navy-900 dark:text-white">Revenue by Branch</h3>
+              <h3 className="text-base font-semibold text-navy-900 dark:text-white">Revenue by Location</h3>
               <Badge variant="success">▲ 18%</Badge>
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">Monthly revenue across cities</p>

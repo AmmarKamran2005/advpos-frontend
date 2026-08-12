@@ -15,10 +15,11 @@ import { salesReturns, RETURN_STATUS_VARIANT } from "@/data/sales";
 import { formatMoney, formatDate } from "@/lib/format";
 import { toast } from "@/components/ui/toaster";
 import { cn } from "@/lib/utils";
+import { statusLabel } from "@/lib/labels";
 
 const SAMPLE_RETURN_LINES = [
   { id: 1, sku: "VZ-TIT-T9-BLK",  name: "VIZO Titan T9 Wireless Earbuds — Black", originalQty: 50, returnedQty: 4, unitPrice: 980,  condition: "DAMAGED",  restockTo: null },
-  { id: 2, sku: "VZ-VR-TC-1.5M",  name: "VIZO VR Type-C Data Cable 1.5m",         originalQty: 100,returnedQty: 6, unitPrice: 195,  condition: "RESALABLE",restockTo: "KHI-WH-01" },
+  { id: 2, sku: "VZ-VR-TC-1.5M",  name: "VIZO VR Type-C Data Cable 1.5m",         originalQty: 100,returnedQty: 6, unitPrice: 195,  condition: "RESALABLE",restockTo: "LOC-01" },
 ];
 
 export default function SalesReturnDetailPage() {
@@ -40,7 +41,7 @@ export default function SalesReturnDetailPage() {
           <div className="flex items-center gap-3 flex-wrap">
             <RotateCcw className="size-6 text-brand-yellow" />
             <span>{r.returnNo}</span>
-            <StatusPill variant={RETURN_STATUS_VARIANT[r.status]}>{r.status}</StatusPill>
+            <StatusPill variant={RETURN_STATUS_VARIANT[r.status]}>{statusLabel(r.status)}</StatusPill>
           </div>
         }
         subtitle={`${r.customerName} · ${formatDate(r.returnDate)} · against ${r.invoiceNo}`}
@@ -65,7 +66,7 @@ export default function SalesReturnDetailPage() {
             <Card className="p-4 bg-success/5 border-success/30">
               <div className="text-2xs uppercase font-semibold text-success-dark dark:text-success-light">Resalable</div>
               <div className="text-2xl tabular font-bold text-success mt-1">{r.resalableQty}</div>
-              <div className="text-xs text-success-dark/70 dark:text-success-light/70 mt-0.5">Restocked to active warehouse</div>
+              <div className="text-xs text-success-dark/70 dark:text-success-light/70 mt-0.5">Restocked to active location</div>
             </Card>
             <Card className="p-4 bg-danger/5 border-danger/30">
               <div className="text-2xs uppercase font-semibold text-danger-dark dark:text-danger-light">Damaged / Lost</div>
@@ -141,7 +142,7 @@ export default function SalesReturnDetailPage() {
                 <Avatar initials={r.customerInitials} size="md" />
                 <div>
                   <div className="font-semibold text-navy-900 dark:text-white">{r.customerName}</div>
-                  <div className="text-xs text-slate-500 dark:text-slate-400">{r.branch}</div>
+                  <div className="text-xs text-slate-500 dark:text-slate-400">{r.location}</div>
                 </div>
               </div>
             </CardBody>
@@ -156,7 +157,7 @@ export default function SalesReturnDetailPage() {
                 } />
                 <Meta label="Return Date" icon={Calendar} value={formatDate(r.returnDate)} />
                 <Meta label="Refund Method" value={<Badge variant="info">{r.refundMethod}</Badge>} />
-                <Meta label="Branch" value={r.branch} />
+                <Meta label="Location" value={r.location} />
               </dl>
               <div className="mt-3 pt-3 border-t border-slate-100 dark:border-navy-700">
                 <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400 inline-flex items-center gap-1.5"><FileText className="size-3" />Reason</div>

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
   Edit3, MoreHorizontal, AlertCircle, CheckCircle2, Truck, Package,
-  FileText, Clock, MapPin, Phone, AlertTriangle, ArrowRight, Printer, Mail, MessageSquare,
+  FileText, Clock, MapPin, Phone, AlertTriangle, ArrowRight, Printer, Mail, MessageCircle,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardBody } from "@/components/ui/card";
@@ -18,11 +18,12 @@ import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuLabel,
 } from "@/components/ui/dropdown";
 import { ConfirmDialog } from "@/components/dialogs/confirm-dialog";
-import { SendSmsDialog } from "@/components/dialogs/send-sms-dialog";
+import { WhatsAppShareDialog } from "@/components/dialogs/whatsapp-share-dialog";
 import { getOrder, getStatusVariant } from "@/data/sales";
 import { formatMoney, formatDate, formatNumber } from "@/lib/format";
 import { toast } from "@/components/ui/toaster";
 import { cn } from "@/lib/utils";
+import { statusLabel } from "@/lib/labels";
 
 const STATE_FLOW = ["DRAFT", "SUBMITTED", "CONFIRMED", "PACKED", "DISPATCHED", "DELIVERED"];
 
@@ -39,7 +40,7 @@ const ACTIVITY = [
   { id: 4, user: "Bilal Ahmed", action: "confirmed order",                   time: "30 Apr · 10:42 AM", variant: "info" as const,    icon: CheckCircle2 },
   { id: 5, user: "Hassan Raza", action: "packed and ready for dispatch",     time: "30 Apr · 11:30 AM", variant: "info" as const,    icon: Package },
   { id: 6, user: "Sara Khan",   action: "dispatched order to customer",      time: "30 Apr · 11:42 AM", variant: "success" as const, icon: Truck },
-  { id: 7, user: "System",      action: "auto-generated invoice INV-KHI-26-0142", time: "30 Apr · 11:42 AM", variant: "success" as const, icon: FileText },
+  { id: 7, user: "System",      action: "auto-generated invoice INV-26-0142", time: "30 Apr · 11:42 AM", variant: "success" as const, icon: FileText },
 ];
 
 export default function OrderDetailPage() {
@@ -63,7 +64,7 @@ export default function OrderDetailPage() {
   /* Action modals */
   const [override, setOverride] = React.useState(false);
   const [cancel, setCancel] = React.useState(false);
-  const [sendSms, setSendSms] = React.useState(false);
+  const [shareOpen, setShareOpen] = React.useState(false);
 
   return (
     <>
@@ -77,11 +78,11 @@ export default function OrderDetailPage() {
           <div>
             <div className="flex items-center gap-3 flex-wrap">
               <span>{order.orderNo}</span>
-              <StatusPill variant={getStatusVariant(order.status)}>{order.status.replace("_", " ")}</StatusPill>
+              <StatusPill variant={getStatusVariant(order.status)}>{statusLabel(order.status)}</StatusPill>
             </div>
           </div>
         }
-        subtitle={`Created ${formatDate(order.orderDate)} · ${order.salesPerson} · ${order.branch}`}
+        subtitle={`Created ${formatDate(order.orderDate)} · ${order.salesPerson} · ${order.location}`}
         actions={
           <>
             <Button variant="ghost" size="md" className="gap-1.5" onClick={() => toast.info("Printing order…")}>
@@ -94,12 +95,12 @@ export default function OrderDetailPage() {
                 Override Credit Hold
               </Button>
             ) : order.status === "PACKED" ? (
-              <Button variant="accent" size="md" className="gap-1.5" onClick={() => toast.success("Order dispatched", { description: `Invoice INV-KHI-26-0142 generated. SMS queued for customer.` })}>
+              <Button variant="accent" size="md" className="gap-1.5" onClick={() => toast.success("Order dispatched", { description: `Invoice INV-26-0142 generated. SMS queued for customer.` })}>
                 <Truck />
                 Dispatch
               </Button>
             ) : order.status === "CONFIRMED" ? (
-              <Button variant="accent" size="md" className="gap-1.5" onClick={() => toast.success("Order moved to Packed", { description: "Warehouse will pick items now." })}>
+              <Button variant="accent" size="md" className="gap-1.5" onClick={() => toast.success("Order moved to Packed", { description: "Location will pick items now." })}>
                 <Package />
                 Pack
               </Button>
@@ -115,7 +116,7 @@ export default function OrderDetailPage() {
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
                 <DropdownMenuLabel>Order actions</DropdownMenuLabel>
-                <DropdownMenuItem onClick={() => setSendSms(true)}><MessageSquare />Send SMS update</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setShareOpen(true)}><MessageCircle />Share on WhatsApp</DropdownMenuItem>
                 <DropdownMenuItem onClick={() => toast.success("Invoice emailed to customer")}><Mail />Email invoice</DropdownMenuItem>
                 <DropdownMenuItem onClick={() => toast.info("Duplicating order…")}><FileText />Duplicate order</DropdownMenuItem>
                 <DropdownMenuSeparator />
@@ -278,7 +279,7 @@ export default function OrderDetailPage() {
                 <TabsContent value="documents">
                   <div className="space-y-2">
                     {[
-                      { name: "Invoice INV-KHI-26-0142.pdf", size: "84 KB", date: "30 Apr 2026" },
+                      { name: "Invoice INV-26-0142.pdf", size: "84 KB", date: "30 Apr 2026" },
                       { name: "Picking Slip.pdf",             size: "32 KB", date: "30 Apr 2026" },
                       { name: "Delivery Challan.pdf",         size: "28 KB", date: "30 Apr 2026" },
                     ].map((d, i) => (
@@ -321,7 +322,7 @@ export default function OrderDetailPage() {
                 </div>
                 <div className="inline-flex items-center gap-1.5">
                   <MapPin className="size-3 text-slate-400" />
-                  {order.branch}, Pakistan
+                  {order.location}, Pakistan
                 </div>
               </div>
             </CardBody>
@@ -334,7 +335,7 @@ export default function OrderDetailPage() {
               <div className="space-y-2">
                 <Button variant="secondary" size="md" className="w-full justify-start gap-2" onClick={() => toast.info("Printing invoice…")}><Printer />Print Invoice</Button>
                 <Button variant="secondary" size="md" className="w-full justify-start gap-2" onClick={() => toast.success("Invoice emailed", { description: order.customerName })}><Mail />Email Invoice</Button>
-                <Button variant="secondary" size="md" className="w-full justify-start gap-2" onClick={() => setSendSms(true)}><MessageSquare />Send via SMS</Button>
+                <Button variant="secondary" size="md" className="w-full justify-start gap-2" onClick={() => setShareOpen(true)}><MessageCircle />Share on WhatsApp</Button>
                 <Button variant="secondary" size="md" className="w-full justify-start gap-2" asChild><Link href={`/sales/invoices/1`}><ArrowRight />Record Payment</Link></Button>
               </div>
             </CardBody>
@@ -345,8 +346,8 @@ export default function OrderDetailPage() {
             <CardBody>
               <h3 className="text-sm font-semibold text-navy-900 dark:text-white mb-3">Order Details</h3>
               <dl className="space-y-2.5 text-sm">
-                <Meta label="Branch" value={order.branch} />
-                <Meta label="Warehouse" value={order.warehouse} />
+                <Meta label="Location" value={order.location} />
+                <Meta label="Location" value={order.location} />
                 <Meta label="Sales Rep" value={order.salesPerson} />
                 <Meta label="Order Date" value={formatDate(order.orderDate)} />
                 <Meta label="Delivery Date" value={formatDate(order.deliveryDate)} />
@@ -396,17 +397,15 @@ export default function OrderDetailPage() {
           setCancel(false);
         }}
       />
-      <SendSmsDialog
-        open={sendSms}
-        onOpenChange={setSendSms}
-        defaultPhone="03004567890"
-        defaultTemplate="ORDER_DISPATCHED"
-        contextVars={{
-          name: order.customerName,
-          orderNo: order.orderNo,
-          invoiceNo: order.orderNo.replace("ORD", "INV"),
-          amount: formatMoney(order.total).replace("PKR ", ""),
-        }}
+      <WhatsAppShareDialog
+        open={shareOpen}
+        onOpenChange={setShareOpen}
+        docNo={order.orderNo}
+        docLabel="Order"
+        customerName={order.customerName}
+        customerPhone="0300 4567890"
+        total={order.total}
+        note={`Order status: ${statusLabel(order.status)}`}
       />
     </>
   );

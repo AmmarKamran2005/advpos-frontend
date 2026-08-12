@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { FilterBar } from "@/components/ui/filter-bar";
 import { products, brands } from "@/data/products";
-import { warehouses } from "@/data/admin";
+import { activeLocations } from "@/data/settings";
 import { formatMoney, formatCompact } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -21,10 +21,10 @@ type StockRow = {
   name: string;
   brand: string;
   totalStock: number;
-  reorderLevel: number;
+  minQty: number;
   status: "active" | "low" | "out" | "inactive";
   costPrice: number;
-  warehouses: { id: number; code: string; qty: number }[];
+  locations: { id: number; code: string; qty: number }[];
 };
 
 export default function StockLevelsPage() {
@@ -33,9 +33,9 @@ export default function StockLevelsPage() {
 
   const rows: StockRow[] = products.map((p) => {
     const brand = brands.find((b) => b.id === p.brandId)?.name ?? "—";
-    const splits = warehouses.filter((w) => w.code !== "KHI-WH-02").map((w, i) => ({
-      id: w.id,
-      code: w.code,
+    const splits = activeLocations().map((l, i) => ({
+      id: l.id,
+      code: l.code,
       qty: Math.floor(p.totalStock * [0.5, 0.3, 0.2][i % 3]),
     }));
     return {
@@ -45,10 +45,10 @@ export default function StockLevelsPage() {
       name: p.name,
       brand,
       totalStock: p.totalStock,
-      reorderLevel: p.reorderLevel,
+      minQty: p.minQty,
       status: p.status,
       costPrice: p.costPrice,
-      warehouses: splits,
+      locations: splits,
     };
   });
 
@@ -80,12 +80,17 @@ export default function StockLevelsPage() {
         </div>
       ),
     },
-    ...warehouses.filter((w) => w.code !== "KHI-WH-02").map<Column<StockRow>>((wh) => ({
-      key: `wh-${wh.code}`,
-      header: wh.code,
+    ...activeLocations().map<Column<StockRow>>((loc) => ({
+      key: `loc-${loc.code}`,
+      header: (
+        <div className="text-right">
+          <div>{loc.name}</div>
+          <div className="text-2xs font-normal opacity-60 tabular">{loc.code}</div>
+        </div>
+      ),
       align: "right" as const,
       cell: (r) => {
-        const v = r.warehouses.find((w) => w.id === wh.id)?.qty ?? 0;
+        const v = r.locations.find((l) => l.id === loc.id)?.qty ?? 0;
         return <span className={cn("tabular text-sm", v === 0 ? "text-slate-300" : "text-navy-900 dark:text-white font-medium")}>{v}</span>;
       },
     })),
@@ -103,10 +108,10 @@ export default function StockLevelsPage() {
       ),
     },
     {
-      key: "reorderLevel",
+      key: "minQty",
       header: "RP",
       align: "right",
-      cell: (r) => <span className="tabular text-xs text-slate-500 dark:text-slate-400">{r.reorderLevel}</span>,
+      cell: (r) => <span className="tabular text-xs text-slate-500 dark:text-slate-400">{r.minQty}</span>,
     },
     {
       key: "value",
@@ -130,7 +135,7 @@ export default function StockLevelsPage() {
       <PageHeader
         breadcrumbs={[{ label: "Inventory" }, { label: "Stock Levels" }]}
         title="Stock Levels"
-        subtitle="Real-time inventory across all warehouses"
+        subtitle="Real-time inventory across all locations"
         actions={
           <>
             <Button variant="secondary" size="md" className="gap-1.5">

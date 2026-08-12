@@ -14,14 +14,15 @@ import { Textarea } from "@/components/ui/textarea";
 import { SelectNative } from "@/components/ui/select-native";
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from "@/components/ui/form";
 import { vizoResolver } from "@/lib/zod-resolver";
-import { branchesAdmin } from "@/data/admin";
+import { activeLocations } from "@/data/settings";
 import { accounts } from "@/data/accounting";
 import { toast } from "@/components/ui/toaster";
 import { formatMoney } from "@/lib/format";
+import { defaultLocation } from "@/data/settings";
 
 const Schema = z.object({
   date: z.string().min(1),
-  branchId: z.coerce.number().positive(),
+  locationId: z.coerce.number().positive(),
   category: z.string().min(2, "Required"),
   accountId: z.coerce.number().positive("Pick expense account"),
   amount: z.coerce.number().positive("Amount > 0"),
@@ -41,7 +42,7 @@ export default function NewExpensePage() {
     resolver: vizoResolver(Schema),
     defaultValues: {
       date: new Date().toISOString().slice(0, 10),
-      branchId: branchesAdmin[0]?.id ?? 1,
+      locationId: defaultLocation().id,
       category: "",
       accountId: expenseAccounts[0]?.id ?? 0 as unknown as number,
       amount: 0,
@@ -85,9 +86,9 @@ export default function NewExpensePage() {
                   <FormField control={form.control} name="date" render={({ field }) => (
                     <FormItem><FormLabel required>Date</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>
                   )} />
-                  <FormField control={form.control} name="branchId" render={({ field }) => (
-                    <FormItem><FormLabel required>Branch</FormLabel><FormControl>
-                      <SelectNative {...field}>{branchesAdmin.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</SelectNative>
+                  <FormField control={form.control} name="locationId" render={({ field }) => (
+                    <FormItem><FormLabel required>Location</FormLabel><FormControl>
+                      <SelectNative {...field}>{activeLocations().map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}</SelectNative>
                     </FormControl><FormMessage /></FormItem>
                   )} />
                   <FormField control={form.control} name="category" render={({ field }) => (

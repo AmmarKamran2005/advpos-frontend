@@ -24,7 +24,7 @@ const PERMISSION_GROUPS: { module: string; permissions: { key: string; label: st
     { key: "users.update", label: "Update users" },
     { key: "users.delete", label: "Delete users" },
     { key: "roles.manage", label: "Manage roles" },
-    { key: "branches.manage", label: "Manage branches" },
+    { key: "locationes.manage", label: "Manage locationes" },
   ] },
   { module: "Sales", permissions: [
     { key: "orders.read",   label: "View orders" },
@@ -34,7 +34,7 @@ const PERMISSION_GROUPS: { module: string; permissions: { key: string; label: st
     { key: "orders.cancel", label: "Cancel orders" },
     { key: "credit.override", label: "Override credit hold" },
     { key: "invoices.create", label: "Create invoices" },
-    { key: "invoices.void", label: "Void invoices" },
+    { key: "invoices.delete", label: "Delete invoices" },
     { key: "returns.approve", label: "Approve returns" },
   ] },
   { module: "Purchases", permissions: [
@@ -64,15 +64,10 @@ const PERMISSION_GROUPS: { module: string; permissions: { key: string; label: st
   { module: "Reports", permissions: [
     { key: "reports.sales", label: "Sales reports" },
     { key: "reports.finance", label: "Financial reports" },
-    { key: "reports.finance.consolidated", label: "Consolidated (across branches)" },
+    { key: "reports.finance.consolidated", label: "Consolidated (across locationes)" },
     { key: "reports.aging", label: "Aging reports" },
   ] },
   { module: "Notifications & AI", permissions: [
-    { key: "sms.send", label: "Send SMS" },
-    { key: "sms.bulk.send", label: "Bulk SMS campaigns" },
-    { key: "sms.templates.manage", label: "Manage SMS templates" },
-    { key: "ai.ask", label: "Use AI Assistant" },
-    { key: "ai.usage.read", label: "View LLM usage / cost" },
   ] },
   { module: "Backup", permissions: [
     { key: "backup.run", label: "Run backups" },
@@ -90,7 +85,7 @@ const ROLE_DEFAULTS: Record<string, string[]> = {
   "Order Department": ["orders.read", "orders.create", "orders.confirm", "orders.dispatch", "stock.read", "transfers.approve", "ai.ask"],
   Sales: ["orders.read", "orders.create", "stock.read", "ai.ask", "sms.send"],
   "Purchase Officer": ["purchases.order.create", "purchases.grn.post", "stock.read", "ai.ask"],
-  "Branch Manager": ["orders.confirm", "orders.dispatch", "credit.override", "purchases.order.approve", "stock.read", "stock.view-total", "reports.finance", "reports.aging", "ai.ask"],
+  "Location Manager": ["orders.confirm", "orders.dispatch", "credit.override", "purchases.order.approve", "stock.read", "stock.view-total", "reports.finance", "reports.aging", "ai.ask"],
   Collections: ["reports.aging", "vouchers.post", "sms.send", "ai.ask"],
 };
 
@@ -186,7 +181,7 @@ export default function RoleEditPage() {
               <div className="space-y-4">
                 <div>
                   <Label htmlFor="role-name" required>Name</Label>
-                  <Input id="role-name" value={name} onChange={(e) => setName(e.target.value)} disabled={role?.isSystem} className="mt-1.5" placeholder="e.g. Branch Manager" />
+                  <Input id="role-name" value={name} onChange={(e) => setName(e.target.value)} disabled={role?.isSystem} className="mt-1.5" placeholder="e.g. Location Manager" />
                   {role?.isSystem && <p className="text-xs text-slate-500 mt-1">System role names cannot be changed</p>}
                 </div>
                 <div>

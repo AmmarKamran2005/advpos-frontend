@@ -5,15 +5,15 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardBody } from "@/components/ui/card";
 import { ReportToolbar } from "@/components/widgets/report-toolbar";
 import { accounts } from "@/data/accounting";
-import { branchesAdmin } from "@/data/admin";
 import { formatMoney, formatPercent, formatDate } from "@/lib/format";
+import { getLocation } from "@/data/settings";
 
 export default function ProfitLossPage() {
   const today = new Date().toISOString().slice(0, 10);
   const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10);
   const [from, setFrom] = React.useState(monthStart);
   const [to,   setTo]   = React.useState(today);
-  const [branchId, setBranchId] = React.useState<number | null>(null);
+  const [locationId, setLocationId] = React.useState<number | null>(null);
 
   const revenue = accounts.filter((a) => a.type === "REVENUE" && !a.isGroup);
   const cogs = accounts.find((a) => a.code === "5001");
@@ -30,7 +30,7 @@ export default function ProfitLossPage() {
       <PageHeader
         breadcrumbs={[{ label: "Accounting" }, { label: "Profit & Loss" }]}
         title="Profit & Loss Statement"
-        subtitle={`${formatDate(from)} → ${formatDate(to)} · ${branchId ? branchesAdmin.find((b) => b.id === branchId)?.name : "All Branches"}`}
+        subtitle={`${formatDate(from)} → ${formatDate(to)} · ${locationId ? getLocation(locationId)?.name : "All Locations"}`}
         actions={
           <ReportToolbar
             mode="range"
@@ -38,8 +38,8 @@ export default function ProfitLossPage() {
             fromDate={from}
             toDate={to}
             onRangeChange={(f, t) => { setFrom(f); setTo(t); }}
-            branchId={branchId}
-            onBranchChange={setBranchId}
+            locationId={locationId}
+            onLocationChange={setLocationId}
           />
         }
       />

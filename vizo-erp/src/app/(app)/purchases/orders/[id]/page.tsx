@@ -20,6 +20,7 @@ import { getParty } from "@/data/parties";
 import { formatMoney, formatDate, formatNumber } from "@/lib/format";
 import { toast } from "@/components/ui/toaster";
 import { cn } from "@/lib/utils";
+import { statusLabel } from "@/lib/labels";
 
 const STATE_FLOW = ["DRAFT", "PENDING_APPROVAL", "APPROVED", "PARTIALLY_RECEIVED", "RECEIVED"];
 
@@ -58,10 +59,10 @@ export default function PODetailPage() {
         title={
           <div className="flex items-center gap-3 flex-wrap">
             <span>{po.poNo}</span>
-            <StatusPill variant={PO_STATUS_VARIANT[po.status]}>{po.status.replace("_", " ")}</StatusPill>
+            <StatusPill variant={PO_STATUS_VARIANT[po.status]}>{statusLabel(po.status)}</StatusPill>
           </div>
         }
-        subtitle={`Created ${formatDate(po.poDate)} · Expected ${formatDate(po.expectedDate)} · ${po.branch}`}
+        subtitle={`Created ${formatDate(po.poDate)} · Expected ${formatDate(po.expectedDate)} · ${po.location}`}
         actions={
           <>
             <Button variant="ghost" className="gap-1.5"><Printer />Print</Button>
@@ -212,7 +213,7 @@ export default function PODetailPage() {
                     <Link href="/purchases/grns" className="block p-3 border border-slate-200 dark:border-navy-700 rounded-lg hover:bg-slate-50 dark:hover:bg-navy-700">
                       <div className="flex items-center justify-between">
                         <div>
-                          <div className="text-sm font-semibold tabular text-navy-900 dark:text-white">GRN-KHI-26-0089</div>
+                          <div className="text-sm font-semibold tabular text-navy-900 dark:text-white">GRN-26-0089</div>
                           <div className="text-xs text-slate-500 dark:text-slate-400">29 Apr · Bilal Ahmed</div>
                         </div>
                         <Badge variant="success">POSTED</Badge>
@@ -262,8 +263,8 @@ export default function PODetailPage() {
               <dl className="space-y-2.5 text-sm">
                 <Meta label="PO Date" value={formatDate(po.poDate)} />
                 <Meta label="Expected" value={formatDate(po.expectedDate)} />
-                <Meta label="Branch" value={po.branch} />
-                <Meta label="Warehouse" value={po.warehouse} />
+                <Meta label="Location" value={po.location} />
+                <Meta label="Location" value={po.location} />
                 <Meta label="Created By" value={po.createdBy} />
                 {po.approvedBy && <Meta label="Approved By" value={po.approvedBy} />}
               </dl>

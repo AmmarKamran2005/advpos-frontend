@@ -193,25 +193,25 @@ export default function LoginPage() {
               Run your <span className="text-brand-yellow">entire business</span> from a single dashboard.
             </h2>
             <p className="text-base xl:text-lg text-slate-300 mt-6 leading-relaxed">
-              Multi-branch sales, purchases, inventory and double-entry accounting — built for Pakistan, ready for the next 10 years of your growth.
+              Sales, purchases, stock and accounts in one place — so nothing lives on WhatsApp any more.
             </p>
           </div>
 
           <div className="grid grid-cols-3 gap-8 mt-12 max-w-2xl">
             <div>
-              <div className="text-3xl xl:text-4xl font-bold tabular text-brand-yellow">11</div>
-              <div className="text-xs text-slate-400 uppercase tracking-wider mt-1.5">Modules</div>
-              <div className="text-sm text-slate-300 mt-1 leading-snug">Sales · Purchases · Inventory · Accounting · Zakat · Reports · AI</div>
+              <div className="text-3xl xl:text-4xl font-bold tabular text-brand-yellow">1</div>
+              <div className="text-xs text-slate-400 uppercase tracking-wider mt-1.5">System</div>
+              <div className="text-sm text-slate-300 mt-1 leading-snug">Sales, Order Dept and Accounts working off the same screen</div>
             </div>
             <div>
-              <div className="text-3xl xl:text-4xl font-bold tabular text-brand-yellow">3+</div>
-              <div className="text-xs text-slate-400 uppercase tracking-wider mt-1.5">Branches</div>
-              <div className="text-sm text-slate-300 mt-1 leading-snug">Karachi, Lahore, Islamabad — branch-aware accounting</div>
+              <div className="text-3xl xl:text-4xl font-bold tabular text-brand-yellow">3</div>
+              <div className="text-xs text-slate-400 uppercase tracking-wider mt-1.5">Locations</div>
+              <div className="text-sm text-slate-300 mt-1 leading-snug">Warehouse, Order Department and Shop 2 — add more any time</div>
             </div>
             <div>
               <div className="text-3xl xl:text-4xl font-bold tabular text-brand-yellow">100%</div>
               <div className="text-xs text-slate-400 uppercase tracking-wider mt-1.5">Audit trail</div>
-              <div className="text-sm text-slate-300 mt-1 leading-snug">Every JE immutable, every action logged</div>
+              <div className="text-sm text-slate-300 mt-1 leading-snug">Every entry kept, every action logged</div>
             </div>
           </div>
         </div>

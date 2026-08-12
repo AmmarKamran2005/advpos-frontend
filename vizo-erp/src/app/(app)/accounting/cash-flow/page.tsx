@@ -5,8 +5,8 @@ import { TrendingUp } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardBody } from "@/components/ui/card";
 import { ReportToolbar } from "@/components/widgets/report-toolbar";
-import { branchesAdmin } from "@/data/admin";
 import { formatMoney, formatDate } from "@/lib/format";
+import { getLocation } from "@/data/settings";
 
 const SECTIONS = [
   {
@@ -43,7 +43,7 @@ export default function CashFlowPage() {
   const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10);
   const [from, setFrom] = React.useState(monthStart);
   const [to,   setTo]   = React.useState(today);
-  const [branchId, setBranchId] = React.useState<number | null>(null);
+  const [locationId, setLocationId] = React.useState<number | null>(null);
 
   const opening = 5240000;
   const totals = SECTIONS.map((s) => s.items.reduce((sum, i) => sum + i.value, 0));
@@ -55,7 +55,7 @@ export default function CashFlowPage() {
       <PageHeader
         breadcrumbs={[{ label: "Accounting" }, { label: "Cash Flow" }]}
         title="Cash Flow Statement"
-        subtitle={`${formatDate(from)} → ${formatDate(to)} · ${branchId ? branchesAdmin.find((b) => b.id === branchId)?.name : "All Branches"}`}
+        subtitle={`${formatDate(from)} → ${formatDate(to)} · ${locationId ? getLocation(locationId)?.name : "All Locations"}`}
         actions={
           <ReportToolbar
             mode="range"
@@ -63,8 +63,8 @@ export default function CashFlowPage() {
             fromDate={from}
             toDate={to}
             onRangeChange={(f, t) => { setFrom(f); setTo(t); }}
-            branchId={branchId}
-            onBranchChange={setBranchId}
+            locationId={locationId}
+            onLocationChange={setLocationId}
           />
         }
       />

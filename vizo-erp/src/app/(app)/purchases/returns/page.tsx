@@ -10,6 +10,7 @@ import { StatusPill } from "@/components/ui/badge";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { purchaseReturns, PR_STATUS_VARIANT } from "@/data/purchases";
 import { formatMoney, formatDate } from "@/lib/format";
+import { statusLabel } from "@/lib/labels";
 
 type Row = (typeof purchaseReturns)[number];
 
@@ -28,7 +29,7 @@ export default function PurchaseReturnsPage() {
     { key: "reason", header: "Reason", cell: (r) => <span className="text-sm text-slate-600 dark:text-slate-300">{r.reason}</span> },
     { key: "itemCount", header: "Items", align: "right", cell: (r) => <span className="tabular text-sm text-slate-600 dark:text-slate-300">{r.itemCount}</span> },
     { key: "totalAmount", header: "Amount", align: "right", cell: (r) => <span className="tabular text-sm font-semibold text-warning">{formatMoney(r.totalAmount)}</span> },
-    { key: "status", header: "Status", cell: (r) => <StatusPill variant={PR_STATUS_VARIANT[r.status]}>{r.status}</StatusPill> },
+    { key: "status", header: "Status", cell: (r) => <StatusPill variant={PR_STATUS_VARIANT[r.status]}>{statusLabel(r.status)}</StatusPill> },
   ];
 
   return (

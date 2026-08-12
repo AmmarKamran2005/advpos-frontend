@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { Printer, Mail, MessageSquare, X, ArrowRight, Building2, MapPin, Phone, AlertCircle } from "lucide-react";
+import { Printer, Mail, MessageCircle, X, ArrowRight, Building2, MapPin, Phone, AlertCircle, Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardBody } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,11 +12,12 @@ import { StatusPill } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ConfirmDialog } from "@/components/dialogs/confirm-dialog";
 import { RecordPaymentDialog } from "@/components/dialogs/record-payment-dialog";
-import { SendSmsDialog } from "@/components/dialogs/send-sms-dialog";
+import { WhatsAppShareDialog } from "@/components/dialogs/whatsapp-share-dialog";
 import { toast } from "@/components/ui/toaster";
 import { getInvoice, INVOICE_STATUS_VARIANT } from "@/data/sales";
 import { getParty } from "@/data/parties";
 import { formatMoney, formatDate } from "@/lib/format";
+import { statusLabel } from "@/lib/labels";
 
 const ITEMS = [
   { id: 1, sku: "VZ-TIT-T9-BLK",  name: "VIZO Titan T9 Wireless Earbuds — Black",  qty: 50,  unitPrice: 980,  taxPercent: 18, lineTotal: 57820 },
@@ -38,8 +39,8 @@ export default function InvoiceDetailPage() {
   const tax = invoice.total - subtotal;
 
   const [pay, setPay] = React.useState(false);
-  const [voidConfirm, setVoidConfirm] = React.useState(false);
-  const [smsOpen, setSmsOpen] = React.useState(false);
+  const [deleteConfirm, setDeleteConfirm] = React.useState(false);
+  const [shareOpen, setShareOpen] = React.useState(false);
 
   return (
     <>
@@ -48,7 +49,7 @@ export default function InvoiceDetailPage() {
         title={
           <div className="flex items-center gap-3 flex-wrap">
             <span>{invoice.invoiceNo}</span>
-            <StatusPill variant={INVOICE_STATUS_VARIANT[invoice.status]}>{invoice.status}</StatusPill>
+            <StatusPill variant={INVOICE_STATUS_VARIANT[invoice.status]}>{statusLabel(invoice.status)}</StatusPill>
           </div>
         }
         subtitle={`Issued ${formatDate(invoice.invoiceDate)} · Due ${formatDate(invoice.dueDate)}`}
@@ -56,14 +57,14 @@ export default function InvoiceDetailPage() {
           <>
             <Button variant="ghost" size="md" className="gap-1.5" onClick={() => toast.info("Printing invoice…")}><Printer />Print</Button>
             <Button variant="ghost" size="md" className="gap-1.5" onClick={() => toast.success("Invoice emailed", { description: invoice.customerName })}><Mail /><span className="hidden sm:inline">Email</span></Button>
-            <Button variant="ghost" size="md" className="gap-1.5" onClick={() => setSmsOpen(true)}><MessageSquare /><span className="hidden sm:inline">SMS</span></Button>
+            <Button variant="ghost" size="md" className="gap-1.5" onClick={() => setShareOpen(true)}><MessageCircle /><span className="hidden sm:inline">WhatsApp</span></Button>
             {invoice.status !== "PAID" && invoice.status !== "VOID" && (
               <Button variant="accent" size="md" className="gap-1.5" onClick={() => setPay(true)}>
                 <ArrowRight />Record Payment
               </Button>
             )}
             {invoice.status !== "VOID" && invoice.status !== "PAID" && (
-              <Button variant="ghost" size="md" className="text-danger" onClick={() => setVoidConfirm(true)}><X />Void</Button>
+              <Button variant="ghost" size="md" className="text-danger" onClick={() => setDeleteConfirm(true)}><Trash2 />Delete</Button>
             )}
           </>
         }
@@ -127,7 +128,7 @@ export default function InvoiceDetailPage() {
                 Method: <span className="font-semibold text-navy-900 dark:text-white">{invoice.paymentMethod}</span>
               </div>
               <div className="text-sm text-slate-700 dark:text-slate-300">
-                Branch: <span className="font-semibold text-navy-900 dark:text-white">{invoice.branch}</span>
+                Location: <span className="font-semibold text-navy-900 dark:text-white">{invoice.location}</span>
               </div>
             </div>
           </div>
@@ -201,26 +202,26 @@ export default function InvoiceDetailPage() {
         balanceAmount={invoice.balance}
       />
       <ConfirmDialog
-        open={voidConfirm}
-        onOpenChange={setVoidConfirm}
-        title="Void this invoice?"
-        description="A reversing journal entry will be posted automatically. This action is logged in the audit trail."
+        open={deleteConfirm}
+        onOpenChange={setDeleteConfirm}
+        title="Delete this invoice?"
+        description="The stock and the customer's balance go back to what they were before. The invoice number stays used, and the change is kept in the activity history."
         variant="danger"
-        confirmLabel="Yes, void invoice"
+        confirmLabel="Yes, delete invoice"
         requireReason
-        reasonLabel="Reason for voiding"
-        onConfirm={(r) => { toast.success("Invoice voided", { description: `Reason: ${r}` }); setVoidConfirm(false); }}
+        reasonLabel="Why are you deleting it?"
+        onConfirm={(r) => { toast.success("Invoice deleted", { description: `Reason: ${r}` }); setDeleteConfirm(false); }}
       />
-      <SendSmsDialog
-        open={smsOpen}
-        onOpenChange={setSmsOpen}
-        defaultPhone={customer?.phone.replace(/\s/g, "") ?? ""}
-        defaultTemplate="PAYMENT_REMINDER"
-        contextVars={{
-          name: invoice.customerName,
-          invoiceNo: invoice.invoiceNo,
-          amount: formatMoney(invoice.balance).replace("PKR ", ""),
-        }}
+      <WhatsAppShareDialog
+        open={shareOpen}
+        onOpenChange={setShareOpen}
+        docNo={invoice.invoiceNo}
+        docLabel="Invoice"
+        customerName={invoice.customerName}
+        customerPhone={customer?.phone ?? ""}
+        total={invoice.total}
+        balance={invoice.balance}
+        note={invoice.balance > 0 ? "Baqi raqam ki adaigi ka intezaar rahega." : undefined}
       />
     </>
   );

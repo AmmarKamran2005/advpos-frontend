@@ -59,11 +59,11 @@ export default function ProfilePage() {
                 <Field label="Email"><Input type="email" defaultValue={currentUser.email} disabled /></Field>
                 <Field label="Phone"><Input defaultValue="0300 7287607" /></Field>
                 <Field label="Employee Code"><Input defaultValue="EMP-001" disabled /></Field>
-                <Field label="Default Branch">
+                <Field label="Default Location">
                   <select className="input bg-white dark:bg-navy-800 dark:border-navy-700 dark:text-white">
                     <option>Karachi Head Office</option>
-                    <option>Lahore Branch</option>
-                    <option>Islamabad Branch</option>
+                    <option>Lahore Location</option>
+                    <option>Islamabad Location</option>
                   </select>
                 </Field>
                 <Field label="Role"><Input defaultValue={currentUser.role} disabled /></Field>

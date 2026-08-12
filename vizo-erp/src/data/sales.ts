@@ -14,9 +14,8 @@ export type Order = {
   customerName: string;
   customerInitials: string;
   customerType: string;
-  branch: string;
-  branchCode: string;
-  warehouse: string;
+  location: string;
+  locationCode: string;
   salesPerson: string;
   orderDate: string;
   deliveryDate: string;
@@ -56,8 +55,8 @@ const o = (
   customerName: string,
   customerInitials: string,
   customerType: string,
-  branch: string,
-  branchCode: string,
+  location: string,
+  locationCode: string,
   salesPerson: string,
   date: string,
   status: OrderStatus,
@@ -72,14 +71,13 @@ const o = (
   customerName,
   customerInitials,
   customerType,
-  branch,
-  branchCode,
-  warehouse: branchCode === "KHI" ? "KHI-WH-01" : branchCode === "LHR" ? "LHR-WH-01" : "ISB-WH-01",
+  location,
+  locationCode,
   salesPerson,
   orderDate: date,
   deliveryDate: date,
   status,
-  itemCount: Math.floor(Math.random() * 8) + 2,
+  itemCount: ((id * 7) % 8) + 2,
   subtotal: Math.round(total / 1.18),
   discount: 0,
   tax: Math.round(total - total / 1.18),
@@ -90,21 +88,21 @@ const o = (
 });
 
 export const orders: Order[] = [
-  o(1,  "ORD-KHI-26-0142", 1,  "Hafeez Center Shop #28",   "HC", "Wholesaler",  "Karachi",   "KHI", "Sara Khan",   "2026-04-30", "DISPATCHED",  145000, "CREDIT",    "UNPAID"),
-  o(2,  "ORD-LHR-26-0089", 2,  "Mobile Zone Lahore",       "MZ", "Retailer",    "Lahore",    "LHR", "Sara Khan",   "2026-04-30", "CREDIT_HOLD", 84500,  "CREDIT",    "UNPAID", "Customer exceeded credit limit by PKR 12,400"),
-  o(3,  "ORD-KHI-26-0141", 3,  "Saddar Mobile Plaza",      "SM", "Retailer",    "Karachi",   "KHI", "Hassan Raza", "2026-04-30", "CONFIRMED",   32750,  "CREDIT",    "UNPAID"),
-  o(4,  "ORD-ISB-26-0034", 4,  "Blue Area Distributors",   "BA", "Distributor", "Islamabad", "ISB", "Bilal Ahmed", "2026-04-30", "DISPATCHED",  218000, "BANK",      "PAID"),
-  o(5,  "ORD-KHI-26-0140", 5,  "Cellular World KHI",       "CW", "Wholesaler",  "Karachi",   "KHI", "Hassan Raza", "2026-04-30", "PACKED",      56200,  "CREDIT",    "UNPAID"),
-  o(6,  "ORD-LHR-26-0088", 6,  "Faisal Mobile Mart",       "FM", "Retailer",    "Lahore",    "LHR", "Sara Khan",   "2026-04-29", "DELIVERED",   18400,  "CASH",      "PAID"),
-  o(7,  "ORD-KHI-26-0139", 8,  "Mobilink Connect Lahore",  "ML", "Wholesaler",  "Lahore",    "LHR", "Sara Khan",   "2026-04-29", "DISPATCHED",  98500,  "BANK",      "PARTIAL"),
-  o(8,  "ORD-LHR-26-0087", 9,  "Mobile Mart Multan",       "MM", "Retailer",    "Lahore",    "LHR", "Bilal Ahmed", "2026-04-29", "DELIVERED",   24600,  "EASYPAISA", "PAID"),
-  o(9,  "ORD-KHI-26-0138", 10, "Star Communications",      "SC", "Distributor", "Karachi",   "KHI", "Sara Khan",   "2026-04-29", "DELIVERED",   485000, "BANK",      "PAID"),
-  o(10, "ORD-ISB-26-0033", 12, "Margalla Distributors",    "MD", "Distributor", "Islamabad", "ISB", "Bilal Ahmed", "2026-04-28", "DELIVERED",   320000, "BANK",      "PAID"),
-  o(11, "ORD-KHI-26-0137", 7,  "Quetta Cellular",          "QC", "Retailer",    "Karachi",   "KHI", "Hassan Raza", "2026-04-28", "DELIVERED",   12400,  "JAZZCASH",  "PAID"),
-  o(12, "ORD-LHR-26-0086", 14, "Universal Mobile Sialkot", "UM", "Wholesaler",  "Lahore",    "LHR", "Sara Khan",   "2026-04-28", "DRAFT",       45200,  "CREDIT",    "UNPAID"),
-  o(13, "ORD-LHR-26-0085", 9,  "Mobile Mart Multan",       "MM", "Retailer",    "Lahore",    "LHR", "Bilal Ahmed", "2026-04-27", "CREDIT_HOLD", 38400,  "CREDIT",    "UNPAID", "Outstanding 30+ days overdue"),
-  o(14, "ORD-KHI-26-0136", 1,  "Hafeez Center Shop #28",   "HC", "Wholesaler",  "Karachi",   "KHI", "Sara Khan",   "2026-04-27", "CANCELLED",   88000,  "CREDIT",    "UNPAID"),
-  o(15, "ORD-KHI-26-0135", 5,  "Cellular World KHI",       "CW", "Wholesaler",  "Karachi",   "KHI", "Hassan Raza", "2026-04-26", "DELIVERED",   142000, "BANK",      "PAID"),
+  o(1,  "ORD-26-0142", 1,  "Hafeez Center Shop #28",   "HC", "Wholesaler",  "Order Department", "LOC-02", "Sara Khan",   "2026-04-30", "DISPATCHED",  145000, "CREDIT",    "UNPAID"),
+  o(2,  "ORD-26-0089", 2,  "Mobile Zone Lahore",       "MZ", "Retailer",    "Shop 2",           "LOC-03", "Sara Khan",   "2026-04-30", "CREDIT_HOLD", 84500,  "CREDIT",    "UNPAID", "Customer exceeded credit limit by PKR 12,400"),
+  o(3,  "ORD-26-0141", 3,  "Saddar Mobile Plaza",      "SM", "Retailer",    "Order Department", "LOC-02", "Hassan Raza", "2026-04-30", "CONFIRMED",   32750,  "CREDIT",    "UNPAID"),
+  o(4,  "ORD-26-0034", 4,  "Blue Area Distributors",   "BA", "Distributor", "Warehouse",        "LOC-01", "Bilal Ahmed", "2026-04-30", "DISPATCHED",  218000, "BANK",      "PAID"),
+  o(5,  "ORD-26-0140", 5,  "Cellular World KHI",       "CW", "Wholesaler",  "Order Department", "LOC-02", "Hassan Raza", "2026-04-30", "PACKED",      56200,  "CREDIT",    "UNPAID"),
+  o(6,  "ORD-26-0088", 6,  "Faisal Mobile Mart",       "FM", "Retailer",    "Shop 2",           "LOC-03", "Sara Khan",   "2026-04-29", "DELIVERED",   18400,  "CASH",      "PAID"),
+  o(7,  "ORD-26-0139", 8,  "Mobilink Connect Lahore",  "ML", "Wholesaler",  "Shop 2",           "LOC-03", "Sara Khan",   "2026-04-29", "DISPATCHED",  98500,  "BANK",      "PARTIAL"),
+  o(8,  "ORD-26-0087", 9,  "Mobile Mart Multan",       "MM", "Retailer",    "Shop 2",           "LOC-03", "Bilal Ahmed", "2026-04-29", "DELIVERED",   24600,  "EASYPAISA", "PAID"),
+  o(9,  "ORD-26-0138", 10, "Star Communications",      "SC", "Distributor", "Order Department", "LOC-02", "Sara Khan",   "2026-04-29", "DELIVERED",   485000, "BANK",      "PAID"),
+  o(10, "ORD-26-0033", 12, "Margalla Distributors",    "MD", "Distributor", "Warehouse",        "LOC-01", "Bilal Ahmed", "2026-04-28", "DELIVERED",   320000, "BANK",      "PAID"),
+  o(11, "ORD-26-0137", 7,  "Quetta Cellular",          "QC", "Retailer",    "Order Department", "LOC-02", "Hassan Raza", "2026-04-28", "DELIVERED",   12400,  "JAZZCASH",  "PAID"),
+  o(12, "ORD-26-0086", 14, "Universal Mobile Sialkot", "UM", "Wholesaler",  "Shop 2",           "LOC-03", "Sara Khan",   "2026-04-28", "DRAFT",       45200,  "CREDIT",    "UNPAID"),
+  o(13, "ORD-26-0085", 9,  "Mobile Mart Multan",       "MM", "Retailer",    "Shop 2",           "LOC-03", "Bilal Ahmed", "2026-04-27", "CREDIT_HOLD", 38400,  "CREDIT",    "UNPAID", "Outstanding 30+ days overdue"),
+  o(14, "ORD-26-0136", 1,  "Hafeez Center Shop #28",   "HC", "Wholesaler",  "Order Department", "LOC-02", "Sara Khan",   "2026-04-27", "CANCELLED",   88000,  "CREDIT",    "UNPAID"),
+  o(15, "ORD-26-0135", 5,  "Cellular World KHI",       "CW", "Wholesaler",  "Order Department", "LOC-02", "Hassan Raza", "2026-04-26", "DELIVERED",   142000, "BANK",      "PAID"),
 ];
 
 export function getOrder(id: number) {
@@ -122,7 +120,7 @@ export type Invoice = {
   customerId: number;
   customerName: string;
   customerInitials: string;
-  branch: string;
+  location: string;
   invoiceDate: string;
   dueDate: string;
   total: number;
@@ -146,7 +144,7 @@ export const invoices: Invoice[] = orders
       customerId: o.customerId,
       customerName: o.customerName,
       customerInitials: o.customerInitials,
-      branch: o.branch,
+      location: o.location,
       invoiceDate: o.orderDate,
       dueDate: new Date(new Date(o.orderDate).getTime() + 30 * 86400000).toISOString().slice(0, 10),
       total: o.total,
@@ -178,7 +176,7 @@ export type Return = {
   invoiceNo: string;
   customerName: string;
   customerInitials: string;
-  branch: string;
+  location: string;
   returnDate: string;
   reason: string;
   itemCount: number;
@@ -190,11 +188,11 @@ export type Return = {
 };
 
 export const salesReturns: Return[] = [
-  { id: 1, returnNo: "RET-KHI-26-0008", invoiceNo: "INV-KHI-26-0128", customerName: "Hafeez Center Shop #28", customerInitials: "HC", branch: "Karachi",  returnDate: "2026-04-27", reason: "Defective items",       itemCount: 2, totalAmount: 8400,  resalableQty: 0, damagedQty: 4, refundMethod: "CREDIT_NOTE", status: "POSTED" },
-  { id: 2, returnNo: "RET-LHR-26-0004", invoiceNo: "INV-LHR-26-0085", customerName: "Mobile Mart Multan",     customerInitials: "MM", branch: "Lahore",   returnDate: "2026-04-26", reason: "Wrong item shipped",     itemCount: 1, totalAmount: 1980,  resalableQty: 3, damagedQty: 0, refundMethod: "BANK",       status: "POSTED" },
-  { id: 3, returnNo: "RET-KHI-26-0007", invoiceNo: "INV-KHI-26-0114", customerName: "Saddar Mobile Plaza",    customerInitials: "SM", branch: "Karachi",  returnDate: "2026-04-25", reason: "Customer dissatisfaction", itemCount: 1, totalAmount: 980, resalableQty: 1, damagedQty: 0, refundMethod: "CASH",       status: "APPROVED" },
-  { id: 4, returnNo: "RET-ISB-26-0003", invoiceNo: "INV-ISB-26-0028", customerName: "Margalla Distributors",  customerInitials: "MD", branch: "Islamabad",returnDate: "2026-04-24", reason: "Expired stock",           itemCount: 3, totalAmount: 14200, resalableQty: 0, damagedQty: 12, refundMethod: "BANK",      status: "POSTED" },
-  { id: 5, returnNo: "RET-KHI-26-0006", invoiceNo: "INV-KHI-26-0098", customerName: "Cellular World KHI",     customerInitials: "CW", branch: "Karachi",  returnDate: "2026-04-23", reason: "Over-supplied",           itemCount: 1, totalAmount: 4200,  resalableQty: 6, damagedQty: 0, refundMethod: "CREDIT_NOTE",status: "DRAFT" },
+  { id: 1, returnNo: "RET-KHI-26-0008", invoiceNo: "INV-26-0128", customerName: "Hafeez Center Shop #28", customerInitials: "HC", location: "Order Department",  returnDate: "2026-04-27", reason: "Defective items",       itemCount: 2, totalAmount: 8400,  resalableQty: 0, damagedQty: 4, refundMethod: "CREDIT_NOTE", status: "POSTED" },
+  { id: 2, returnNo: "RET-LHR-26-0004", invoiceNo: "INV-26-0085", customerName: "Mobile Mart Multan",     customerInitials: "MM", location: "Shop 2",   returnDate: "2026-04-26", reason: "Wrong item shipped",     itemCount: 1, totalAmount: 1980,  resalableQty: 3, damagedQty: 0, refundMethod: "BANK",       status: "POSTED" },
+  { id: 3, returnNo: "RET-KHI-26-0007", invoiceNo: "INV-26-0114", customerName: "Saddar Mobile Plaza",    customerInitials: "SM", location: "Order Department",  returnDate: "2026-04-25", reason: "Customer dissatisfaction", itemCount: 1, totalAmount: 980, resalableQty: 1, damagedQty: 0, refundMethod: "CASH",       status: "APPROVED" },
+  { id: 4, returnNo: "RET-ISB-26-0003", invoiceNo: "INV-26-0028", customerName: "Margalla Distributors",  customerInitials: "MD", location: "Warehouse",returnDate: "2026-04-24", reason: "Expired stock",           itemCount: 3, totalAmount: 14200, resalableQty: 0, damagedQty: 12, refundMethod: "BANK",      status: "POSTED" },
+  { id: 5, returnNo: "RET-KHI-26-0006", invoiceNo: "INV-26-0098", customerName: "Cellular World KHI",     customerInitials: "CW", location: "Order Department",  returnDate: "2026-04-23", reason: "Over-supplied",           itemCount: 1, totalAmount: 4200,  resalableQty: 6, damagedQty: 0, refundMethod: "CREDIT_NOTE",status: "DRAFT" },
 ];
 
 export const RETURN_STATUS_VARIANT: Record<ReturnStatus, "success" | "warning" | "danger" | "info" | "muted"> = {

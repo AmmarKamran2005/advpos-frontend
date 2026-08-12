@@ -6,6 +6,7 @@ import { Card, CardBody } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { formatMoney } from "@/lib/format";
+import { statusLabel } from "@/lib/labels";
 
 const CALCS = [
   { id: 1, period: "1447 AH (2025-2026)", calcDate: "2026-04-30", zakatableAssets: 28450000, deductibleLiabilities: 9620000, netZakatable: 18830000, zakatPayable: 470750, status: "DRAFT" as const },
@@ -36,7 +37,7 @@ export default function ZakatCalculationsPage() {
                   <div>
                     <h3 className="text-base font-semibold text-navy-900 dark:text-white">{c.period}</h3>
                     <div className="flex items-center gap-2 mt-1">
-                      <Badge variant={c.status === "PAID" ? "success" : "warning"}>{c.status}</Badge>
+                      <Badge variant={c.status === "PAID" ? "success" : "warning"}>{statusLabel(c.status)}</Badge>
                       <span className="text-xs text-slate-500 dark:text-slate-400">Calculated {c.calcDate}</span>
                     </div>
                   </div>

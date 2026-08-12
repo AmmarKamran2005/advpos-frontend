@@ -4,11 +4,9 @@ import * as React from "react";
 import Link from "next/link";
 import {
   Menu,
-  Building2,
   ChevronDown,
   Search,
   Plus,
-  Sparkles,
   Bell,
   User,
   Settings,
@@ -25,6 +23,8 @@ import {
   AlertTriangle,
   Clock,
   Database,
+  Send,
+  Eye,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,7 +39,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuShortcut,
 } from "@/components/ui/dropdown";
-import { branches, currentUser, notifications, quickCreate } from "@/data/mock";
+import { notifications, quickCreate } from "@/data/mock";
+import { appRoles } from "@/data/settings";
+import { useSession } from "@/components/providers/session-provider";
 import { cn } from "@/lib/utils";
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -54,6 +56,14 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   "alert-triangle": AlertTriangle,
   clock: Clock,
   database: Database,
+  send: Send,
+};
+
+const ROLE_DOT: Record<string, string> = {
+  navy: "bg-navy-900 dark:bg-white",
+  info: "bg-info",
+  success: "bg-success",
+  yellow: "bg-brand-yellow",
 };
 
 const NOTIF_COLOR: Record<string, string> = {
@@ -63,16 +73,11 @@ const NOTIF_COLOR: Record<string, string> = {
   info: "text-info bg-info/10",
 };
 
-export function TopBar({
-  onOpenSidebar,
-  onOpenAI,
-}: {
-  onOpenSidebar: () => void;
-  onOpenAI: () => void;
-}) {
-  const [activeBranchId, setActiveBranchId] = React.useState(currentUser.branchId);
-  const activeBranch = branches.find((b) => b.id === activeBranchId);
+export function TopBar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
+  const { role, user, can, switchRole } = useSession();
+  const activeRole = appRoles.find((r) => r.key === role);
   const unreadCount = notifications.filter((n) => n.unread).length;
+  const visibleQuickCreate = quickCreate.filter((qc) => can(qc.perm));
 
   return (
     <header className="sticky top-0 z-20 h-16 bg-white dark:bg-navy-950 border-b border-slate-200 dark:border-navy-800 flex items-center px-3 sm:px-4 gap-2 flex-shrink-0">
@@ -81,52 +86,54 @@ export function TopBar({
         <Menu />
       </Button>
 
-      {/* Branch switcher */}
+      {/* Role preview — demo affordance so each person's view can be reviewed */}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button
             type="button"
             className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-slate-50 dark:hover:bg-navy-800 transition-colors outline-none"
           >
-            <Building2 className="size-4 text-brand-yellow" />
+            <Eye className="size-4 text-brand-yellow" />
             <div className="text-left hidden sm:block">
               <div className="text-2xs text-slate-500 dark:text-slate-400 leading-none">
-                Branch
+                Viewing as
               </div>
               <div className="text-sm font-semibold text-navy-900 dark:text-white leading-tight">
-                {activeBranch?.name ?? "Select"}
+                {activeRole?.name ?? "Select"}
               </div>
             </div>
             <ChevronDown className="size-3 text-slate-400" />
           </button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-64">
-          <DropdownMenuLabel>Switch Branch</DropdownMenuLabel>
-          {branches.map((b) => (
+        <DropdownMenuContent align="start" className="w-72">
+          <DropdownMenuLabel>Switch role</DropdownMenuLabel>
+          {appRoles.map((r) => (
             <DropdownMenuItem
-              key={b.id}
-              onClick={() => setActiveBranchId(b.id)}
+              key={r.key}
+              onClick={() => switchRole(r.key)}
               className="flex-col items-start gap-0.5"
             >
-              <div className="flex items-center w-full">
+              <div className="flex items-center gap-2 w-full">
+                <span className={cn("size-2 rounded-full flex-shrink-0", ROLE_DOT[r.color])} />
                 <span
                   className={cn(
                     "flex-1 truncate",
-                    b.id === activeBranchId &&
-                      "text-brand-yellow font-semibold"
+                    r.key === role && "text-brand-yellow font-semibold"
                   )}
                 >
-                  {b.name}
+                  {r.name}
                 </span>
-                {b.id === activeBranchId && (
-                  <Check className="size-3.5 text-brand-yellow" />
-                )}
+                {r.key === role && <Check className="size-3.5 text-brand-yellow" />}
               </div>
-              <span className="text-2xs text-slate-500 dark:text-slate-400">
-                {b.city}
+              <span className="text-2xs text-slate-500 dark:text-slate-400 pl-4">
+                {r.description}
               </span>
             </DropdownMenuItem>
           ))}
+          <DropdownMenuSeparator />
+          <div className="px-3 py-2 text-2xs text-slate-400 dark:text-slate-500">
+            Menus and buttons change to match the role.
+          </div>
         </DropdownMenuContent>
       </DropdownMenu>
 
@@ -162,7 +169,7 @@ export function TopBar({
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-64">
             <DropdownMenuLabel>Quick Create</DropdownMenuLabel>
-            {quickCreate.map((qc) => {
+            {visibleQuickCreate.map((qc) => {
               const Icon = ICON_MAP[qc.icon] ?? Plus;
               return (
                 <DropdownMenuItem key={qc.label} asChild>
@@ -176,17 +183,6 @@ export function TopBar({
             })}
           </DropdownMenuContent>
         </DropdownMenu>
-
-        {/* AI Assistant */}
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={onOpenAI}
-          title="AI Assistant"
-          aria-label="Open AI Assistant"
-        >
-          <Sparkles className="text-brand-yellow" />
-        </Button>
 
         {/* Notifications */}
         <DropdownMenu>
@@ -250,12 +246,9 @@ export function TopBar({
                 );
               })}
             </div>
-            <Link
-              href="/notifications/sms"
-              className="block px-4 py-3 text-sm text-center text-brand-yellow hover:bg-slate-50 dark:hover:bg-navy-700 font-medium border-t border-slate-200 dark:border-navy-700"
-            >
-              View all notifications
-            </Link>
+            <div className="px-4 py-3 text-2xs text-center text-slate-400 dark:text-slate-500 border-t border-slate-200 dark:border-navy-700">
+              You&rsquo;re all caught up
+            </div>
           </DropdownMenuContent>
         </DropdownMenu>
 
@@ -268,13 +261,13 @@ export function TopBar({
               type="button"
               className="flex items-center gap-2 p-1 pr-2 rounded-lg hover:bg-slate-50 dark:hover:bg-navy-800 transition-colors outline-none"
             >
-              <Avatar initials={currentUser.initials} size="md" />
+              <Avatar initials={user.initials} size="md" />
               <div className="hidden md:block text-left">
                 <div className="text-sm font-semibold text-navy-900 dark:text-white leading-none">
-                  {currentUser.fullName}
+                  {user.fullName}
                 </div>
                 <div className="text-xs text-slate-500 dark:text-slate-400 leading-none mt-0.5">
-                  {currentUser.role}
+                  {user.roleLabel}
                 </div>
               </div>
               <ChevronDown className="size-3 text-slate-400 hidden md:block" />
@@ -283,10 +276,10 @@ export function TopBar({
           <DropdownMenuContent align="end" className="w-56">
             <div className="px-3 py-3 border-b border-slate-200 dark:border-navy-700">
               <div className="text-sm font-semibold text-navy-900 dark:text-white">
-                {currentUser.fullName}
+                {user.fullName}
               </div>
               <div className="text-xs text-slate-500 dark:text-slate-400">
-                {currentUser.email}
+                {user.email}
               </div>
             </div>
             <DropdownMenuItem asChild>

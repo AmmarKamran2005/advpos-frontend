@@ -6,26 +6,33 @@ import Image from "next/image";
 import { usePathname } from "next/navigation";
 import * as Collapsible from "@radix-ui/react-collapsible";
 import { ChevronDown, PanelLeftClose, PanelLeft } from "lucide-react";
-import { navigation, isActiveMatch, type NavNode } from "@/lib/nav-config";
+import { navigationForRole, isActiveMatch, type NavNode } from "@/lib/nav-config";
+import { useSession } from "@/components/providers/session-provider";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
 /* Resolve which match key is active based on current pathname */
-function resolveActiveMatch(pathname: string): string {
-  // Find the deepest matching nav item
-  for (const node of navigation) {
-    if (node.type === "item" && pathname.startsWith(node.href)) {
-      return node.match;
-    }
-    if (node.type === "group") {
-      for (const child of node.children) {
-        if (pathname.startsWith(child.href)) {
-          return child.match;
-        }
+function resolveActiveMatch(nodes: NavNode[], pathname: string): string {
+  // Longest href wins, so /sales/orders beats /sales
+  let best = "";
+  let bestLength = 0;
+
+  for (const node of nodes) {
+    const candidates =
+      node.type === "item"
+        ? [node]
+        : node.type === "group"
+          ? node.children
+          : [];
+
+    for (const c of candidates) {
+      if (pathname.startsWith(c.href) && c.href.length > bestLength) {
+        best = c.match;
+        bestLength = c.href.length;
       }
     }
   }
-  return "";
+  return best;
 }
 
 export function Sidebar({
@@ -40,7 +47,9 @@ export function Sidebar({
   onCloseMobile: () => void;
 }) {
   const pathname = usePathname();
-  const activeMatch = resolveActiveMatch(pathname);
+  const { role, user } = useSession();
+  const navigation = React.useMemo(() => navigationForRole(role), [role]);
+  const activeMatch = resolveActiveMatch(navigation, pathname);
 
   return (
     <>
@@ -88,7 +97,7 @@ export function Sidebar({
                   AdvPOS
                 </div>
                 <div className="text-2xs text-slate-500 dark:text-slate-400 leading-tight truncate">
-                  Sales · Inventory · Accounting
+                  {user.roleLabel}
                 </div>
               </div>
             )}

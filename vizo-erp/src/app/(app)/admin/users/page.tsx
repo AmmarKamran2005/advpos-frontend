@@ -52,11 +52,11 @@ export default function UsersPage() {
       ),
     },
     {
-      key: "branches",
-      header: "Branches",
+      key: "locations",
+      header: "Locationes",
       cell: (u) => (
         <div className="flex flex-wrap gap-1">
-          {u.branches.map((b) => <Badge key={b} variant="muted">{b}</Badge>)}
+          {u.locations.map((b) => <Badge key={b} variant="muted">{b}</Badge>)}
         </div>
       ),
     },

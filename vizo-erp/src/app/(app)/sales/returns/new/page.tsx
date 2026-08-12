@@ -18,7 +18,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from "@/components/ui/command";
 import { vizoResolver } from "@/lib/zod-resolver";
 import { invoices } from "@/data/sales";
-import { warehouses } from "@/data/admin";
+import { activeLocations } from "@/data/settings";
 import { toast } from "@/components/ui/toaster";
 import { formatMoney, formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -37,7 +37,7 @@ const ItemSchema = z.object({
   unitPrice: z.number(),
   qtyReturning: z.coerce.number().min(0).max(99999),
   condition: z.enum(["RESALABLE", "DAMAGED", "EXPIRED", "MISSING"]),
-  restockWarehouseId: z.coerce.number().optional().or(z.literal("")),
+  restockLocationId: z.coerce.number().optional().or(z.literal("")),
 }).refine((d) => d.qtyReturning <= d.originalQty, { message: "Cannot return more than original qty", path: ["qtyReturning"] });
 
 const Schema = z.object({
@@ -74,7 +74,7 @@ export default function NewSalesReturnPage() {
 
   function pickInv(id: number) {
     form.setValue("invoiceId", id);
-    replace(SAMPLE_INVOICE_LINES.map((l) => ({ ...l, qtyReturning: 0, condition: "RESALABLE" as const, restockWarehouseId: warehouses[0]?.id ?? 0 })));
+    replace(SAMPLE_INVOICE_LINES.map((l) => ({ ...l, qtyReturning: 0, condition: "RESALABLE" as const, restockLocationId: activeLocations()[0]?.id ?? 0 })));
     setPickInvoice(false);
   }
 
@@ -154,7 +154,7 @@ export default function NewSalesReturnPage() {
               <Card>
                 <CardBody>
                   <h3 className="text-sm font-semibold text-navy-900 dark:text-white mb-3">Return Items</h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">Set the return quantity per line and the condition. RESALABLE goes back to a warehouse; DAMAGED/EXPIRED/MISSING gets written off.</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">Set the return quantity per line and the condition. RESALABLE goes back to a location; DAMAGED/EXPIRED/MISSING gets written off.</p>
                   <div className="space-y-3">
                     {fields.map((f, idx) => <ReturnRow key={f.id} idx={idx} control={form.control} />)}
                   </div>
@@ -263,11 +263,11 @@ function ReturnRow({ idx, control }: { idx: number; control: Control<Form> }) {
               </FormItem>
             );
           }} />
-          <FormField control={control} name={`items.${idx}.restockWarehouseId`} render={({ field }) => (
+          <FormField control={control} name={`items.${idx}.restockLocationId`} render={({ field }) => (
             <FormItem className="col-span-4 sm:col-span-3">
               <FormControl>
                 <SelectNative {...field}>
-                  {warehouses.map((w) => <option key={w.id} value={w.id}>{w.code}</option>)}
+                  {activeLocations().map((w) => <option key={w.id} value={w.id}>{w.code}</option>)}
                 </SelectNative>
               </FormControl>
               <div className="text-2xs text-slate-500 mt-0.5">Restock to</div>

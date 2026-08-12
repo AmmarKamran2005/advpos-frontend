@@ -46,7 +46,7 @@ const Schema = z.object({
   creditDays:  z.coerce.number().min(0).max(365, "Max 365 days").default(0),
   holdPolicy:  z.enum(["NONE", "WARN", "BLOCK"]).default("WARN"),
 
-  defaultBranchId: z.coerce.number(),
+  defaultLocationId: z.coerce.number(),
   salesPerson: z.string().optional().or(z.literal("")),
   notes: z.string().max(500, "Max 500 characters").optional().or(z.literal("")),
 });
@@ -75,7 +75,7 @@ export default function NewPartyPage() {
       creditLimit: 0,
       creditDays: 0,
       holdPolicy: "WARN",
-      defaultBranchId: 1,
+      defaultLocationId: 1,
       salesPerson: "",
       notes: "",
     },
@@ -343,14 +343,14 @@ export default function NewPartyPage() {
                 <CardBody>
                   <h3 className="text-sm font-semibold text-navy-900 dark:text-white mb-4">Assignment</h3>
                   <div className="space-y-4">
-                    <FormField control={form.control} name="defaultBranchId" render={({ field }) => (
+                    <FormField control={form.control} name="defaultLocationId" render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Default Branch</FormLabel>
+                        <FormLabel>Default Location</FormLabel>
                         <FormControl>
                           <SelectNative {...field}>
                             <option value="1">Karachi Head Office</option>
-                            <option value="2">Lahore Branch</option>
-                            <option value="3">Islamabad Branch</option>
+                            <option value="2">Lahore Location</option>
+                            <option value="3">Islamabad Location</option>
                           </SelectNative>
                         </FormControl>
                         <FormMessage />

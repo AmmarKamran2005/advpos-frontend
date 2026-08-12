@@ -37,7 +37,7 @@ export default function VisitsPage() {
       <PageHeader
         breadcrumbs={[{ label: "Parties", href: "/parties" }, { label: "Customer Visits" }]}
         title="Customer Visits"
-        subtitle="Sales rep field activity across all branches"
+        subtitle="Sales rep field activity across all locationes"
         actions={
           <>
             <div className="flex items-center bg-white dark:bg-navy-800 border border-slate-200 dark:border-navy-700 rounded-lg p-0.5">

@@ -80,7 +80,7 @@ export default function NewInvoicePage() {
 
   async function onSubmit(d: Form) {
     await new Promise((r) => setTimeout(r, 700));
-    toast.success("Invoice created", { description: `INV-KHI-26-0143 of ${formatMoney(total)} created.` });
+    toast.success("Invoice created", { description: `INV-26-0143 of ${formatMoney(total)} created.` });
     router.push("/sales/invoices");
   }
 

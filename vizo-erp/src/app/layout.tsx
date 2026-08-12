@@ -21,7 +21,7 @@ export const metadata: Metadata = {
     template: "%s · AdvPOS",
   },
   description:
-    "Multi-branch POS & ERP for distribution businesses — sales, purchases, inventory, accounting, and AI-powered insights.",
+    "Multi-location POS & ERP for distribution businesses — sales, purchases, inventory, accounting, and AI-powered insights.",
   icons: { icon: "/vizo-logo.png" },
 };
 

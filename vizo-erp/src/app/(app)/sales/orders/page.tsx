@@ -13,6 +13,7 @@ import { FilterBar } from "@/components/ui/filter-bar";
 import { orders, getStatusVariant, type Order, type OrderStatus } from "@/data/sales";
 import { formatMoney, formatCompact, formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { statusLabel } from "@/lib/labels";
 
 export default function OrdersPage() {
   const [search, setSearch] = React.useState("");
@@ -58,7 +59,7 @@ export default function OrdersPage() {
           <Avatar initials={o.customerInitials} size="sm" />
           <div className="min-w-0">
             <div className="font-medium text-navy-900 dark:text-white truncate">{o.customerName}</div>
-            <div className="text-xs text-slate-500 dark:text-slate-400">{o.customerType} · {o.branch}</div>
+            <div className="text-xs text-slate-500 dark:text-slate-400">{o.customerType} · {o.location}</div>
           </div>
         </div>
       ),
@@ -99,7 +100,7 @@ export default function OrdersPage() {
       key: "status",
       header: "Status",
       cell: (o) => (
-        <StatusPill variant={getStatusVariant(o.status)}>{o.status.replace("_", " ")}</StatusPill>
+        <StatusPill variant={getStatusVariant(o.status)}>{statusLabel(o.status)}</StatusPill>
       ),
     },
   ];

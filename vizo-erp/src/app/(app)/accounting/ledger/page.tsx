@@ -11,17 +11,17 @@ import { Label } from "@/components/ui/label";
 import { ReportToolbar } from "@/components/widgets/report-toolbar";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { accounts } from "@/data/accounting";
-import { branchesAdmin } from "@/data/admin";
 import { formatMoney, formatDate } from "@/lib/format";
+import { getLocation } from "@/data/settings";
 
 const SAMPLE_TXNS_BY_ACCOUNT: Record<number, Array<{ id: number; date: string; entry: string; entryId: number; reference: string; description: string; debit: number; credit: number; balance: number }>> = {
   119: [
-    { id: 1, date: "2026-04-30", entry: "JE-26-1042", entryId: 1, reference: "INV-KHI-26-0142", description: "Sales invoice — Hafeez Center #28", debit: 145000, credit: 0,      balance: 18545000 },
-    { id: 2, date: "2026-04-29", entry: "JE-26-1041", entryId: 2, reference: "VCH-KHI-26-0089", description: "Bank receipt — Hafeez Center #28",  debit: 0,      credit: 100000, balance: 18400000 },
-    { id: 3, date: "2026-04-29", entry: "JE-26-1038", entryId: 5, reference: "INV-KHI-26-0140", description: "Sales invoice — Cellular World",   debit: 142000, credit: 0,      balance: 18500000 },
-    { id: 4, date: "2026-04-28", entry: "JE-26-1037", entryId: 6, reference: "VCH-KHI-26-0085", description: "Cash receipt — Saddar Mobile",      debit: 0,      credit: 32750,  balance: 18358000 },
-    { id: 5, date: "2026-04-28", entry: "JE-26-1036", entryId: 7, reference: "INV-LHR-26-0088", description: "Sales invoice — Faisal Mobile",     debit: 18400,  credit: 0,      balance: 18390750 },
-    { id: 6, date: "2026-04-27", entry: "JE-26-1035", entryId: 1, reference: "INV-ISB-26-0034", description: "Sales invoice — Margalla Distrib.", debit: 218000, credit: 0,      balance: 18372350 },
+    { id: 1, date: "2026-04-30", entry: "JE-26-1042", entryId: 1, reference: "INV-26-0142", description: "Sales invoice — Hafeez Center #28", debit: 145000, credit: 0,      balance: 18545000 },
+    { id: 2, date: "2026-04-29", entry: "JE-26-1041", entryId: 2, reference: "VCH-26-0089", description: "Bank receipt — Hafeez Center #28",  debit: 0,      credit: 100000, balance: 18400000 },
+    { id: 3, date: "2026-04-29", entry: "JE-26-1038", entryId: 5, reference: "INV-26-0140", description: "Sales invoice — Cellular World",   debit: 142000, credit: 0,      balance: 18500000 },
+    { id: 4, date: "2026-04-28", entry: "JE-26-1037", entryId: 6, reference: "VCH-26-0085", description: "Cash receipt — Saddar Mobile",      debit: 0,      credit: 32750,  balance: 18358000 },
+    { id: 5, date: "2026-04-28", entry: "JE-26-1036", entryId: 7, reference: "INV-26-0088", description: "Sales invoice — Faisal Mobile",     debit: 18400,  credit: 0,      balance: 18390750 },
+    { id: 6, date: "2026-04-27", entry: "JE-26-1035", entryId: 1, reference: "INV-26-0034", description: "Sales invoice — Margalla Distrib.", debit: 218000, credit: 0,      balance: 18372350 },
   ],
 };
 
@@ -36,7 +36,7 @@ export default function LedgerPage() {
   const monthAgo = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
   const [from, setFrom] = React.useState(monthAgo);
   const [to, setTo] = React.useState(today);
-  const [branchId, setBranchId] = React.useState<number | null>(null);
+  const [locationId, setLocationId] = React.useState<number | null>(null);
 
   React.useEffect(() => {
     if (params.get("accountId")) setAccountId(parseInt(params.get("accountId")!, 10));
@@ -72,8 +72,8 @@ export default function LedgerPage() {
             fromDate={from}
             toDate={to}
             onRangeChange={(f, t) => { setFrom(f); setTo(t); }}
-            branchId={branchId}
-            onBranchChange={setBranchId}
+            locationId={locationId}
+            onLocationChange={setLocationId}
           />
         }
       />
@@ -125,7 +125,7 @@ export default function LedgerPage() {
           rowHref={(t) => `/accounting/journal-entries/${t.entryId}`}
         />
         <div className="px-5 py-3 border-t border-slate-100 dark:border-navy-700 bg-slate-50 dark:bg-navy-900/40 text-xs text-slate-500 dark:text-slate-400 text-center">
-          💡 Click any row to view the underlying Journal Entry · Branch filter: <span className="font-semibold text-navy-900 dark:text-white">{branchId ? branchesAdmin.find((b) => b.id === branchId)?.name : "All"}</span>
+          💡 Click any row to view the underlying Journal Entry · Location filter: <span className="font-semibold text-navy-900 dark:text-white">{locationId ? getLocation(locationId)?.name : "All"}</span>
         </div>
       </Card>
 

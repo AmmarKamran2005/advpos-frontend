@@ -190,7 +190,7 @@ export default function PartiesPage() {
       <PageHeader
         breadcrumbs={[{ label: "Parties" }]}
         title="All Parties"
-        subtitle="Customers, suppliers and counter-parties across all branches"
+        subtitle="Customers, suppliers and counter-parties across all locationes"
         actions={
           <>
             <Button variant="secondary" size="md" className="gap-1.5">

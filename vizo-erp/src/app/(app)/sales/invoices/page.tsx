@@ -12,6 +12,7 @@ import { DataTable, type Column } from "@/components/ui/data-table";
 import { FilterBar } from "@/components/ui/filter-bar";
 import { invoices, INVOICE_STATUS_VARIANT, type Invoice } from "@/data/sales";
 import { formatMoney, formatCompact, formatDate } from "@/lib/format";
+import { statusLabel } from "@/lib/labels";
 
 export default function InvoicesPage() {
   const [search, setSearch] = React.useState("");
@@ -50,7 +51,7 @@ export default function InvoicesPage() {
           <Avatar initials={i.customerInitials} size="sm" />
           <div>
             <div className="font-medium text-navy-900 dark:text-white">{i.customerName}</div>
-            <div className="text-xs text-slate-500 dark:text-slate-400">{i.branch}</div>
+            <div className="text-xs text-slate-500 dark:text-slate-400">{i.location}</div>
           </div>
         </div>
       ),
@@ -60,7 +61,7 @@ export default function InvoicesPage() {
     { key: "total",       header: "Total",   align: "right", sortable: true, cell: (i) => <span className="tabular text-sm font-semibold text-navy-900 dark:text-white">{formatMoney(i.total)}</span> },
     { key: "paid",        header: "Paid",    align: "right", cell: (i) => <span className="tabular text-sm text-success">{formatMoney(i.paid)}</span> },
     { key: "balance",     header: "Balance", align: "right", cell: (i) => <span className="tabular text-sm font-semibold text-warning">{formatMoney(i.balance)}</span> },
-    { key: "status",      header: "Status",  cell: (i) => <StatusPill variant={INVOICE_STATUS_VARIANT[i.status]}>{i.status}</StatusPill> },
+    { key: "status",      header: "Status",  cell: (i) => <StatusPill variant={INVOICE_STATUS_VARIANT[i.status]}>{statusLabel(i.status)}</StatusPill> },
   ];
 
   return (

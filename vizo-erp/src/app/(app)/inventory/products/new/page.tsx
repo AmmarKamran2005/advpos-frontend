@@ -16,7 +16,7 @@ import { SelectNative } from "@/components/ui/select-native";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage, FormDescription } from "@/components/ui/form";
-import { categories, brands, units } from "@/data/products";
+import { categories, brands } from "@/data/products";
 import { toast } from "@/components/ui/toaster";
 import { formatMoney } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -30,13 +30,14 @@ const Schema = z.object({
   description: z.string().max(500, "Max 500 chars").optional().or(z.literal("")),
   categoryId: z.coerce.number({ message: "Pick a category" }).positive("Pick a category"),
   brandId:    z.coerce.number({ message: "Pick a brand" }).positive("Pick a brand"),
-  uomId:      z.coerce.number().positive(),
+  packing:    z.coerce.number().min(1, "At least 1 piece per packet"),
   taxRatePercent: z.coerce.number().min(0).max(100, "Cannot exceed 100%"),
 
   costPrice: z.coerce.number().positive("Cost price must be positive"),
   salePrice: z.coerce.number().positive("Sale price must be positive"),
 
-  reorderLevel: z.coerce.number().min(0, "Cannot be negative"),
+  minQty: z.coerce.number().min(0, "Cannot be negative"),
+  maxQty: z.coerce.number().min(0, "Cannot be negative"),
   hideStock: z.boolean(),
   isActive:  z.boolean(),
 
@@ -59,11 +60,12 @@ export default function NewProductPage() {
       description: "",
       categoryId: 0 as unknown as number,
       brandId:    0 as unknown as number,
-      uomId: 1,
+      packing: 1,
       taxRatePercent: 18,
       costPrice: 0 as unknown as number,
       salePrice: 0 as unknown as number,
-      reorderLevel: 0,
+      minQty: 0,
+      maxQty: 0,
       hideStock: false,
       isActive: true,
       barcodes: [{ code: "", type: "EAN-13", packQty: 1 }],
@@ -152,14 +154,11 @@ export default function NewProductPage() {
                         <FormMessage />
                       </FormItem>
                     )} />
-                    <FormField control={form.control} name="uomId" render={({ field }) => (
+                    <FormField control={form.control} name="packing" render={({ field }) => (
                       <FormItem>
-                        <FormLabel required>Unit of Measure</FormLabel>
-                        <FormControl>
-                          <SelectNative {...field}>
-                            {units.map((u) => <option key={u.id} value={u.id}>{u.code} — {u.name}</option>)}
-                          </SelectNative>
-                        </FormControl>
+                        <FormLabel required>Packing</FormLabel>
+                        <FormControl><Input type="number" min={1} {...field} /></FormControl>
+                        <FormDescription>Pieces in one packet or carton</FormDescription>
                         <FormMessage />
                       </FormItem>
                     )} />
@@ -256,11 +255,19 @@ export default function NewProductPage() {
                 <CardBody>
                   <h3 className="text-sm font-semibold text-navy-900 dark:text-white mb-4">Stock Settings</h3>
                   <div className="space-y-4">
-                    <FormField control={form.control} name="reorderLevel" render={({ field }) => (
+                    <FormField control={form.control} name="minQty" render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Reorder Level</FormLabel>
+                        <FormLabel>Minimum quantity</FormLabel>
                         <FormControl><Input type="number" min={0} {...field} /></FormControl>
-                        <FormDescription>Alert when stock falls below this</FormDescription>
+                        <FormDescription>Warn when stock reaches this</FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )} />
+                    <FormField control={form.control} name="maxQty" render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Maximum quantity</FormLabel>
+                        <FormControl><Input type="number" min={0} {...field} /></FormControl>
+                        <FormDescription>Flag as overstocked above this. 0 = no limit</FormDescription>
                         <FormMessage />
                       </FormItem>
                     )} />

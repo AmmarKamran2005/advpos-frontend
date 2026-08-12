@@ -3,8 +3,9 @@
 import * as React from "react";
 import { Sidebar } from "./sidebar";
 import { TopBar } from "./top-bar";
-import { AIDrawer } from "./ai-drawer";
 import { CommandPalette } from "./command-palette";
+import { ShortcutSheet } from "./shortcut-sheet";
+import { SessionProvider } from "@/components/providers/session-provider";
 import { Toaster } from "@/components/ui/toaster";
 
 const SIDEBAR_COLLAPSED_KEY = "vizo-sidebar-collapsed";
@@ -12,7 +13,6 @@ const SIDEBAR_COLLAPSED_KEY = "vizo-sidebar-collapsed";
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = React.useState(false);
   const [mobileOpen, setMobileOpen] = React.useState(false);
-  const [aiOpen, setAIOpen] = React.useState(false);
 
   /* Restore collapsed state from localStorage */
   React.useEffect(() => {
@@ -35,27 +35,26 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-navy-900 flex">
-      <Sidebar
-        collapsed={collapsed}
-        onToggleCollapsed={toggleCollapsed}
-        mobileOpen={mobileOpen}
-        onCloseMobile={() => setMobileOpen(false)}
-      />
-      <div className="flex-1 flex flex-col min-w-0">
-        <TopBar
-          onOpenSidebar={() => setMobileOpen(true)}
-          onOpenAI={() => setAIOpen(true)}
+    <SessionProvider>
+      <div className="min-h-screen bg-slate-50 dark:bg-navy-900 flex">
+        <Sidebar
+          collapsed={collapsed}
+          onToggleCollapsed={toggleCollapsed}
+          mobileOpen={mobileOpen}
+          onCloseMobile={() => setMobileOpen(false)}
         />
-        <main className="flex-1 overflow-y-auto">
-          <div className="p-4 sm:p-6 max-w-[1600px] mx-auto w-full">
-            {children}
-          </div>
-        </main>
+        <div className="flex-1 flex flex-col min-w-0">
+          <TopBar onOpenSidebar={() => setMobileOpen(true)} />
+          <main className="flex-1 overflow-y-auto">
+            <div className="p-4 sm:p-6 max-w-[1600px] mx-auto w-full">
+              {children}
+            </div>
+          </main>
+        </div>
+        <CommandPalette />
+        <ShortcutSheet />
+        <Toaster />
       </div>
-      <AIDrawer open={aiOpen} onOpenChange={setAIOpen} />
-      <CommandPalette />
-      <Toaster />
-    </div>
+    </SessionProvider>
   );
 }

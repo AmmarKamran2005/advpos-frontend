@@ -9,8 +9,7 @@ export type PO = {
   supplierId: number;
   supplierName: string;
   supplierInitials: string;
-  branch: string;
-  warehouse: string;
+  location: string;
   poDate: string;
   expectedDate: string;
   status: POStatus;
@@ -32,13 +31,13 @@ export const PO_STATUS_VARIANT: Record<POStatus, "success" | "warning" | "danger
 };
 
 export const purchaseOrders: PO[] = [
-  { id: 1, poNo: "PO-KHI-26-0042", supplierId: 20, supplierName: "China Mobile Plaza Trading", supplierInitials: "CM", branch: "Karachi",   warehouse: "KHI-WH-01", poDate: "2026-04-30", expectedDate: "2026-05-15", status: "APPROVED",           itemCount: 12, total: 1850000, receivedPercent: 0,   approvedBy: "Umer Memon", createdBy: "Ahmed Riaz" },
-  { id: 2, poNo: "PO-KHI-26-0041", supplierId: 21, supplierName: "Shenzhen Electronics Hub",   supplierInitials: "SE", branch: "Karachi",   warehouse: "KHI-WH-01", poDate: "2026-04-28", expectedDate: "2026-05-12", status: "PARTIALLY_RECEIVED", itemCount: 8,  total: 1240000, receivedPercent: 65,  approvedBy: "Umer Memon", createdBy: "Ahmed Riaz" },
-  { id: 3, poNo: "PO-KHI-26-0040", supplierId: 22, supplierName: "Karachi Wholesale Cells",     supplierInitials: "KW", branch: "Karachi",   warehouse: "KHI-WH-01", poDate: "2026-04-25", expectedDate: "2026-05-05", status: "RECEIVED",           itemCount: 5,  total: 482000,  receivedPercent: 100, approvedBy: "Umer Memon", createdBy: "Ahmed Riaz" },
-  { id: 4, poNo: "PO-LHR-26-0018", supplierId: 24, supplierName: "Audio Tech International",    supplierInitials: "AT", branch: "Lahore",    warehouse: "LHR-WH-01", poDate: "2026-04-25", expectedDate: "2026-05-10", status: "PENDING_APPROVAL",   itemCount: 4,  total: 950000,  receivedPercent: 0,   createdBy: "Sara Khan" },
-  { id: 5, poNo: "PO-KHI-26-0039", supplierId: 23, supplierName: "Pak Accessories Imports",     supplierInitials: "PA", branch: "Karachi",   warehouse: "KHI-WH-01", poDate: "2026-04-22", expectedDate: "2026-05-02", status: "RECEIVED",           itemCount: 6,  total: 320000,  receivedPercent: 100, approvedBy: "Umer Memon", createdBy: "Ahmed Riaz" },
-  { id: 6, poNo: "PO-ISB-26-0008", supplierId: 22, supplierName: "Karachi Wholesale Cells",     supplierInitials: "KW", branch: "Islamabad", warehouse: "ISB-WH-01", poDate: "2026-04-20", expectedDate: "2026-04-30", status: "CLOSED",             itemCount: 3,  total: 145000,  receivedPercent: 100, approvedBy: "Umer Memon", createdBy: "Bilal Ahmed" },
-  { id: 7, poNo: "PO-KHI-26-0038", supplierId: 20, supplierName: "China Mobile Plaza Trading",  supplierInitials: "CM", branch: "Karachi",   warehouse: "KHI-WH-01", poDate: "2026-04-18", expectedDate: "2026-04-28", status: "DRAFT",              itemCount: 10, total: 1480000, receivedPercent: 0,   createdBy: "Ahmed Riaz" },
+  { id: 1, poNo: "PO-26-0042", supplierId: 20, supplierName: "China Mobile Plaza Trading", supplierInitials: "CM", location: "LOC-01", poDate: "2026-04-30", expectedDate: "2026-05-15", status: "APPROVED",           itemCount: 12, total: 1850000, receivedPercent: 0,   approvedBy: "Umer Memon", createdBy: "Ahmed Riaz" },
+  { id: 2, poNo: "PO-26-0041", supplierId: 21, supplierName: "Shenzhen Electronics Hub",   supplierInitials: "SE", location: "LOC-01", poDate: "2026-04-28", expectedDate: "2026-05-12", status: "PARTIALLY_RECEIVED", itemCount: 8,  total: 1240000, receivedPercent: 65,  approvedBy: "Umer Memon", createdBy: "Ahmed Riaz" },
+  { id: 3, poNo: "PO-26-0040", supplierId: 22, supplierName: "Karachi Wholesale Cells",     supplierInitials: "KW", location: "LOC-01", poDate: "2026-04-25", expectedDate: "2026-05-05", status: "RECEIVED",           itemCount: 5,  total: 482000,  receivedPercent: 100, approvedBy: "Umer Memon", createdBy: "Ahmed Riaz" },
+  { id: 4, poNo: "PO-26-0018", supplierId: 24, supplierName: "Audio Tech International",    supplierInitials: "AT", location: "LOC-03", poDate: "2026-04-25", expectedDate: "2026-05-10", status: "PENDING_APPROVAL",   itemCount: 4,  total: 950000,  receivedPercent: 0,   createdBy: "Sara Khan" },
+  { id: 5, poNo: "PO-26-0039", supplierId: 23, supplierName: "Pak Accessories Imports",     supplierInitials: "PA", location: "LOC-01", poDate: "2026-04-22", expectedDate: "2026-05-02", status: "RECEIVED",           itemCount: 6,  total: 320000,  receivedPercent: 100, approvedBy: "Umer Memon", createdBy: "Ahmed Riaz" },
+  { id: 6, poNo: "PO-26-0008", supplierId: 22, supplierName: "Karachi Wholesale Cells",     supplierInitials: "KW", location: "LOC-02", poDate: "2026-04-20", expectedDate: "2026-04-30", status: "CLOSED",             itemCount: 3,  total: 145000,  receivedPercent: 100, approvedBy: "Umer Memon", createdBy: "Bilal Ahmed" },
+  { id: 7, poNo: "PO-26-0038", supplierId: 20, supplierName: "China Mobile Plaza Trading",  supplierInitials: "CM", location: "LOC-01", poDate: "2026-04-18", expectedDate: "2026-04-28", status: "DRAFT",              itemCount: 10, total: 1480000, receivedPercent: 0,   createdBy: "Ahmed Riaz" },
 ];
 
 /* GRNs */
@@ -50,7 +49,7 @@ export type GRN = {
   poId: number;
   supplierName: string;
   supplierInitials: string;
-  warehouse: string;
+  location: string;
   receiptDate: string;
   deliveryNoteNo: string;
   vehicleNo: string;
@@ -64,11 +63,11 @@ export type GRN = {
 };
 
 export const grns: GRN[] = [
-  { id: 1, grnNo: "GRN-KHI-26-0089", poNo: "PO-KHI-26-0041", poId: 2, supplierName: "Shenzhen Electronics Hub",  supplierInitials: "SE", warehouse: "KHI-WH-01", receiptDate: "2026-04-29", deliveryNoteNo: "SEH-2026-0419", vehicleNo: "BHN-882",   itemCount: 8, unitsReceived: 240, unitsAccepted: 235, unitsDamaged: 5, totalValue: 482000,  status: "POSTED",  receivedBy: "Bilal Ahmed" },
-  { id: 2, grnNo: "GRN-KHI-26-0088", poNo: "PO-KHI-26-0040", poId: 3, supplierName: "Karachi Wholesale Cells",   supplierInitials: "KW", warehouse: "KHI-WH-01", receiptDate: "2026-04-28", deliveryNoteNo: "KWC-DN-1842",  vehicleNo: "TLM-441",   itemCount: 5, unitsReceived: 180, unitsAccepted: 180, unitsDamaged: 0, totalValue: 482000,  status: "POSTED",  receivedBy: "Bilal Ahmed" },
-  { id: 3, grnNo: "GRN-KHI-26-0087", poNo: "PO-KHI-26-0039", poId: 5, supplierName: "Pak Accessories Imports",   supplierInitials: "PA", warehouse: "KHI-WH-01", receiptDate: "2026-04-26", deliveryNoteNo: "PAI-2026-0421", vehicleNo: "JKL-2289",  itemCount: 6, unitsReceived: 380, unitsAccepted: 376, unitsDamaged: 4, totalValue: 320000,  status: "POSTED",  receivedBy: "Bilal Ahmed" },
-  { id: 4, grnNo: "GRN-LHR-26-0024", poNo: "PO-LHR-26-0017", poId: 0, supplierName: "Audio Tech International",  supplierInitials: "AT", warehouse: "LHR-WH-01", receiptDate: "2026-04-24", deliveryNoteNo: "ATI-DN-0884",  vehicleNo: "—",         itemCount: 3, unitsReceived: 120, unitsAccepted: 120, unitsDamaged: 0, totalValue: 285000,  status: "POSTED",  receivedBy: "Sara Khan" },
-  { id: 5, grnNo: "GRN-KHI-26-0090", poNo: "PO-KHI-26-0041", poId: 2, supplierName: "Shenzhen Electronics Hub",  supplierInitials: "SE", warehouse: "KHI-WH-01", receiptDate: "2026-05-01", deliveryNoteNo: "SEH-2026-0421", vehicleNo: "BHN-882",   itemCount: 4, unitsReceived: 80,  unitsAccepted: 80,  unitsDamaged: 0, totalValue: 320000,  status: "DRAFT",   receivedBy: "Bilal Ahmed" },
+  { id: 1, grnNo: "GRN-26-0089", poNo: "PO-26-0041", poId: 2, supplierName: "Shenzhen Electronics Hub",  supplierInitials: "SE", location: "LOC-01", receiptDate: "2026-04-29", deliveryNoteNo: "SEH-2026-0419", vehicleNo: "BHN-882",   itemCount: 8, unitsReceived: 240, unitsAccepted: 235, unitsDamaged: 5, totalValue: 482000,  status: "POSTED",  receivedBy: "Bilal Ahmed" },
+  { id: 2, grnNo: "GRN-26-0088", poNo: "PO-26-0040", poId: 3, supplierName: "Karachi Wholesale Cells",   supplierInitials: "KW", location: "LOC-01", receiptDate: "2026-04-28", deliveryNoteNo: "KWC-DN-1842",  vehicleNo: "TLM-441",   itemCount: 5, unitsReceived: 180, unitsAccepted: 180, unitsDamaged: 0, totalValue: 482000,  status: "POSTED",  receivedBy: "Bilal Ahmed" },
+  { id: 3, grnNo: "GRN-26-0087", poNo: "PO-26-0039", poId: 5, supplierName: "Pak Accessories Imports",   supplierInitials: "PA", location: "LOC-01", receiptDate: "2026-04-26", deliveryNoteNo: "PAI-2026-0421", vehicleNo: "JKL-2289",  itemCount: 6, unitsReceived: 380, unitsAccepted: 376, unitsDamaged: 4, totalValue: 320000,  status: "POSTED",  receivedBy: "Bilal Ahmed" },
+  { id: 4, grnNo: "GRN-26-0024", poNo: "PO-26-0017", poId: 0, supplierName: "Audio Tech International",  supplierInitials: "AT", location: "LOC-03", receiptDate: "2026-04-24", deliveryNoteNo: "ATI-DN-0884",  vehicleNo: "—",         itemCount: 3, unitsReceived: 120, unitsAccepted: 120, unitsDamaged: 0, totalValue: 285000,  status: "POSTED",  receivedBy: "Sara Khan" },
+  { id: 5, grnNo: "GRN-26-0090", poNo: "PO-26-0041", poId: 2, supplierName: "Shenzhen Electronics Hub",  supplierInitials: "SE", location: "LOC-01", receiptDate: "2026-05-01", deliveryNoteNo: "SEH-2026-0421", vehicleNo: "BHN-882",   itemCount: 4, unitsReceived: 80,  unitsAccepted: 80,  unitsDamaged: 0, totalValue: 320000,  status: "DRAFT",   receivedBy: "Bilal Ahmed" },
 ];
 
 export const GRN_STATUS_VARIANT: Record<GRNStatus, "success" | "muted" | "danger"> = {
@@ -97,11 +96,11 @@ export type PI = {
 };
 
 export const purchaseInvoices: PI[] = [
-  { id: 1, invoiceNo: "PI-KHI-26-0042", supplierInvoiceNo: "CMP-INV-2026-1842", supplierName: "China Mobile Plaza Trading", supplierInitials: "CM", poNo: "PO-KHI-26-0040", invoiceDate: "2026-04-29", dueDate: "2026-05-29", total: 482000, paid: 0,      balance: 482000, paymentMethod: "CREDIT", whtAmount: 21690, status: "POSTED"  },
-  { id: 2, invoiceNo: "PI-KHI-26-0041", supplierInvoiceNo: "SEH-INV-2026-2241", supplierName: "Shenzhen Electronics Hub",   supplierInitials: "SE", poNo: "PO-KHI-26-0041", invoiceDate: "2026-04-28", dueDate: "2026-05-28", total: 720000, paid: 360000, balance: 360000, paymentMethod: "BANK",   whtAmount: 32400, status: "PARTIAL" },
-  { id: 3, invoiceNo: "PI-KHI-26-0040", supplierInvoiceNo: "PAI-INV-2026-0421", supplierName: "Pak Accessories Imports",    supplierInitials: "PA", poNo: "PO-KHI-26-0039", invoiceDate: "2026-04-26", dueDate: "2026-05-26", total: 320000, paid: 320000, balance: 0,      paymentMethod: "BANK",   whtAmount: 14400, status: "PAID"    },
-  { id: 4, invoiceNo: "PI-LHR-26-0014", supplierInvoiceNo: "ATI-INV-2026-1124", supplierName: "Audio Tech International",   supplierInitials: "AT", poNo: "PO-LHR-26-0017", invoiceDate: "2026-04-24", dueDate: "2026-05-24", total: 285000, paid: 0,      balance: 285000, paymentMethod: "CREDIT", whtAmount: 12825, status: "POSTED"  },
-  { id: 5, invoiceNo: "PI-KHI-26-0039", supplierInvoiceNo: "KWC-INV-2026-0942", supplierName: "Karachi Wholesale Cells",    supplierInitials: "KW", poNo: "PO-KHI-26-0040", invoiceDate: "2026-03-15", dueDate: "2026-04-15", total: 145000, paid: 0,      balance: 145000, paymentMethod: "CREDIT", whtAmount: 6525,  status: "OVERDUE" },
+  { id: 1, invoiceNo: "PI-26-0042", supplierInvoiceNo: "CMP-INV-2026-1842", supplierName: "China Mobile Plaza Trading", supplierInitials: "CM", poNo: "PO-26-0040", invoiceDate: "2026-04-29", dueDate: "2026-05-29", total: 482000, paid: 0,      balance: 482000, paymentMethod: "CREDIT", whtAmount: 21690, status: "POSTED"  },
+  { id: 2, invoiceNo: "PI-26-0041", supplierInvoiceNo: "SEH-INV-2026-2241", supplierName: "Shenzhen Electronics Hub",   supplierInitials: "SE", poNo: "PO-26-0041", invoiceDate: "2026-04-28", dueDate: "2026-05-28", total: 720000, paid: 360000, balance: 360000, paymentMethod: "BANK",   whtAmount: 32400, status: "PARTIAL" },
+  { id: 3, invoiceNo: "PI-26-0040", supplierInvoiceNo: "PAI-INV-2026-0421", supplierName: "Pak Accessories Imports",    supplierInitials: "PA", poNo: "PO-26-0039", invoiceDate: "2026-04-26", dueDate: "2026-05-26", total: 320000, paid: 320000, balance: 0,      paymentMethod: "BANK",   whtAmount: 14400, status: "PAID"    },
+  { id: 4, invoiceNo: "PI-26-0014", supplierInvoiceNo: "ATI-INV-2026-1124", supplierName: "Audio Tech International",   supplierInitials: "AT", poNo: "PO-26-0017", invoiceDate: "2026-04-24", dueDate: "2026-05-24", total: 285000, paid: 0,      balance: 285000, paymentMethod: "CREDIT", whtAmount: 12825, status: "POSTED"  },
+  { id: 5, invoiceNo: "PI-26-0039", supplierInvoiceNo: "KWC-INV-2026-0942", supplierName: "Karachi Wholesale Cells",    supplierInitials: "KW", poNo: "PO-26-0040", invoiceDate: "2026-03-15", dueDate: "2026-04-15", total: 145000, paid: 0,      balance: 145000, paymentMethod: "CREDIT", whtAmount: 6525,  status: "OVERDUE" },
 ];
 
 export const PI_STATUS_VARIANT: Record<PIStatus, "success" | "warning" | "danger" | "info" | "muted"> = {
@@ -115,10 +114,10 @@ export const PI_STATUS_VARIANT: Record<PIStatus, "success" | "warning" | "danger
 
 /* Purchase Returns */
 export const purchaseReturns = [
-  { id: 1, returnNo: "PR-KHI-26-0008", invoiceNo: "PI-KHI-26-0040", supplier: "Pak Accessories Imports",    initials: "PA", date: "2026-04-28", reason: "Damaged in transit", itemCount: 2, totalAmount: 18400, status: "POSTED" as const },
-  { id: 2, returnNo: "PR-KHI-26-0007", invoiceNo: "PI-KHI-26-0038", supplier: "Karachi Wholesale Cells",    initials: "KW", date: "2026-04-25", reason: "Wrong specification",itemCount: 1, totalAmount: 12000, status: "APPROVED" as const },
-  { id: 3, returnNo: "PR-LHR-26-0003", invoiceNo: "PI-LHR-26-0013", supplier: "Audio Tech International",   initials: "AT", date: "2026-04-22", reason: "Expired stock",       itemCount: 3, totalAmount: 24500, status: "POSTED" as const },
-  { id: 4, returnNo: "PR-KHI-26-0009", invoiceNo: "PI-KHI-26-0042", supplier: "China Mobile Plaza Trading", initials: "CM", date: "2026-04-30", reason: "Wrong color",         itemCount: 4, totalAmount: 32500, status: "DRAFT"    as const },
+  { id: 1, returnNo: "PR-26-0008", invoiceNo: "PI-26-0040", supplier: "Pak Accessories Imports",    initials: "PA", date: "2026-04-28", reason: "Damaged in transit", itemCount: 2, totalAmount: 18400, status: "POSTED" as const },
+  { id: 2, returnNo: "PR-26-0007", invoiceNo: "PI-26-0038", supplier: "Karachi Wholesale Cells",    initials: "KW", date: "2026-04-25", reason: "Wrong specification",itemCount: 1, totalAmount: 12000, status: "APPROVED" as const },
+  { id: 3, returnNo: "PR-26-0003", invoiceNo: "PI-26-0013", supplier: "Audio Tech International",   initials: "AT", date: "2026-04-22", reason: "Expired stock",       itemCount: 3, totalAmount: 24500, status: "POSTED" as const },
+  { id: 4, returnNo: "PR-26-0009", invoiceNo: "PI-26-0042", supplier: "China Mobile Plaza Trading", initials: "CM", date: "2026-04-30", reason: "Wrong color",         itemCount: 4, totalAmount: 32500, status: "DRAFT"    as const },
 ];
 
 export const PR_STATUS_VARIANT = {

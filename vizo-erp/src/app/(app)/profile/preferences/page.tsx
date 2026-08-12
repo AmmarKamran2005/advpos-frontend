@@ -17,7 +17,7 @@ export default function PreferencesPage() {
   const { theme, setTheme } = useTheme();
   const [emailNotifs, setEmailNotifs] = React.useState(true);
   const [pushNotifs, setPushNotifs] = React.useState(false);
-  const [smsNotifs, setSmsNotifs] = React.useState(true);
+  const [waNotifs, setWaNotifs] = React.useState(true);
 
   return (
     <>
@@ -73,11 +73,11 @@ export default function PreferencesPage() {
               <h3 className="text-base font-semibold text-navy-900 dark:text-white mb-4">Defaults</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-2xl">
                 <div>
-                  <Label className="mb-1.5 inline-block">Default branch on login</Label>
+                  <Label className="mb-1.5 inline-block">Default location on login</Label>
                   <SelectNative defaultValue="1">
                     <option value="1">Karachi Head Office</option>
-                    <option value="2">Lahore Branch</option>
-                    <option value="3">Islamabad Branch</option>
+                    <option value="2">Lahore Location</option>
+                    <option value="3">Islamabad Location</option>
                   </SelectNative>
                 </div>
                 <div>
@@ -114,7 +114,7 @@ export default function PreferencesPage() {
               <div className="space-y-1">
                 <NotifRow icon={Bell}        label="In-app notifications" desc="Bell icon on top bar"          checked enabled={true}  onChange={() => {}} />
                 <NotifRow icon={Mail}        label="Email notifications"   desc="Sent to umer@vizo.com.pk"     checked={emailNotifs} enabled onChange={setEmailNotifs} />
-                <NotifRow icon={MessageSquare} label="SMS notifications"   desc="Sent to 0300 7287607"        checked={smsNotifs}   enabled onChange={setSmsNotifs} />
+                <NotifRow icon={MessageSquare} label="WhatsApp updates"    desc="Sent to 0300 7287607"        checked={waNotifs}   enabled onChange={setWaNotifs} />
                 <NotifRow icon={Bell}        label="Browser push"          desc="Requires browser permission"  checked={pushNotifs}  enabled onChange={setPushNotifs} />
               </div>
             </CardBody>

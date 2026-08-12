@@ -22,7 +22,7 @@ import { toast } from "@/components/ui/toaster";
    EntityFormDialog
    --------------------------------------------------------------------------
    Generic create/edit dialog for simple entities (categories, brands, uom,
-   warehouses, accounts, templates, etc.). Pass:
+   locations, accounts, templates, etc.). Pass:
      - schema: zod schema
      - fields: declarative field config
      - defaultValues / values to populate

@@ -68,7 +68,7 @@ export default function CreditHoldsPage() {
                       </div>
                       <div className="text-sm text-slate-700 dark:text-slate-200 mt-0.5">{o.customerName}</div>
                       <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                        {o.customerType} · {o.branch} · {o.salesPerson} · {formatDate(o.orderDate)}
+                        {o.customerType} · {o.location} · {o.salesPerson} · {formatDate(o.orderDate)}
                       </div>
                       {o.creditHoldReason && (
                         <div className="mt-2 inline-flex items-center gap-1.5 text-xs text-warning-dark dark:text-warning-light bg-warning/10 px-2.5 py-1 rounded">

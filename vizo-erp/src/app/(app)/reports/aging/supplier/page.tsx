@@ -37,7 +37,7 @@ const TOTALS = AGING.reduce((acc, r) => ({
 export default function SupplierAgingPage() {
   const today = new Date().toISOString().slice(0, 10);
   const [asOf, setAsOf] = React.useState(today);
-  const [branchId, setBranchId] = React.useState<number | null>(null);
+  const [locationId, setLocationId] = React.useState<number | null>(null);
 
   return (
     <>
@@ -46,7 +46,7 @@ export default function SupplierAgingPage() {
         title="Accounts Payable Aging"
         subtitle={`Supplier payables by age — as of ${asOf}`}
         actions={
-          <ReportToolbar mode="asOf" reportName="AP Aging" asOfDate={asOf} onAsOfChange={setAsOf} branchId={branchId} onBranchChange={setBranchId} />
+          <ReportToolbar mode="asOf" reportName="AP Aging" asOfDate={asOf} onAsOfChange={setAsOf} locationId={locationId} onLocationChange={setLocationId} />
         }
       />
 

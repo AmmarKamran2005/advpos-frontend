@@ -19,7 +19,7 @@ import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, Command
 import { vizoResolver } from "@/lib/zod-resolver";
 import { parties } from "@/data/parties";
 import { products } from "@/data/products";
-import { warehouses } from "@/data/admin";
+import { activeLocations } from "@/data/settings";
 import { toast } from "@/components/ui/toaster";
 import { formatMoney } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -35,7 +35,7 @@ const ItemSchema = z.object({
 
 const Schema = z.object({
   supplierId: z.coerce.number({ message: "Pick a supplier" }).positive("Pick a supplier"),
-  warehouseId: z.coerce.number().positive("Pick a warehouse"),
+  locationId: z.coerce.number().positive("Pick a location"),
   poDate: z.string().min(1),
   expectedDate: z.string().min(1, "Expected date required"),
   items: z.array(ItemSchema).min(1, "Add at least one item"),
@@ -54,7 +54,7 @@ export default function NewPurchaseOrderPage() {
     resolver: vizoResolver(Schema),
     defaultValues: {
       supplierId: 0 as unknown as number,
-      warehouseId: warehouses[0]?.id ?? 1,
+      locationId: activeLocations()[0]?.id ?? 1,
       poDate: new Date().toISOString().slice(0, 10),
       expectedDate: new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10),
       items: [],
@@ -153,12 +153,12 @@ export default function NewPurchaseOrderPage() {
                 </FormItem>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <FormField control={form.control} name="warehouseId" render={({ field }) => (
+                  <FormField control={form.control} name="locationId" render={({ field }) => (
                     <FormItem>
-                      <FormLabel required>Receiving Warehouse</FormLabel>
+                      <FormLabel required>Receiving Location</FormLabel>
                       <FormControl>
                         <SelectNative {...field}>
-                          {warehouses.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
+                          {activeLocations().map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
                         </SelectNative>
                       </FormControl>
                       <FormMessage />

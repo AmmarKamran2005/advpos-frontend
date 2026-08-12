@@ -19,8 +19,8 @@ import { toast } from "@/components/ui/toaster";
 
 const RECENT_ACTIVITY = [
   { id: 1, action: "Logged in",                    time: "2 min ago",     ip: "182.181.45.10" },
-  { id: 2, action: "Dispatched order ORD-KHI-26-0142", time: "30 min ago", ip: "182.181.45.10" },
-  { id: 3, action: "Confirmed order ORD-KHI-26-0141",  time: "1 hour ago", ip: "182.181.45.10" },
+  { id: 2, action: "Dispatched order ORD-26-0142", time: "30 min ago", ip: "182.181.45.10" },
+  { id: 3, action: "Confirmed order ORD-26-0141",  time: "1 hour ago", ip: "182.181.45.10" },
   { id: 4, action: "Logged in",                    time: "Yesterday",      ip: "182.181.45.10" },
 ];
 
@@ -133,15 +133,15 @@ export default function UserDetailPage() {
 
             <Card>
               <CardBody>
-                <h3 className="text-base font-semibold text-navy-900 dark:text-white mb-4">Branch Access</h3>
+                <h3 className="text-base font-semibold text-navy-900 dark:text-white mb-4">Location Access</h3>
                 <div className="space-y-3">
-                  {u.branches.map((b) => (
+                  {u.locations.map((b) => (
                     <div key={b} className="flex items-center justify-between p-3 border border-slate-200 dark:border-navy-700 rounded-lg">
                       <Badge variant="muted">{b}</Badge>
                       <Button variant="ghost" size="sm" className="text-danger">Remove</Button>
                     </div>
                   ))}
-                  <Button variant="secondary" className="w-full">+ Grant branch access</Button>
+                  <Button variant="secondary" className="w-full">+ Grant location access</Button>
                 </div>
               </CardBody>
             </Card>

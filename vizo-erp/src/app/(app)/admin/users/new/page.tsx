@@ -16,7 +16,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage, FormDescription } from "@/components/ui/form";
 import { vizoResolver } from "@/lib/zod-resolver";
-import { roles, branchesAdmin } from "@/data/admin";
+import { roles } from "@/data/admin";
+import { activeLocations } from "@/data/settings";
 import { toast } from "@/components/ui/toaster";
 
 const Schema = z.object({
@@ -25,7 +26,7 @@ const Schema = z.object({
   phone: z.string().min(11, "Pakistan number: 11 digits").regex(/^03\d{9}$/, "Format: 03XXXXXXXXX"),
   employeeCode: z.string().min(2).max(20).regex(/^[A-Z0-9-]+$/, "Uppercase letters/digits/hyphens"),
   roles: z.array(z.string()).min(1, "Pick at least one role"),
-  branches: z.array(z.string()).min(1, "Grant access to at least one branch"),
+  locations: z.array(z.string()).min(1, "Grant access to at least one location"),
   sendInvite: z.boolean(),
   isActive: z.boolean(),
 });
@@ -38,7 +39,7 @@ export default function NewUserPage() {
     resolver: vizoResolver(Schema),
     defaultValues: {
       fullName: "", email: "", phone: "", employeeCode: "",
-      roles: [], branches: [], sendInvite: true, isActive: true,
+      roles: [], locations: [], sendInvite: true, isActive: true,
     },
   });
 
@@ -142,12 +143,12 @@ export default function NewUserPage() {
 
               <Card>
                 <CardBody>
-                  <h3 className="text-sm font-semibold text-navy-900 dark:text-white mb-4">Branch Access <span className="text-danger">*</span></h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">User will only see data from these branches.</p>
-                  <FormField control={form.control} name="branches" render={({ field }) => (
+                  <h3 className="text-sm font-semibold text-navy-900 dark:text-white mb-4">Location Access <span className="text-danger">*</span></h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">The user only sees stock and documents for these locations.</p>
+                  <FormField control={form.control} name="locations" render={({ field }) => (
                     <FormItem>
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                        {branchesAdmin.map((b) => {
+                        {activeLocations().map((b) => {
                           const checked = field.value.includes(b.code);
                           return (
                             <label key={b.id} className="flex items-center gap-2.5 p-3 border border-slate-200 dark:border-navy-700 rounded-lg cursor-pointer hover:border-brand-yellow/40 transition-colors">

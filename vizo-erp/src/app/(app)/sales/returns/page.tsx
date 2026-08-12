@@ -12,6 +12,7 @@ import { DataTable, type Column } from "@/components/ui/data-table";
 import { FilterBar } from "@/components/ui/filter-bar";
 import { salesReturns, RETURN_STATUS_VARIANT, type Return } from "@/data/sales";
 import { formatMoney, formatDate } from "@/lib/format";
+import { statusLabel } from "@/lib/labels";
 
 export default function SalesReturnsPage() {
   const [search, setSearch] = React.useState("");
@@ -32,7 +33,7 @@ export default function SalesReturnsPage() {
           <Avatar initials={r.customerInitials} size="sm" />
           <div>
             <div className="font-medium text-navy-900 dark:text-white">{r.customerName}</div>
-            <div className="text-xs text-slate-500 dark:text-slate-400">{r.branch}</div>
+            <div className="text-xs text-slate-500 dark:text-slate-400">{r.location}</div>
           </div>
         </div>
       )
@@ -51,7 +52,7 @@ export default function SalesReturnsPage() {
     },
     { key: "totalAmount", header: "Amount", align: "right", cell: (r) => <span className="tabular text-sm font-semibold text-warning">{formatMoney(r.totalAmount)}</span> },
     { key: "refundMethod", header: "Refund Via", cell: (r) => <Badge variant="info">{r.refundMethod}</Badge> },
-    { key: "status", header: "Status", cell: (r) => <StatusPill variant={RETURN_STATUS_VARIANT[r.status]}>{r.status}</StatusPill> },
+    { key: "status", header: "Status", cell: (r) => <StatusPill variant={RETURN_STATUS_VARIANT[r.status]}>{statusLabel(r.status)}</StatusPill> },
   ];
 
   return (

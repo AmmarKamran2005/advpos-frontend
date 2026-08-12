@@ -40,7 +40,7 @@ const TOTALS = AGING.reduce((acc, r) => ({
 export default function CustomerAgingPage() {
   const today = new Date().toISOString().slice(0, 10);
   const [asOf, setAsOf] = React.useState(today);
-  const [branchId, setBranchId] = React.useState<number | null>(null);
+  const [locationId, setLocationId] = React.useState<number | null>(null);
 
   return (
     <>
@@ -51,7 +51,7 @@ export default function CustomerAgingPage() {
         actions={
           <>
             <Button variant="secondary" size="md" className="gap-1.5" onClick={() => toast.success("Sending bulk SMS reminders…", { description: `${AGING.filter(r => r.days_31_60 + r.days_61_90 + r.days_over_90 > 0).length} overdue customers will receive a payment reminder.` })}><MessageSquare /><span className="hidden sm:inline">Send Reminders</span></Button>
-            <ReportToolbar mode="asOf" reportName="AR Aging" asOfDate={asOf} onAsOfChange={setAsOf} branchId={branchId} onBranchChange={setBranchId} />
+            <ReportToolbar mode="asOf" reportName="AR Aging" asOfDate={asOf} onAsOfChange={setAsOf} locationId={locationId} onLocationChange={setLocationId} />
           </>
         }
       />

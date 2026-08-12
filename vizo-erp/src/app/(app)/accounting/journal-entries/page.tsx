@@ -11,6 +11,7 @@ import { DataTable, type Column } from "@/components/ui/data-table";
 import { FilterBar } from "@/components/ui/filter-bar";
 import { journalEntries, JE_STATUS_VARIANT, type JE } from "@/data/accounting";
 import { formatMoney, formatDate } from "@/lib/format";
+import { statusLabel } from "@/lib/labels";
 
 export default function JournalEntriesPage() {
   const [search, setSearch] = React.useState("");
@@ -24,10 +25,10 @@ export default function JournalEntriesPage() {
     { key: "entryType", header: "Type", cell: (j) => <Badge variant="muted">{j.entryType}</Badge> },
     { key: "reference", header: "Reference", cell: (j) => <span className="tabular text-xs text-slate-600 dark:text-slate-300">{j.reference}</span> },
     { key: "narration", header: "Narration", cell: (j) => <span className="text-sm text-slate-700 dark:text-slate-200 line-clamp-1">{j.narration}</span> },
-    { key: "branch", header: "Branch", cell: (j) => <span className="text-xs text-slate-600 dark:text-slate-300">{j.branch}</span> },
+    { key: "location", header: "Location", cell: (j) => <span className="text-xs text-slate-600 dark:text-slate-300">{j.location}</span> },
     { key: "totalDebit", header: "Debit", align: "right", cell: (j) => <span className="tabular text-sm font-semibold text-navy-900 dark:text-white">{formatMoney(j.totalDebit)}</span> },
     { key: "totalCredit", header: "Credit", align: "right", cell: (j) => <span className="tabular text-sm font-semibold text-navy-900 dark:text-white">{formatMoney(j.totalCredit)}</span> },
-    { key: "status", header: "Status", cell: (j) => <StatusPill variant={JE_STATUS_VARIANT[j.status]}>{j.status}</StatusPill> },
+    { key: "status", header: "Status", cell: (j) => <StatusPill variant={JE_STATUS_VARIANT[j.status]}>{statusLabel(j.status)}</StatusPill> },
   ];
 
   return (

@@ -14,6 +14,7 @@ import { ConfirmDialog } from "@/components/dialogs/confirm-dialog";
 import { purchaseReturns, PR_STATUS_VARIANT } from "@/data/purchases";
 import { formatMoney, formatDate } from "@/lib/format";
 import { toast } from "@/components/ui/toaster";
+import { statusLabel } from "@/lib/labels";
 
 export default function PurchaseReturnDetailPage() {
   const params = useParams<{ id: string }>();
@@ -32,7 +33,7 @@ export default function PurchaseReturnDetailPage() {
           <div className="flex items-center gap-3 flex-wrap">
             <RotateCcw className="size-6 text-brand-yellow" />
             <span>{r.returnNo}</span>
-            <StatusPill variant={PR_STATUS_VARIANT[r.status]}>{r.status}</StatusPill>
+            <StatusPill variant={PR_STATUS_VARIANT[r.status]}>{statusLabel(r.status)}</StatusPill>
           </div>
         }
         subtitle={`Debit note to ${r.supplier} · ${formatDate(r.date)} · against ${r.invoiceNo}`}

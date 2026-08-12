@@ -124,7 +124,7 @@ export default function NewOrderPage() {
         description: "Customer credit limit exceeded — accountant override needed.",
       });
     } else {
-      toast.success("Order submitted", { description: `Order ORD-KHI-26-0143 of ${formatMoney(total)} created.` });
+      toast.success("Order submitted", { description: `Order ORD-26-0143 of ${formatMoney(total)} created.` });
     }
     router.push("/sales/orders");
   }

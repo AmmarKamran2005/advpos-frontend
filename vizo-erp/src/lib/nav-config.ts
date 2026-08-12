@@ -5,13 +5,12 @@ import {
   Users,
   Truck,
   Package,
-  BookOpen,
-  Moon,
+  Wallet,
   BarChart3,
-  Sparkles,
-  MessageSquare,
-  Shield,
+  Send,
+  Settings2,
 } from "lucide-react";
+import { canAny, type RoleKey } from "@/data/settings";
 
 export type NavBadge = {
   text: string;
@@ -23,10 +22,12 @@ export type NavChild = {
   href: string;
   match: string;
   badge?: NavBadge;
+  /** Hidden unless the signed-in role holds at least one of these. */
+  perms?: string[];
 };
 
 export type NavNode =
-  | { type: "section"; label: string }
+  | { type: "section"; label: string; perms?: string[] }
   | {
       type: "item";
       label: string;
@@ -34,6 +35,7 @@ export type NavNode =
       href: string;
       match: string;
       badge?: NavBadge;
+      perms?: string[];
     }
   | {
       type: "group";
@@ -43,6 +45,11 @@ export type NavNode =
       children: NavChild[];
     };
 
+/**
+ * Labels here are the words the staff actually use — no accounting jargon on
+ * screens the sales and order teams live in. The accounting group keeps the
+ * standard statement names, because the accountant works by those.
+ */
 export const navigation: NavNode[] = [
   {
     type: "item",
@@ -52,151 +59,123 @@ export const navigation: NavNode[] = [
     match: "dashboard",
   },
 
-  { type: "section", label: "Sales & Customers" },
+  { type: "section", label: "Daily Work" },
   {
     type: "group",
     label: "Sales",
     icon: ShoppingCart,
     match: "sales",
     children: [
-      { label: "Orders",        href: "/sales/orders",       match: "sales.orders" },
-      { label: "Invoices",      href: "/sales/invoices",     match: "sales.invoices" },
-      { label: "Sales Returns", href: "/sales/returns",      match: "sales.returns" },
-      { label: "Credit Holds",  href: "/sales/credit-holds", match: "sales.credit-holds", badge: { text: "3", variant: "warning" } },
+      { label: "Customer Orders", href: "/sales/orders",       match: "sales.orders",   perms: ["orders.view"] },
+      { label: "Sale Invoices",   href: "/sales/invoices",     match: "sales.invoices", perms: ["invoices.view"] },
+      { label: "Sales Returns",   href: "/sales/returns",      match: "sales.returns",  perms: ["returns.sales"] },
+      { label: "Limit Alerts",    href: "/sales/credit-holds", match: "sales.credit-holds", perms: ["limits.manage"], badge: { text: "3", variant: "warning" } },
     ],
   },
-  {
-    type: "group",
-    label: "Parties",
-    icon: Users,
-    match: "parties",
-    children: [
-      { label: "All Parties",     href: "/parties",           match: "parties.all" },
-      { label: "Customers",       href: "/parties/customers", match: "parties.customers" },
-      { label: "Suppliers",       href: "/parties/suppliers", match: "parties.suppliers" },
-      { label: "Customer Visits", href: "/parties/visits",    match: "parties.visits" },
-    ],
-  },
-
-  { type: "section", label: "Purchases" },
   {
     type: "group",
     label: "Purchases",
     icon: Truck,
     match: "purchases",
     children: [
-      { label: "Purchase Orders",   href: "/purchases/orders",   match: "purchases.orders" },
-      { label: "Goods Receipts",    href: "/purchases/grns",     match: "purchases.grns", badge: { text: "2", variant: "info" } },
-      { label: "Purchase Invoices", href: "/purchases/invoices", match: "purchases.invoices" },
-      { label: "Purchase Returns",  href: "/purchases/returns",  match: "purchases.returns" },
+      { label: "Orders to Supplier", href: "/purchases/orders",   match: "purchases.orders",   perms: ["purchases.view"] },
+      { label: "Stock Received",     href: "/purchases/grns",     match: "purchases.grns",     perms: ["receipts.stock", "purchases.view"], badge: { text: "2", variant: "info" } },
+      { label: "Purchase Invoices",  href: "/purchases/invoices", match: "purchases.invoices", perms: ["purchases.view"] },
+      { label: "Purchase Returns",   href: "/purchases/returns",  match: "purchases.returns",  perms: ["purchases.view"] },
+    ],
+  },
+  {
+    type: "item",
+    label: "Delivery",
+    icon: Send,
+    href: "/delivery",
+    match: "delivery",
+    perms: ["delivery.view"],
+  },
+
+  { type: "section", label: "People" },
+  {
+    type: "group",
+    label: "People",
+    icon: Users,
+    match: "parties",
+    children: [
+      { label: "Customers",       href: "/parties/customers", match: "parties.customers", perms: ["customers.view"] },
+      { label: "Suppliers",       href: "/parties/suppliers", match: "parties.suppliers", perms: ["suppliers.manage", "purchases.view"] },
+      { label: "Customer Visits", href: "/parties/visits",    match: "parties.visits",    perms: ["customers.view"] },
     ],
   },
 
-  { type: "section", label: "Inventory" },
+  { type: "section", label: "Stock" },
   {
     type: "group",
-    label: "Inventory",
+    label: "Stock",
     icon: Package,
     match: "inventory",
     children: [
-      { label: "Products",         href: "/inventory/products",     match: "inventory.products" },
-      { label: "Categories",       href: "/inventory/categories",   match: "inventory.categories" },
-      { label: "Brands",           href: "/inventory/brands",       match: "inventory.brands" },
-      { label: "Units of Measure", href: "/inventory/uom",          match: "inventory.uom" },
-      { label: "Stock Levels",     href: "/inventory/stock-levels", match: "inventory.stock-levels" },
-      { label: "Stock Movements",  href: "/inventory/movements",    match: "inventory.movements" },
-      { label: "Stock Adjustments",href: "/inventory/adjustments",  match: "inventory.adjustments" },
-      { label: "Stock Transfers",  href: "/inventory/transfers",    match: "inventory.transfers" },
-      { label: "Warehouses",       href: "/inventory/warehouses",   match: "inventory.warehouses" },
+      { label: "Items",            href: "/inventory/products",     match: "inventory.products",     perms: ["stock.view"] },
+      { label: "Categories",       href: "/inventory/categories",   match: "inventory.categories",   perms: ["products.manage"] },
+      { label: "Brands",           href: "/inventory/brands",       match: "inventory.brands",       perms: ["products.manage"] },
+      { label: "Stock in Hand",    href: "/inventory/stock-levels", match: "inventory.stock-levels", perms: ["stock.view"] },
+      { label: "Transfers",        href: "/inventory/transfers",    match: "inventory.transfers",    perms: ["stock.transfer"] },
+      { label: "Stock Correction", href: "/inventory/adjustments",  match: "inventory.adjustments",  perms: ["stock.correct"] },
+      { label: "Stock History",    href: "/inventory/movements",    match: "inventory.movements",    perms: ["stock.view"] },
     ],
   },
 
-  { type: "section", label: "Accounting" },
+  { type: "section", label: "Money", perms: ["money.view", "ledger.view"] },
   {
     type: "group",
-    label: "Accounting",
-    icon: BookOpen,
+    label: "Money",
+    icon: Wallet,
     match: "accounting",
     children: [
-      { label: "Chart of Accounts", href: "/accounting/coa",             match: "accounting.coa" },
-      { label: "Journal Entries",   href: "/accounting/journal-entries", match: "accounting.je" },
-      { label: "Vouchers",          href: "/accounting/vouchers",        match: "accounting.vouchers" },
-      { label: "Expenses",          href: "/accounting/expenses",        match: "accounting.expenses" },
-      { label: "General Ledger",    href: "/accounting/ledger",          match: "accounting.ledger" },
-      { label: "Trial Balance",     href: "/accounting/trial-balance",   match: "accounting.tb" },
-      { label: "Profit & Loss",     href: "/accounting/profit-loss",     match: "accounting.pl" },
-      { label: "Balance Sheet",     href: "/accounting/balance-sheet",   match: "accounting.bs" },
-      { label: "Cash Flow",         href: "/accounting/cash-flow",       match: "accounting.cf" },
-      { label: "Bank Reconciliation", href: "/accounting/reconciliation",match: "accounting.recon" },
-      { label: "Period Close",      href: "/accounting/period-close",    match: "accounting.pc" },
-    ],
-  },
-  {
-    type: "group",
-    label: "Zakat",
-    icon: Moon,
-    match: "zakat",
-    children: [
-      { label: "Periods",      href: "/zakat/periods",      match: "zakat.periods" },
-      { label: "Calculations", href: "/zakat/calculations", match: "zakat.calc" },
+      { label: "Money Received",   href: "/accounting/vouchers",        match: "accounting.vouchers", perms: ["money.view"] },
+      { label: "Expenses",         href: "/accounting/expenses",        match: "accounting.expenses", perms: ["expenses.manage"] },
+      { label: "Account List",     href: "/accounting/coa",             match: "accounting.coa",      perms: ["ledger.view"] },
+      { label: "Ledgers",          href: "/accounting/ledgers",         match: "accounting.ledgers",  perms: ["ledger.view"] },
+      { label: "Manual Entries",   href: "/accounting/journal-entries", match: "accounting.je",       perms: ["ledger.manage"] },
+      { label: "Trial Balance",    href: "/accounting/trial-balance",   match: "accounting.tb",       perms: ["statements.view"] },
+      { label: "Income Statement", href: "/accounting/profit-loss",     match: "accounting.pl",       perms: ["statements.view"] },
+      { label: "Balance Sheet",    href: "/accounting/balance-sheet",   match: "accounting.bs",       perms: ["statements.view"] },
+      { label: "Year End",         href: "/accounting/period-close",    match: "accounting.pc",       perms: ["statements.view"] },
     ],
   },
 
-  { type: "section", label: "Insights" },
+  { type: "section", label: "Insights", perms: ["reports.view"] },
   {
     type: "group",
     label: "Reports",
     icon: BarChart3,
     match: "reports",
     children: [
-      { label: "Report Library",    href: "/reports",                  match: "reports.lib" },
-      { label: "Sales Reports",     href: "/reports/sales-summary",    match: "reports.sales" },
-      { label: "Purchase Reports",  href: "/reports/purchase-summary", match: "reports.purch" },
-      { label: "Inventory Reports", href: "/reports/inventory",        match: "reports.inv" },
-      { label: "AR Aging",          href: "/reports/aging/customer",   match: "reports.ar-aging" },
-      { label: "AP Aging",          href: "/reports/aging/supplier",   match: "reports.ap-aging" },
-      { label: "Top Customers",     href: "/reports/top-customers",    match: "reports.top-cust" },
-      { label: "Slow Moving",       href: "/reports/slow-moving",      match: "reports.slow" },
-      { label: "Dead Stock",        href: "/reports/dead-stock",       match: "reports.dead" },
-      { label: "Sales Trends",      href: "/reports/sales-trends",     match: "reports.trends" },
-    ],
-  },
-  {
-    type: "item",
-    label: "AI Assistant",
-    icon: Sparkles,
-    href: "/ai-assistant",
-    match: "ai",
-    badge: { text: "NEW", variant: "accent" },
-  },
-
-  { type: "section", label: "Communication" },
-  {
-    type: "group",
-    label: "SMS / Notifications",
-    icon: MessageSquare,
-    match: "sms",
-    children: [
-      { label: "SMS History", href: "/notifications/sms",       match: "sms.history" },
-      { label: "Templates",   href: "/notifications/templates", match: "sms.templates" },
-      { label: "Gateways",    href: "/notifications/gateways",  match: "sms.gateways" },
+      { label: "All Reports",     href: "/reports",                match: "reports.lib",      perms: ["reports.view"] },
+      { label: "Sales Summary",   href: "/reports/sales-summary",  match: "reports.sales",    perms: ["reports.view"] },
+      { label: "Sales Trends",    href: "/reports/sales-trends",   match: "reports.trends",   perms: ["reports.view"] },
+      { label: "Top Customers",   href: "/reports/top-customers",  match: "reports.top-cust", perms: ["reports.view"] },
+      { label: "Recovery — Customers", href: "/reports/aging/customer", match: "reports.ar-aging", perms: ["reports.full"] },
+      { label: "Recovery — Suppliers", href: "/reports/aging/supplier", match: "reports.ap-aging", perms: ["reports.full"] },
+      { label: "Slow Selling",    href: "/reports/slow-moving",    match: "reports.slow",     perms: ["reports.view"] },
+      { label: "Not Selling",     href: "/reports/dead-stock",     match: "reports.dead",     perms: ["reports.view"] },
     ],
   },
 
-  { type: "section", label: "Administration" },
+  { type: "section", label: "Setup", perms: ["setup.manage", "users.manage", "activity.view"] },
   {
     type: "group",
-    label: "Administration",
-    icon: Shield,
+    label: "Setup",
+    icon: Settings2,
     match: "admin",
     children: [
-      { label: "Users",               href: "/admin/users",     match: "admin.users" },
-      { label: "Roles & Permissions", href: "/admin/roles",     match: "admin.roles" },
-      { label: "Branches",            href: "/admin/branches",  match: "admin.branches" },
-      { label: "Audit Log",           href: "/admin/audit-log", match: "admin.audit" },
-      { label: "Backup & Restore",    href: "/admin/backup",    match: "admin.backup" },
-      { label: "System Settings",     href: "/admin/settings",  match: "admin.settings" },
-      { label: "LLM Usage & Cost",    href: "/admin/llm-usage", match: "admin.llm" },
+      { label: "Locations",        href: "/admin/locations",     match: "admin.locations",  perms: ["setup.manage"] },
+      { label: "Account Types",    href: "/admin/account-types", match: "admin.acctypes",   perms: ["setup.manage"] },
+      { label: "Numbering",        href: "/admin/numbering",     match: "admin.numbering",  perms: ["setup.manage"] },
+      { label: "Couriers",         href: "/admin/couriers",      match: "admin.couriers",   perms: ["setup.manage"] },
+      { label: "Users",            href: "/admin/users",         match: "admin.users",      perms: ["users.manage"] },
+      { label: "Roles",            href: "/admin/roles",         match: "admin.roles",      perms: ["users.manage"] },
+      { label: "Settings",         href: "/admin/settings",      match: "admin.settings",   perms: ["setup.manage"] },
+      { label: "Backup & Restore", href: "/admin/backup",        match: "admin.backup",     perms: ["backup.manage"] },
+      { label: "Activity History", href: "/admin/audit-log",     match: "admin.audit",      perms: ["activity.view"] },
     ],
   },
 ];
@@ -205,4 +184,34 @@ export const navigation: NavNode[] = [
 export function isActiveMatch(current: string | undefined, target: string) {
   if (!current || !target) return false;
   return current === target || current.startsWith(target + ".");
+}
+
+/**
+ * Trim the tree down to what this role may see. Groups whose children all get
+ * filtered out disappear, and so do the section headings left standing alone.
+ */
+export function navigationForRole(role: RoleKey): NavNode[] {
+  const visible: NavNode[] = [];
+
+  for (const node of navigation) {
+    if (node.type === "item") {
+      if (canAny(role, node.perms ?? [])) visible.push(node);
+      continue;
+    }
+
+    if (node.type === "group") {
+      const children = node.children.filter((c) => canAny(role, c.perms ?? []));
+      if (children.length > 0) visible.push({ ...node, children });
+      continue;
+    }
+
+    visible.push(node);
+  }
+
+  // Drop section headings with nothing under them.
+  return visible.filter((node, i) => {
+    if (node.type !== "section") return true;
+    const next = visible[i + 1];
+    return next !== undefined && next.type !== "section";
+  });
 }

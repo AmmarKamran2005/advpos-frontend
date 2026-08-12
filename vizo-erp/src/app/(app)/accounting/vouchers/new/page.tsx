@@ -19,10 +19,11 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from "@/components/ui/command";
 import { vizoResolver } from "@/lib/zod-resolver";
 import { parties } from "@/data/parties";
-import { branchesAdmin } from "@/data/admin";
+import { activeLocations } from "@/data/settings";
 import { toast } from "@/components/ui/toaster";
 import { formatMoney } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { defaultLocation } from "@/data/settings";
 
 const VOUCHER_TYPES = [
   { code: "CR", name: "Cash Receipt",   isReceipt: true,  paymentMethod: "CASH",      icon: ArrowDownToLine },
@@ -37,7 +38,7 @@ const VOUCHER_TYPES = [
 const Schema = z.object({
   type: z.enum(["CR", "CP", "BR", "BP", "WR", "WP", "JV"]),
   date: z.string().min(1),
-  branchId: z.coerce.number().positive(),
+  locationId: z.coerce.number().positive(),
   partyType: z.enum(["CUSTOMER", "SUPPLIER", "ACCOUNT", "EMPLOYEE"]),
   partyId: z.coerce.number({ message: "Pick a party" }).positive("Pick a party"),
   amount: z.coerce.number().positive("Amount > 0"),
@@ -57,7 +58,7 @@ export default function NewVoucherPage() {
     defaultValues: {
       type: "CR",
       date: new Date().toISOString().slice(0, 10),
-      branchId: branchesAdmin[0]?.id ?? 1,
+      locationId: defaultLocation().id,
       partyType: "CUSTOMER",
       partyId: 0 as unknown as number,
       amount: 0,
@@ -149,9 +150,9 @@ export default function NewVoucherPage() {
                   <FormField control={form.control} name="date" render={({ field }) => (
                     <FormItem><FormLabel required>Date</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>
                   )} />
-                  <FormField control={form.control} name="branchId" render={({ field }) => (
-                    <FormItem><FormLabel required>Branch</FormLabel><FormControl>
-                      <SelectNative {...field}>{branchesAdmin.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</SelectNative>
+                  <FormField control={form.control} name="locationId" render={({ field }) => (
+                    <FormItem><FormLabel required>Location</FormLabel><FormControl>
+                      <SelectNative {...field}>{activeLocations().map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}</SelectNative>
                     </FormControl><FormMessage /></FormItem>
                   )} />
 

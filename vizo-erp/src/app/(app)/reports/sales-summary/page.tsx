@@ -11,7 +11,7 @@ import { formatMoney, formatCompact } from "@/lib/format";
 export default function SalesSummaryPage() {
   const [from, setFrom] = React.useState(() => new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10));
   const [to, setTo] = React.useState(() => new Date().toISOString().slice(0, 10));
-  const [branchId, setBranchId] = React.useState<number | null>(null);
+  const [locationId, setLocationId] = React.useState<number | null>(null);
 
   return (
     <>
@@ -20,7 +20,7 @@ export default function SalesSummaryPage() {
         title="Sales Summary"
         subtitle="High-level sales performance"
         actions={
-          <ReportToolbar mode="range" reportName={"Sales Summary"} fromDate={from} toDate={to} onRangeChange={(f, t) => { setFrom(f); setTo(t); }} branchId={branchId} onBranchChange={setBranchId} />
+          <ReportToolbar mode="range" reportName={"Sales Summary"} fromDate={from} toDate={to} onRangeChange={(f, t) => { setFrom(f); setTo(t); }} locationId={locationId} onLocationChange={setLocationId} />
         }
       />
 

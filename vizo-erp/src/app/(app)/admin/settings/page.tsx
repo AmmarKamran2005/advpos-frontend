@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { ConfirmDialog } from "@/components/dialogs/confirm-dialog";
 import { toast } from "@/components/ui/toaster";
+import { statusLabel } from "@/lib/labels";
 
 export default function SettingsPage() {
   const [dirty, setDirty] = React.useState(false);
@@ -91,7 +92,7 @@ export default function SettingsPage() {
             <CardBody>
               <h3 className="text-base font-semibold text-navy-900 dark:text-white mb-4">Document Numbering</h3>
               <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
-                Format: <code className="bg-slate-100 dark:bg-navy-700 px-2 py-0.5 rounded font-mono text-xs">{`{branch}-{prefix}-{YY}-{seq}`}</code>
+                Format: <code className="bg-slate-100 dark:bg-navy-700 px-2 py-0.5 rounded font-mono text-xs">{`{location}-{prefix}-{YY}-{seq}`}</code>
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <Field label="Sales Order"><Input defaultValue="ORD" /></Field>
@@ -157,11 +158,7 @@ export default function SettingsPage() {
             {[
               { name: "Easypaisa Business",  status: "Connected",    desc: "Mobile wallet receipts", color: "success" as const },
               { name: "JazzCash Business",    status: "Connected",    desc: "Mobile wallet receipts", color: "success" as const },
-              { name: "Jazz BizSMS",          status: "Connected",    desc: "Primary SMS gateway",    color: "success" as const },
-              { name: "Telenor Tameer SMS",   status: "Connected",    desc: "Failover SMS gateway",   color: "success" as const },
               { name: "Twilio (PK route)",    status: "Disconnected", desc: "International fallback", color: "muted"   as const },
-              { name: "Google Gemini",        status: "Connected",    desc: "LLM AI assistant",       color: "success" as const },
-              { name: "OpenAI",               status: "Disconnected", desc: "LLM fallback",           color: "muted"   as const },
               { name: "FBR e-Invoice",        status: "Not configured", desc: "Tax authority integration", color: "muted" as const },
             ].map((i) => (
               <Card key={i.name}>
@@ -177,7 +174,7 @@ export default function SettingsPage() {
                   </div>
                   <div className="mt-3 inline-flex items-center gap-1.5 text-xs">
                     <span className={`size-2 rounded-full ${i.color === "success" ? "bg-success" : "bg-slate-300"}`} />
-                    <span className={i.color === "success" ? "text-success" : "text-slate-500"}>{i.status}</span>
+                    <span className={i.color === "success" ? "text-success" : "text-slate-500"}>{statusLabel(i.status)}</span>
                   </div>
                 </CardBody>
               </Card>

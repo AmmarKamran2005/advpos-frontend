@@ -14,6 +14,7 @@ import { vouchers } from "@/data/accounting";
 import { formatMoney, formatDate } from "@/lib/format";
 import { toast } from "@/components/ui/toaster";
 import { cn } from "@/lib/utils";
+import { statusLabel } from "@/lib/labels";
 
 export default function VoucherDetailPage() {
   const params = useParams<{ id: string }>();
@@ -34,7 +35,7 @@ export default function VoucherDetailPage() {
           <div className="flex items-center gap-3 flex-wrap">
             <span>{v.voucherNo}</span>
             <Badge variant={isReceipt ? "success" : "danger"}>{v.typeName}</Badge>
-            <StatusPill variant={v.status === "POSTED" ? "success" : v.status === "RECONCILED" ? "info" : v.status === "CANCELLED" ? "danger" : "muted"}>{v.status}</StatusPill>
+            <StatusPill variant={v.status === "POSTED" ? "success" : v.status === "RECONCILED" ? "info" : v.status === "CANCELLED" ? "danger" : "muted"}>{statusLabel(v.status)}</StatusPill>
           </div>
         }
         subtitle={v.narration}
@@ -78,12 +79,12 @@ export default function VoucherDetailPage() {
               <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 text-sm">
                 <Meta label="Voucher Date" value={formatDate(v.date)} />
                 <Meta label="Type" value={v.typeName} />
-                <Meta label="Branch" value={v.branch} />
+                <Meta label="Location" value={v.location} />
                 <Meta label="Party" value={`${v.partyName} (${v.partyType})`} />
                 <Meta label="Payment Method" value={<Badge variant="muted">{v.paymentMethod}</Badge>} />
                 {v.paymentProvider && <Meta label="Provider" value={v.paymentProvider} />}
                 {v.reference && v.reference !== "—" && <Meta label="Reference" value={<span className="tabular">{v.reference}</span>} />}
-                <Meta label="Status" value={<StatusPill variant={v.status === "POSTED" ? "success" : v.status === "RECONCILED" ? "info" : "muted"}>{v.status}</StatusPill>} />
+                <Meta label="Status" value={<StatusPill variant={v.status === "POSTED" ? "success" : v.status === "RECONCILED" ? "info" : "muted"}>{statusLabel(v.status)}</StatusPill>} />
                 <Meta label="Created By" value={v.createdBy} />
               </dl>
             </CardBody>

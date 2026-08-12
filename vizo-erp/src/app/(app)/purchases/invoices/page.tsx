@@ -12,6 +12,7 @@ import { DataTable, type Column } from "@/components/ui/data-table";
 import { FilterBar } from "@/components/ui/filter-bar";
 import { purchaseInvoices, PI_STATUS_VARIANT, type PI } from "@/data/purchases";
 import { formatMoney, formatCompact, formatDate } from "@/lib/format";
+import { statusLabel } from "@/lib/labels";
 
 export default function PurchaseInvoicesPage() {
   const [search, setSearch] = React.useState("");
@@ -43,7 +44,7 @@ export default function PurchaseInvoicesPage() {
     { key: "total", header: "Total", align: "right", cell: (p) => <span className="tabular text-sm font-semibold text-navy-900 dark:text-white">{formatMoney(p.total)}</span> },
     { key: "balance", header: "Balance", align: "right", cell: (p) => <span className="tabular text-sm font-semibold text-warning">{formatMoney(p.balance)}</span> },
     { key: "paymentMethod", header: "Method", cell: (p) => <Badge variant="muted">{p.paymentMethod}</Badge> },
-    { key: "status", header: "Status", cell: (p) => <StatusPill variant={PI_STATUS_VARIANT[p.status]}>{p.status}</StatusPill> },
+    { key: "status", header: "Status", cell: (p) => <StatusPill variant={PI_STATUS_VARIANT[p.status]}>{statusLabel(p.status)}</StatusPill> },
   ];
 
   return (
