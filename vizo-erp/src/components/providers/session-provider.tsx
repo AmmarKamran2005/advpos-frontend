@@ -42,6 +42,14 @@ const roleStore = {
   },
 };
 
+/**
+ * Set the signed-in role from outside the provider — the login screen runs
+ * above the app shell, so it cannot use the hook.
+ */
+export function setActiveRole(role: RoleKey) {
+  roleStore.set(role);
+}
+
 export function SessionProvider({
   children,
   initialRole = "super-admin",

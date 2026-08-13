@@ -49,7 +49,7 @@ export const demoUsers: Record<RoleKey, CurrentUser> = {
   "super-admin": {
     id: 1,
     fullName: "Umer Memon",
-    email: "umer@vizo.com.pk",
+    email: "admin@advpos.pk",
     role: "super-admin",
     roleLabel: "Super Admin",
     initials: "UM",
@@ -59,7 +59,7 @@ export const demoUsers: Record<RoleKey, CurrentUser> = {
   accountant: {
     id: 2,
     fullName: "Hassan Raza",
-    email: "hassan@vizo.com.pk",
+    email: "accounts@advpos.pk",
     role: "accountant",
     roleLabel: "Accountant",
     initials: "HR",
@@ -69,7 +69,7 @@ export const demoUsers: Record<RoleKey, CurrentUser> = {
   "order-dept": {
     id: 4,
     fullName: "Bilal Ahmed",
-    email: "bilal@vizo.com.pk",
+    email: "order@advpos.pk",
     role: "order-dept",
     roleLabel: "Order Department",
     initials: "BA",
@@ -79,7 +79,7 @@ export const demoUsers: Record<RoleKey, CurrentUser> = {
   sales: {
     id: 7,
     fullName: "Zara Malik",
-    email: "zara@vizo.com.pk",
+    email: "sales@advpos.pk",
     role: "sales",
     roleLabel: "Sales",
     initials: "ZM",
@@ -89,6 +89,66 @@ export const demoUsers: Record<RoleKey, CurrentUser> = {
 };
 
 export const currentUser: CurrentUser = demoUsers["super-admin"];
+
+/**
+ * Sign-in details for the demo build. Every account uses the same password so
+ * the client can hand one line to whoever is reviewing.
+ *
+ * These are placeholders for a prototype with no backend — there is nothing to
+ * protect here. Real accounts arrive with the backend.
+ */
+export const DEMO_PASSWORD = "advpos1234";
+
+export type DemoAccount = {
+  role: RoleKey;
+  name: string;
+  email: string;
+  password: string;
+  /** One line on what this person does all day. */
+  blurb: string;
+  /** Where signing in as this person lands. */
+  landing: string;
+};
+
+export const demoAccounts: DemoAccount[] = [
+  {
+    role: "sales",
+    name: "Zara Malik",
+    email: "sales@advpos.pk",
+    password: DEMO_PASSWORD,
+    blurb: "Takes customer orders and follows up on payments.",
+    landing: "/dashboard",
+  },
+  {
+    role: "order-dept",
+    name: "Bilal Ahmed",
+    email: "order@advpos.pk",
+    password: DEMO_PASSWORD,
+    blurb: "Checks stock, packs orders, moves goods and books deliveries.",
+    landing: "/dashboard",
+  },
+  {
+    role: "accountant",
+    name: "Hassan Raza",
+    email: "accounts@advpos.pk",
+    password: DEMO_PASSWORD,
+    blurb: "Records money in and out, keeps the ledgers and statements.",
+    landing: "/dashboard",
+  },
+  {
+    role: "super-admin",
+    name: "Umer Memon",
+    email: "admin@advpos.pk",
+    password: DEMO_PASSWORD,
+    blurb: "Sees everything, plus users, setup and backup.",
+    landing: "/dashboard",
+  },
+];
+
+export function findDemoAccount(email: string) {
+  const needle = email.trim().toLowerCase();
+  return demoAccounts.find((a) => a.email.toLowerCase() === needle);
+}
 
 export const notifications: AppNotification[] = [
   { id: 1, type: "warning", icon: "alert-triangle", title: "3 orders crossed their limit", body: "Waiting for your approval",                 time: "2 min ago",  unread: true  },

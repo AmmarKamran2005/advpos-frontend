@@ -7,7 +7,10 @@ import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { vizoResolver } from "@/lib/zod-resolver";
 import { z } from "zod";
-import { Mail, Lock, Eye, EyeOff, Loader2, AlertCircle, ArrowRight, KeyRound } from "lucide-react";
+import {
+  Mail, Lock, Eye, EyeOff, Loader2, AlertCircle, ArrowRight,
+  ShoppingCart, ClipboardList, Wallet, Shield, Copy, Check,
+} from "lucide-react";
 import { useTheme } from "next-themes";
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from "@/components/ui/form";
 import { Button } from "@/components/ui/button";
@@ -16,45 +19,93 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Toaster, toast } from "@/components/ui/toaster";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
+import { setActiveRole } from "@/components/providers/session-provider";
+import { demoAccounts, findDemoAccount, DEMO_PASSWORD, type DemoAccount } from "@/data/mock";
+import type { RoleKey } from "@/data/settings";
+import { cn } from "@/lib/utils";
 
 const LoginSchema = z.object({
-  email:    z.string().min(1, "Email is required").email("Enter a valid email address"),
-  password: z.string().min(1, "Password is required").min(8, "Password must be at least 8 characters"),
+  email: z.string().min(1, "Email is required").email("Enter a valid email address"),
+  password: z.string().min(1, "Password is required"),
   remember: z.boolean().optional(),
 });
 
 type LoginForm = z.infer<typeof LoginSchema>;
 
+const PANEL_ICON: Record<RoleKey, typeof ShoppingCart> = {
+  sales: ShoppingCart,
+  "order-dept": ClipboardList,
+  accountant: Wallet,
+  "super-admin": Shield,
+};
+
+const PANEL_TONE: Record<RoleKey, { ring: string; chip: string }> = {
+  sales: { ring: "border-brand-yellow bg-brand-yellow/5", chip: "bg-brand-yellow/15 text-brand-yellow-700 dark:text-brand-yellow" },
+  "order-dept": { ring: "border-success bg-success/5", chip: "bg-success/15 text-success" },
+  accountant: { ring: "border-info bg-info/5", chip: "bg-info/15 text-info" },
+  "super-admin": { ring: "border-navy-900 dark:border-white bg-slate-100 dark:bg-navy-800", chip: "bg-slate-200 dark:bg-navy-700 text-navy-900 dark:text-white" },
+};
+
 export default function LoginPage() {
   const router = useRouter();
+  const { resolvedTheme } = useTheme();
+
   const [showPassword, setShowPassword] = React.useState(false);
   const [serverError, setServerError] = React.useState<string | null>(null);
-  const { resolvedTheme } = useTheme();
+  const [selected, setSelected] = React.useState<RoleKey>("sales");
+  const [copied, setCopied] = React.useState(false);
+
+  const initial = demoAccounts.find((a) => a.role === "sales")!;
 
   const form = useForm<LoginForm>({
     resolver: vizoResolver(LoginSchema),
-    defaultValues: { email: "umer@vizo.com.pk", password: "demo-password", remember: true },
+    defaultValues: { email: initial.email, password: initial.password, remember: true },
   });
+
+  function choosePanel(account: DemoAccount) {
+    setSelected(account.role);
+    setServerError(null);
+    form.setValue("email", account.email);
+    form.setValue("password", account.password);
+  }
 
   async function onSubmit(data: LoginForm) {
     setServerError(null);
-    await new Promise((r) => setTimeout(r, 700));
+    await new Promise((r) => setTimeout(r, 600));
 
-    if (data.password !== "demo-password") {
-      setServerError("Invalid email or password. Please try again.");
-      toast.error("Sign-in failed", { description: "The credentials you entered don't match our records." });
+    const account = findDemoAccount(data.email);
+
+    if (!account || data.password !== account.password) {
+      setServerError("That email and password don't match any account.");
+      toast.error("Sign-in failed", {
+        description: "Pick a panel below to fill in the demo details.",
+      });
       return;
     }
 
-    toast.success("Welcome back, Umer!", { description: "Signed in to AdvPOS successfully." });
-    router.push("/dashboard");
+    setActiveRole(account.role);
+    toast.success(`Signed in as ${account.name}`, {
+      description: `${roleLabel(account.role)} panel`,
+    });
+    router.push(account.landing);
+  }
+
+  function copyPassword() {
+    navigator.clipboard.writeText(DEMO_PASSWORD).then(
+      () => {
+        setCopied(true);
+        toast.success("Password copied");
+        window.setTimeout(() => setCopied(false), 1500);
+      },
+      () => toast.error("Could not copy")
+    );
   }
 
   return (
     <div className="min-h-screen grid lg:grid-cols-2 bg-white dark:bg-navy-950 font-sans text-navy-900 dark:text-white antialiased">
-      {/* ── LEFT: Form ───────────────────────────────────────── */}
-      <div className="flex flex-col px-6 py-10 sm:px-10 lg:px-16 xl:px-24 relative">
-        <div className="flex items-center justify-between mb-12">
+      {/* ── LEFT: panels + form ───────────────────────────────── */}
+      <div className="flex flex-col px-6 py-10 sm:px-10 lg:px-14 xl:px-20 relative">
+        <div className="flex items-center justify-between mb-10">
           <div className="flex items-center gap-2.5">
             <Image
               src={resolvedTheme === "dark" ? "/vizo-logo-dark.jpg" : "/vizo-logo.png"}
@@ -65,16 +116,79 @@ export default function LoginPage() {
               <div className="text-base font-bold leading-none">
                 Adv<span className="text-brand-yellow">POS</span>
               </div>
-              <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Sales · Inventory · Accounting</div>
+              <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                Sales · Inventory · Accounting
+              </div>
             </div>
           </div>
           <ThemeToggle />
         </div>
 
-        <div className="flex-1 flex flex-col justify-center max-w-md w-full mx-auto lg:mx-0">
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold tracking-tight">Welcome back</h1>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-2">Sign in to your AdvPOS account to continue.</p>
+        <div className="flex-1 flex flex-col justify-center max-w-lg w-full mx-auto lg:mx-0">
+          <div className="mb-6">
+            <h1 className="text-3xl font-bold tracking-tight">Choose your panel</h1>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-2">
+              Each role sees a different app. Pick one to fill in its sign-in details.
+            </p>
+          </div>
+
+          {/* Role panels */}
+          <div className="grid sm:grid-cols-2 gap-2.5 mb-6">
+            {demoAccounts.map((account) => {
+              const Icon = PANEL_ICON[account.role];
+              const tone = PANEL_TONE[account.role];
+              const active = selected === account.role;
+              return (
+                <button
+                  key={account.role}
+                  type="button"
+                  onClick={() => choosePanel(account)}
+                  aria-pressed={active}
+                  className={cn(
+                    "text-left p-3.5 rounded-xl border-2 transition-colors",
+                    active
+                      ? tone.ring
+                      : "border-slate-200 dark:border-navy-800 hover:border-slate-300 dark:hover:border-navy-600"
+                  )}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <div className={cn("size-8 rounded-lg flex items-center justify-center flex-shrink-0", tone.chip)}>
+                      <Icon className="size-4" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-semibold truncate">{roleLabel(account.role)}</div>
+                      <div className="text-2xs text-slate-500 dark:text-slate-400 truncate">
+                        {account.name}
+                      </div>
+                    </div>
+                    {active && <Check className="size-4 text-brand-yellow flex-shrink-0" />}
+                  </div>
+                  <p className="text-2xs text-slate-500 dark:text-slate-400 mt-2 leading-snug">
+                    {account.blurb}
+                  </p>
+                  <div className="tabular text-2xs text-slate-400 dark:text-slate-500 mt-2 truncate">
+                    {account.email}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Shared demo password */}
+          <div className="flex items-center gap-2 mb-6 px-3 py-2 rounded-lg bg-slate-50 dark:bg-navy-900 border border-slate-200 dark:border-navy-800">
+            <Lock className="size-3.5 text-slate-400 flex-shrink-0" />
+            <span className="text-xs text-slate-500 dark:text-slate-400">Password for every panel</span>
+            <code className="tabular text-xs font-semibold text-navy-900 dark:text-white ml-auto">
+              {DEMO_PASSWORD}
+            </code>
+            <button
+              type="button"
+              onClick={copyPassword}
+              className="p-1 rounded-md hover:bg-slate-200 dark:hover:bg-navy-800 text-slate-400"
+              aria-label="Copy demo password"
+            >
+              {copied ? <Check className="size-3.5 text-success" /> : <Copy className="size-3.5" />}
+            </button>
           </div>
 
           {serverError && (
@@ -85,14 +199,14 @@ export default function LoginPage() {
           )}
 
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5" noValidate>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4" noValidate>
               <FormField control={form.control} name="email" render={({ field }) => (
                 <FormItem>
                   <FormLabel required>Email address</FormLabel>
                   <FormControl>
                     <div className="relative">
                       <Mail className="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                      <Input type="email" placeholder="you@vizo.com.pk" autoComplete="email" autoFocus className="pl-9" {...field} />
+                      <Input type="email" placeholder="you@advpos.pk" autoComplete="email" className="pl-9 tabular" {...field} />
                     </div>
                   </FormControl>
                   <FormMessage />
@@ -114,7 +228,7 @@ export default function LoginPage() {
                         type={showPassword ? "text" : "password"}
                         placeholder="Enter your password"
                         autoComplete="current-password"
-                        className="pl-9 pr-10"
+                        className="pl-9 pr-10 tabular"
                         {...field}
                       />
                       <button
@@ -136,7 +250,9 @@ export default function LoginPage() {
                   <FormControl>
                     <Checkbox checked={field.value} onCheckedChange={field.onChange} id="remember" />
                   </FormControl>
-                  <Label htmlFor="remember" className="cursor-pointer text-sm font-normal">Remember me for 30 days</Label>
+                  <Label htmlFor="remember" className="cursor-pointer text-sm font-normal">
+                    Keep me signed in
+                  </Label>
                 </FormItem>
               )} />
 
@@ -144,29 +260,14 @@ export default function LoginPage() {
                 {form.formState.isSubmitting ? (
                   <><Loader2 className="size-4 animate-spin" /> Signing in…</>
                 ) : (
-                  <>Sign in to AdvPOS <ArrowRight className="size-4" /></>
+                  <>Sign in as {roleLabel(selected)} <ArrowRight className="size-4" /></>
                 )}
-              </Button>
-
-              <div className="relative my-2">
-                <div className="absolute inset-0 flex items-center">
-                  <span className="w-full border-t border-slate-200 dark:border-navy-800" />
-                </div>
-                <div className="relative flex justify-center">
-                  <span className="bg-white dark:bg-navy-950 px-3 text-xs text-slate-400">or</span>
-                </div>
-              </div>
-
-              <Button type="button" variant="secondary" size="md" className="w-full gap-2"
-                      onClick={() => toast.info("SSO not yet configured", { description: "Single sign-on will be enabled in a future release." })}>
-                <KeyRound className="size-4" />
-                Single sign-on (SSO)
               </Button>
             </form>
           </Form>
 
-          <div className="mt-10 pt-6 border-t border-slate-200 dark:border-navy-800 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-            <div>© 2026 AdvPOS. All rights reserved.</div>
+          <div className="mt-8 pt-5 border-t border-slate-200 dark:border-navy-800 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+            <div>© 2026 AdvPOS</div>
             <div className="flex items-center gap-3">
               <Link href="#" className="hover:text-navy-900 dark:hover:text-white">Privacy</Link>
               <Link href="#" className="hover:text-navy-900 dark:hover:text-white">Terms</Link>
@@ -176,47 +277,72 @@ export default function LoginPage() {
         </div>
       </div>
 
-      {/* ── RIGHT: Brand panel ──────────────────────────────── */}
+      {/* ── RIGHT: what each panel does ──────────────────────── */}
       <div className="hidden lg:flex relative bg-navy-900 text-white overflow-hidden">
         <div className="absolute inset-0 opacity-[0.04]"
              style={{ backgroundImage: "linear-gradient(white 1px, transparent 1px), linear-gradient(90deg, white 1px, transparent 1px)", backgroundSize: "64px 64px" }} />
         <div className="absolute top-1/4 -right-20 w-96 h-96 bg-brand-yellow/10 rounded-full blur-3xl" />
         <div className="absolute bottom-1/4 -left-10 w-72 h-72 bg-brand-yellow/5 rounded-full blur-3xl" />
 
-        <div className="relative z-10 flex flex-col justify-between p-12 xl:p-16 w-full">
+        <div className="relative z-10 flex flex-col justify-center p-12 xl:p-16 w-full">
           <div className="max-w-lg">
             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-brand-yellow/10 border border-brand-yellow/20 text-brand-yellow text-xs font-semibold uppercase tracking-wider mb-8">
               <span className="size-1.5 rounded-full bg-brand-yellow animate-pulse-soft" />
-              Production-grade ERP
+              One system, four panels
             </div>
             <h2 className="text-4xl xl:text-5xl font-bold leading-[1.15] tracking-tight">
-              Run your <span className="text-brand-yellow">entire business</span> from a single dashboard.
+              Everyone works in the <span className="text-brand-yellow">same place</span>.
             </h2>
-            <p className="text-base xl:text-lg text-slate-300 mt-6 leading-relaxed">
-              Sales, purchases, stock and accounts in one place — so nothing lives on WhatsApp any more.
+            <p className="text-base text-slate-300 mt-6 leading-relaxed">
+              An order starts with Sales, gets packed by the Order Department, and
+              lands with Accounts — without a single message leaving the building.
             </p>
-          </div>
 
-          <div className="grid grid-cols-3 gap-8 mt-12 max-w-2xl">
-            <div>
-              <div className="text-3xl xl:text-4xl font-bold tabular text-brand-yellow">1</div>
-              <div className="text-xs text-slate-400 uppercase tracking-wider mt-1.5">System</div>
-              <div className="text-sm text-slate-300 mt-1 leading-snug">Sales, Order Dept and Accounts working off the same screen</div>
-            </div>
-            <div>
-              <div className="text-3xl xl:text-4xl font-bold tabular text-brand-yellow">3</div>
-              <div className="text-xs text-slate-400 uppercase tracking-wider mt-1.5">Locations</div>
-              <div className="text-sm text-slate-300 mt-1 leading-snug">Warehouse, Order Department and Shop 2 — add more any time</div>
-            </div>
-            <div>
-              <div className="text-3xl xl:text-4xl font-bold tabular text-brand-yellow">100%</div>
-              <div className="text-xs text-slate-400 uppercase tracking-wider mt-1.5">Audit trail</div>
-              <div className="text-sm text-slate-300 mt-1 leading-snug">Every entry kept, every action logged</div>
-            </div>
+            <ol className="mt-10 space-y-4">
+              <FlowStep
+                n={1}
+                title="Sales"
+                body="Takes the order on the phone, sees live stock and the customer's balance before promising anything."
+              />
+              <FlowStep
+                n={2}
+                title="Order Department"
+                body="Picks it up the moment it's placed, checks stock, packs it, and books the delivery."
+              />
+              <FlowStep
+                n={3}
+                title="Accounts"
+                body="Records the money, keeps the ledgers, and closes the books."
+              />
+            </ol>
           </div>
         </div>
       </div>
+
       <Toaster />
     </div>
+  );
+}
+
+function roleLabel(role: RoleKey) {
+  switch (role) {
+    case "sales": return "Sales";
+    case "order-dept": return "Order Department";
+    case "accountant": return "Accountant";
+    case "super-admin": return "Super Admin";
+  }
+}
+
+function FlowStep({ n, title, body }: { n: number; title: string; body: string }) {
+  return (
+    <li className="flex gap-4">
+      <div className="size-8 rounded-full bg-brand-yellow/15 border border-brand-yellow/30 flex items-center justify-center flex-shrink-0 tabular text-sm font-bold text-brand-yellow">
+        {n}
+      </div>
+      <div>
+        <div className="text-sm font-semibold text-white">{title}</div>
+        <p className="text-sm text-slate-300 mt-0.5 leading-relaxed">{body}</p>
+      </div>
+    </li>
   );
 }
