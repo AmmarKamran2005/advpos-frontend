@@ -15,6 +15,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { SelectNative } from "@/components/ui/select-native";
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage, FormDescription } from "@/components/ui/form";
 import { toast } from "@/components/ui/toaster";
+import { useSession } from "@/components/providers/session-provider";
+import { activeLocations, nextAccountCode } from "@/data/settings";
 import { cn } from "@/lib/utils";
 
 const Schema = z.object({
@@ -81,29 +83,43 @@ export default function NewPartyPage() {
     },
   });
 
-  const partyType = form.watch("type");
+  const { can, user } = useSession();
+
+  /* A rep only ever opens customer accounts, so the type choice is not shown
+     to them and the record is forced to CUSTOMER. */
+  const canChooseType = can("suppliers.manage");
+  const canFillTax = can("customers.tax");
+  const canSetLimits = can("limits.manage");
+
+  const salesReps = ["Zara Malik", "Imran Iqbal", "Sara Khan", "Asad Ali"];
+
+  const partyType = canChooseType ? form.watch("type") : "CUSTOMER";
   const isCustomer = partyType === "CUSTOMER" || partyType === "BOTH";
 
   async function onSubmit(_d: Form) {
     await new Promise((r) => setTimeout(r, 800));
-    toast.success("Party created", { description: `${_d.legalName} added with code VZ-${_d.type[0]}-0024.` });
-    router.push("/parties");
+    toast.success("Customer added", { description: `${_d.legalName} saved as ACR01512.` });
+    router.push(canChooseType ? "/parties" : "/parties/customers");
   }
 
   return (
     <>
       <PageHeader
-        breadcrumbs={[{ label: "Parties", href: "/parties" }, { label: "New Party" }]}
-        title="New Party"
-        subtitle="Create a new customer, supplier, or both"
+        breadcrumbs={
+          canChooseType
+            ? [{ label: "People", href: "/parties" }, { label: "New Party" }]
+            : [{ label: "People" }, { label: "Customers", href: "/parties/customers" }, { label: "New Customer" }]
+        }
+        title={canChooseType ? "New Party" : "New Customer"}
+        subtitle={canChooseType ? "Create a customer, a supplier, or both" : "Open a new customer account"}
         actions={
           <>
             <Button variant="ghost" asChild>
-              <Link href="/parties"><ArrowLeft /> Back</Link>
+              <Link href={canChooseType ? "/parties" : "/parties/customers"}><ArrowLeft /> Back</Link>
             </Button>
             <Button variant="secondary" onClick={() => toast.info("Saved as draft")}>Save as Draft</Button>
             <Button variant="accent" onClick={form.handleSubmit(onSubmit)} disabled={form.formState.isSubmitting}>
-              {form.formState.isSubmitting ? <><Loader2 className="size-4 animate-spin" /> Saving…</> : <><Save /> Save Party</>}
+              {form.formState.isSubmitting ? <><Loader2 className="size-4 animate-spin" /> Saving…</> : <><Save /> {canChooseType ? "Save Party" : "Save Customer"}</>}
             </Button>
           </>
         }
@@ -114,6 +130,7 @@ export default function NewPartyPage() {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2 space-y-6">
               {/* Type selector */}
+              {canChooseType && (
               <Card>
                 <CardBody>
                   <h3 className="text-sm font-semibold text-navy-900 dark:text-white mb-3">Party Type <span className="text-danger">*</span></h3>
@@ -148,6 +165,7 @@ export default function NewPartyPage() {
                   )} />
                 </CardBody>
               </Card>
+              )}
 
               {/* Basic */}
               <Card>
@@ -265,6 +283,7 @@ export default function NewPartyPage() {
               </Card>
 
               {/* Tax */}
+              {canFillTax && (
               <Card>
                 <CardBody>
                   <h3 className="text-sm font-semibold text-navy-900 dark:text-white mb-4">Tax & Compliance</h3>
@@ -296,9 +315,10 @@ export default function NewPartyPage() {
                   </div>
                 </CardBody>
               </Card>
+              )}
 
               {/* Credit (only for customer/both) */}
-              {isCustomer && (
+              {isCustomer && canSetLimits && (
                 <Card>
                   <CardBody>
                     <h3 className="text-sm font-semibold text-navy-900 dark:text-white mb-4">Credit Settings</h3>
@@ -335,46 +355,58 @@ export default function NewPartyPage() {
                   </CardBody>
                 </Card>
               )}
+              {!canFillTax && (
+                <Card className="border-info/30 bg-info/5">
+                  <CardBody className="flex items-start gap-3 py-3">
+                    <Info className="size-4 text-info flex-shrink-0 mt-0.5" />
+                    <p className="text-xs text-slate-600 dark:text-slate-300">
+                      Tax details and the credit limit are filled in by Accounts
+                      once they have the shop&rsquo;s papers. Save what you know —
+                      the rest gets added later.
+                    </p>
+                  </CardBody>
+                </Card>
+              )}
             </div>
 
             {/* Sidebar */}
             <div className="space-y-6">
-              <Card>
-                <CardBody>
-                  <h3 className="text-sm font-semibold text-navy-900 dark:text-white mb-4">Assignment</h3>
-                  <div className="space-y-4">
-                    <FormField control={form.control} name="defaultLocationId" render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Default Location</FormLabel>
-                        <FormControl>
-                          <SelectNative {...field}>
-                            <option value="1">Karachi Head Office</option>
-                            <option value="2">Lahore Location</option>
-                            <option value="3">Islamabad Location</option>
-                          </SelectNative>
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )} />
-                    {isCustomer && (
-                      <FormField control={form.control} name="salesPerson" render={({ field }) => (
+              {canChooseType && (
+                <Card>
+                  <CardBody>
+                    <h3 className="text-sm font-semibold text-navy-900 dark:text-white mb-4">Assignment</h3>
+                    <div className="space-y-4">
+                      <FormField control={form.control} name="defaultLocationId" render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Sales Rep</FormLabel>
+                          <FormLabel>Default Location</FormLabel>
                           <FormControl>
                             <SelectNative {...field}>
-                              <option value="">— None —</option>
-                              <option>Sara Khan</option>
-                              <option>Hassan Raza</option>
-                              <option>Bilal Ahmed</option>
+                              {activeLocations().map((l) => (
+                                <option key={l.id} value={l.id}>{l.name}</option>
+                              ))}
                             </SelectNative>
                           </FormControl>
                           <FormMessage />
                         </FormItem>
                       )} />
-                    )}
-                  </div>
-                </CardBody>
-              </Card>
+                      {isCustomer && (
+                        <FormField control={form.control} name="salesPerson" render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Sales Rep</FormLabel>
+                            <FormControl>
+                              <SelectNative {...field}>
+                                <option value="">— None —</option>
+                                {salesReps.map((r) => <option key={r}>{r}</option>)}
+                              </SelectNative>
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )} />
+                      )}
+                    </div>
+                  </CardBody>
+                </Card>
+              )}
 
               <Card>
                 <CardBody>
@@ -394,9 +426,9 @@ export default function NewPartyPage() {
                   <div className="flex items-start gap-2">
                     <Info className="size-4 text-info flex-shrink-0 mt-0.5" />
                     <div>
-                      <h3 className="text-sm font-semibold text-info-dark dark:text-info-light">Auto-generated party code</h3>
+                      <h3 className="text-sm font-semibold text-info-dark dark:text-info-light">Account code is automatic</h3>
                       <p className="text-xs text-info-dark/80 dark:text-info-light/80 mt-1">
-                        A unique party code (e.g. <code className="bg-white dark:bg-navy-900 px-1.5 py-0.5 rounded font-mono text-2xs">VZ-C-0024</code>) will be assigned automatically.
+                        This customer will be saved as <code className="bg-white dark:bg-navy-900 px-1.5 py-0.5 rounded font-mono text-2xs">{nextAccountCode(5, 1511)}</code>, following on from the last one.
                       </p>
                     </div>
                   </div>

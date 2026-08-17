@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
   Edit3, MoreHorizontal, AlertCircle, CheckCircle2, Truck, Package,
-  FileText, Clock, MapPin, Phone, AlertTriangle, ArrowRight, Printer, Mail, MessageCircle,
+  FileText, Clock, MapPin, Phone, AlertTriangle, ArrowRight, Printer, Mail, MessageCircle, Send,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardBody } from "@/components/ui/card";
@@ -19,6 +19,9 @@ import {
 } from "@/components/ui/dropdown";
 import { ConfirmDialog } from "@/components/dialogs/confirm-dialog";
 import { WhatsAppShareDialog } from "@/components/dialogs/whatsapp-share-dialog";
+import { useSession } from "@/components/providers/session-provider";
+import { OrderDeliveryCard } from "@/components/widgets/order-delivery-card";
+import { OrderPaymentCard } from "@/components/widgets/order-payment-card";
 import { getOrder, getStatusVariant } from "@/data/sales";
 import { formatMoney, formatDate, formatNumber } from "@/lib/format";
 import { toast } from "@/components/ui/toaster";
@@ -34,19 +37,26 @@ const MOCK_ITEMS = [
 ];
 
 const ACTIVITY = [
-  { id: 1, user: "Sara Khan",   action: "created order",                   time: "30 Apr · 9:15 AM",  variant: "info" as const,    icon: FileText },
-  { id: 2, user: "System",      action: "ran credit check — PASS",          time: "30 Apr · 9:15 AM",  variant: "success" as const, icon: CheckCircle2 },
-  { id: 3, user: "Sara Khan",   action: "submitted order for confirmation", time: "30 Apr · 9:16 AM",  variant: "info" as const,    icon: ArrowRight },
-  { id: 4, user: "Bilal Ahmed", action: "confirmed order",                   time: "30 Apr · 10:42 AM", variant: "info" as const,    icon: CheckCircle2 },
-  { id: 5, user: "Hassan Raza", action: "packed and ready for dispatch",     time: "30 Apr · 11:30 AM", variant: "info" as const,    icon: Package },
-  { id: 6, user: "Sara Khan",   action: "dispatched order to customer",      time: "30 Apr · 11:42 AM", variant: "success" as const, icon: Truck },
-  { id: 7, user: "System",      action: "auto-generated invoice INV-26-0142", time: "30 Apr · 11:42 AM", variant: "success" as const, icon: FileText },
+  { id: 1, user: "Zara Malik",  action: "created order",                     time: "13 Aug · 9:15 AM",  variant: "info" as const,    icon: FileText },
+  { id: 2, user: "Zara Malik",  action: "sent it to the order department",   time: "13 Aug · 9:16 AM",  variant: "info" as const,    icon: ArrowRight },
+  { id: 3, user: "Bilal Ahmed", action: "checked stock and confirmed",       time: "13 Aug · 10:42 AM", variant: "info" as const,    icon: CheckCircle2 },
+  { id: 4, user: "Bilal Ahmed", action: "packed the order",                  time: "13 Aug · 11:30 AM", variant: "info" as const,    icon: Package },
+  { id: 5, user: "Bilal Ahmed", action: "handed it to the Karachi rep",      time: "13 Aug · 11:42 AM", variant: "success" as const, icon: Truck },
+  { id: 6, user: "System",      action: "generated invoice INV-26-8867",     time: "13 Aug · 11:42 AM", variant: "success" as const, icon: FileText },
+  { id: 7, user: "System",      action: "asked for delivery confirmation",   time: "14 Aug · 9:00 AM",  variant: "warning" as const, icon: Clock },
 ];
 
 export default function OrderDetailPage() {
   const params = useParams<{ id: string }>();
   const id = parseInt(params.id ?? "1", 10);
   const order = getOrder(id);
+
+  /* Action modals — declared before any early return so the hook order is
+     the same on every render. */
+  const [override, setOverride] = React.useState(false);
+  const [cancel, setCancel] = React.useState(false);
+  const [shareOpen, setShareOpen] = React.useState(false);
+  const { can } = useSession();
 
   if (!order) {
     return (
@@ -60,11 +70,7 @@ export default function OrderDetailPage() {
 
   const isCreditHold = order.status === "CREDIT_HOLD";
   const currentStateIndex = STATE_FLOW.indexOf(order.status);
-
-  /* Action modals */
-  const [override, setOverride] = React.useState(false);
-  const [cancel, setCancel] = React.useState(false);
-  const [shareOpen, setShareOpen] = React.useState(false);
+  const runsTheFloor = can("orders.approve");
 
   return (
     <>
@@ -89,23 +95,29 @@ export default function OrderDetailPage() {
               <Printer />
               <span className="hidden sm:inline">Print</span>
             </Button>
-            {isCreditHold ? (
+            {order.status === "DRAFT" ? (
+              <Button variant="accent" size="md" className="gap-1.5"
+                onClick={() => toast.success("Sent to Order Department", { description: "They will pick it up from their queue." })}>
+                <Send />
+                Send to Order Dept
+              </Button>
+            ) : !runsTheFloor ? null : isCreditHold ? (
               <Button variant="accent" size="md" className="gap-1.5" onClick={() => setOverride(true)}>
                 <AlertTriangle />
-                Override Credit Hold
+                Override Limit Cross
               </Button>
             ) : order.status === "PACKED" ? (
-              <Button variant="accent" size="md" className="gap-1.5" onClick={() => toast.success("Order dispatched", { description: `Invoice INV-26-0142 generated. SMS queued for customer.` })}>
+              <Button variant="accent" size="md" className="gap-1.5" onClick={() => toast.success("Order dispatched", { description: "Invoice generated. Pick the delivery route next." })}>
                 <Truck />
                 Dispatch
               </Button>
             ) : order.status === "CONFIRMED" ? (
-              <Button variant="accent" size="md" className="gap-1.5" onClick={() => toast.success("Order moved to Packed", { description: "Location will pick items now." })}>
+              <Button variant="accent" size="md" className="gap-1.5" onClick={() => toast.success("Order moved to Packed", { description: "Items will be picked now." })}>
                 <Package />
                 Pack
               </Button>
             ) : order.status === "SUBMITTED" ? (
-              <Button variant="accent" size="md" className="gap-1.5" onClick={() => toast.success("Order confirmed", { description: "Moved to Order Department queue." })}>
+              <Button variant="accent" size="md" className="gap-1.5" onClick={() => toast.success("Order confirmed", { description: "Moved to the Order Department queue." })}>
                 <CheckCircle2 />
                 Confirm
               </Button>
@@ -301,6 +313,9 @@ export default function OrderDetailPage() {
 
         {/* Sidebar */}
         <div className="space-y-6">
+          <OrderPaymentCard order={order} />
+          <OrderDeliveryCard order={order} />
+
           {/* Customer */}
           <Card>
             <CardBody>
@@ -333,10 +348,9 @@ export default function OrderDetailPage() {
             <CardBody>
               <h3 className="text-sm font-semibold text-navy-900 dark:text-white mb-3">Quick Actions</h3>
               <div className="space-y-2">
-                <Button variant="secondary" size="md" className="w-full justify-start gap-2" onClick={() => toast.info("Printing invoice…")}><Printer />Print Invoice</Button>
+                <Button variant="secondary" size="md" className="w-full justify-start gap-2" onClick={() => toast.info("Printing order…")}><Printer />Print Order</Button>
                 <Button variant="secondary" size="md" className="w-full justify-start gap-2" onClick={() => toast.success("Invoice emailed", { description: order.customerName })}><Mail />Email Invoice</Button>
                 <Button variant="secondary" size="md" className="w-full justify-start gap-2" onClick={() => setShareOpen(true)}><MessageCircle />Share on WhatsApp</Button>
-                <Button variant="secondary" size="md" className="w-full justify-start gap-2" asChild><Link href={`/sales/invoices/1`}><ArrowRight />Record Payment</Link></Button>
               </div>
             </CardBody>
           </Card>

@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useForm, useFieldArray, type Control } from "react-hook-form";
+import { useForm, useFieldArray, useWatch, type Control } from "react-hook-form";
 import { vizoResolver } from "@/lib/zod-resolver";
 import { z } from "zod";
 import {
@@ -272,6 +272,15 @@ export default function NewOrderPage() {
                       </div>
                     ) : (
                       <div className="space-y-2">
+                        <div className="hidden sm:grid grid-cols-12 gap-2 px-2 pb-1">
+                          <div className="col-span-4 text-2xs font-semibold uppercase tracking-wider text-slate-400">Item</div>
+                          <div className="col-span-2 text-2xs font-semibold uppercase tracking-wider text-slate-400 text-right">Qty</div>
+                          <div className="col-span-2 text-2xs font-semibold uppercase tracking-wider text-slate-400 text-right">Rate</div>
+                          <div className="col-span-1 text-2xs font-semibold uppercase tracking-wider text-slate-400 text-right">Disc %</div>
+                          <div className="col-span-1 text-2xs font-semibold uppercase tracking-wider text-slate-400 text-right">Tax %</div>
+                          <div className="col-span-1 text-2xs font-semibold uppercase tracking-wider text-slate-400 text-right">Amount</div>
+                          <div className="col-span-1" />
+                        </div>
                         {fields.map((field, idx) => <ItemRow key={field.id} idx={idx} control={form.control} onRemove={() => remove(idx)} />)}
                       </div>
                     )}
@@ -429,6 +438,11 @@ export default function NewOrderPage() {
 }
 
 function ItemRow({ idx, control, onRemove }: { idx: number; control: Control<Form>; onRemove: () => void }) {
+  const qty = useWatch({ control, name: `items.${idx}.qty` });
+  const rate = useWatch({ control, name: `items.${idx}.unitPrice` });
+  const disc = useWatch({ control, name: `items.${idx}.discount` });
+  const amount = (Number(rate) || 0) * (Number(qty) || 0) * (1 - (Number(disc) || 0) / 100);
+
   return (
     <div className="grid grid-cols-12 gap-2 items-start p-2 border border-slate-200 dark:border-navy-700 rounded-lg">
       <FormField control={control} name={`items.${idx}.name`} render={({ field }) => (
@@ -440,18 +454,37 @@ function ItemRow({ idx, control, onRemove }: { idx: number; control: Control<For
         </div>
       )} />
       <FormField control={control} name={`items.${idx}.qty`} render={({ field }) => (
-        <FormItem className="col-span-3 sm:col-span-2"><FormControl><Input type="number" placeholder="Qty" min={1} className="text-right tabular" {...field} /></FormControl><FormMessage /></FormItem>
+        <FormItem className="col-span-3 sm:col-span-2">
+          <FormLabel className="sm:hidden text-2xs">Qty</FormLabel>
+          <FormControl><Input type="number" min={1} className="text-right tabular" {...field} /></FormControl>
+          <FormMessage />
+        </FormItem>
       )} />
       <FormField control={control} name={`items.${idx}.unitPrice`} render={({ field }) => (
-        <FormItem className="col-span-4 sm:col-span-2"><FormControl><Input type="number" step="0.01" placeholder="Price" min={0} className="text-right tabular" {...field} /></FormControl><FormMessage /></FormItem>
+        <FormItem className="col-span-3 sm:col-span-2">
+          <FormLabel className="sm:hidden text-2xs">Rate</FormLabel>
+          <FormControl><Input type="number" step="0.01" min={0} className="text-right tabular" {...field} /></FormControl>
+          <FormMessage />
+        </FormItem>
       )} />
       <FormField control={control} name={`items.${idx}.discount`} render={({ field }) => (
-        <FormItem className="col-span-3 sm:col-span-1"><FormControl><Input type="number" placeholder="%" min={0} max={100} className="text-right tabular" {...field} /></FormControl><FormMessage /></FormItem>
+        <FormItem className="col-span-2 sm:col-span-1">
+          <FormLabel className="sm:hidden text-2xs">Disc %</FormLabel>
+          <FormControl><Input type="number" min={0} max={100} className="text-right tabular" {...field} /></FormControl>
+          <FormMessage />
+        </FormItem>
       )} />
       <FormField control={control} name={`items.${idx}.taxPercent`} render={({ field }) => (
-        <FormItem className="col-span-2 sm:col-span-1"><FormControl><Input type="number" placeholder="Tax" min={0} max={100} className="text-right tabular" {...field} /></FormControl><FormMessage /></FormItem>
+        <FormItem className="col-span-2 sm:col-span-1">
+          <FormLabel className="sm:hidden text-2xs">Tax %</FormLabel>
+          <FormControl><Input type="number" min={0} max={100} className="text-right tabular" {...field} /></FormControl>
+          <FormMessage />
+        </FormItem>
       )} />
-      <Button type="button" variant="ghost" size="icon-sm" className="col-span-1 sm:col-span-1 text-danger ml-auto" onClick={onRemove} aria-label="Remove item">
+      <div className="col-span-1 sm:col-span-1 text-right tabular text-sm font-semibold text-navy-900 dark:text-white pt-2">
+        {Math.round(amount).toLocaleString("en-PK")}
+      </div>
+      <Button type="button" variant="ghost" size="icon-sm" className="col-span-1 text-danger ml-auto mt-1" onClick={onRemove} aria-label="Remove item">
         <Trash2 />
       </Button>
     </div>

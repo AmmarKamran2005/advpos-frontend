@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Plus, Phone, MapPin, AlertTriangle } from "lucide-react";
+import { Plus, Phone, MapPin, AlertTriangle , FileText } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -12,6 +12,7 @@ import { DataTable, type Column } from "@/components/ui/data-table";
 import { FilterBar } from "@/components/ui/filter-bar";
 import { parties, type Party } from "@/data/parties";
 import { formatCompact } from "@/lib/format";
+import { useSession } from "@/components/providers/session-provider";
 import { cn } from "@/lib/utils";
 
 export default function CustomersPage() {
@@ -66,79 +67,37 @@ export default function CustomersPage() {
       ),
     },
     {
-      key: "creditLimit",
-      header: "Credit",
-      align: "right",
-      sortable: true,
-      cell: (p) => (
-        <div className="text-right">
-          <div className="text-sm tabular font-semibold text-navy-900 dark:text-white">
-            {formatCompact(p.creditLimit, false)}
-          </div>
-          <div className="text-2xs text-slate-500 dark:text-slate-400">NET {p.creditDays}</div>
-        </div>
-      ),
-    },
-    {
       key: "currentBalance",
       header: "Outstanding",
       align: "right",
       sortable: true,
-      cell: (p) => {
-        const overLimit = p.creditLimit > 0 && p.currentBalance > p.creditLimit;
-        const utilPct = p.creditLimit > 0 ? (p.currentBalance / p.creditLimit) * 100 : 0;
-        return (
-          <div className="text-right">
-            <div
-              className={cn(
-                "text-sm tabular font-semibold",
-                overLimit ? "text-danger" : "text-navy-900 dark:text-white"
-              )}
-            >
-              {formatCompact(p.currentBalance, false)}
-            </div>
-            {p.creditLimit > 0 && (
-              <div className="flex items-center justify-end gap-1.5 mt-1">
-                <div className="w-12 h-1 bg-slate-100 dark:bg-navy-700 rounded-full overflow-hidden">
-                  <div
-                    className={cn(
-                      "h-full rounded-full",
-                      overLimit ? "bg-danger" : utilPct > 80 ? "bg-warning" : "bg-success"
-                    )}
-                    style={{ width: `${Math.min(utilPct, 100)}%` }}
-                  />
-                </div>
-                <span className="text-2xs text-slate-500 dark:text-slate-400 tabular">
-                  {Math.round(utilPct)}%
-                </span>
-              </div>
-            )}
-          </div>
-        );
-      },
-    },
-    {
-      key: "salesPerson",
-      header: "Sales Rep",
       cell: (p) => (
-        <span className="text-xs text-slate-600 dark:text-slate-300">
-          {p.salesPerson ?? "—"}
-        </span>
+        <div className="text-right">
+          <div
+            className={cn(
+              "text-sm tabular font-semibold",
+              p.currentBalance > 0 ? "text-navy-900 dark:text-white" : "text-slate-400"
+            )}
+          >
+            {formatCompact(p.currentBalance, false)}
+          </div>
+          <div className="text-2xs text-slate-500 dark:text-slate-400">
+            {p.currentBalance > 0 ? "to collect" : "clear"}
+          </div>
+        </div>
       ),
     },
     {
-      key: "status",
-      header: "Status",
-      cell: (p) => {
-        if (p.creditHoldPolicy === "BLOCK" && p.currentBalance > p.creditLimit) {
-          return <StatusPill variant="danger">Blocked</StatusPill>;
-        }
-        return p.isActive ? (
-          <StatusPill variant="success">Active</StatusPill>
-        ) : (
-          <StatusPill variant="muted">Inactive</StatusPill>
-        );
-      },
+      key: "statement",
+      header: "",
+      align: "right",
+      cell: (p) => (
+        <Button variant="ghost" size="sm" className="gap-1" asChild>
+          <Link href={`/parties/${p.id}/statement`} onClick={(e) => e.stopPropagation()}>
+            <FileText /> Statement
+          </Link>
+        </Button>
+      ),
     },
   ];
 

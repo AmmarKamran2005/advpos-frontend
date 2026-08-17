@@ -41,6 +41,7 @@ import {
 } from "@/data/mock";
 import { formatCompact, formatMoney, formatNumber, formatPercent } from "@/lib/format";
 import { statusLabel } from "@/lib/labels";
+import { DashboardForRole } from "@/components/dashboards/dashboard-for-role";
 import { cn } from "@/lib/utils";
 
 const STOCK_ALERT_STYLES = {
@@ -94,7 +95,8 @@ export default function DashboardPage() {
   });
 
   return (
-    <>
+    <DashboardForRole>
+      <>
       {/* ───────── Page Header ───────── */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
         <div>
@@ -653,6 +655,7 @@ export default function DashboardPage() {
           </div>
         </Card>
       </div>
-    </>
+      </>
+    </DashboardForRole>
   );
 }

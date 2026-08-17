@@ -329,6 +329,105 @@ export function getCourier(id: number) {
 
 export const activeCouriers = () => couriers.filter((c) => c.isActive);
 
+/* ═══════════════════════ Delivery channels ═══════════════════════ */
+/**
+ * Goods leave the order department by one of four routes, and each route has a
+ * different person who can say "it arrived". That is the whole problem the
+ * business asked us to solve: how do we find out?
+ *
+ * Nobody watches a screen waiting to confirm a delivery, so the system has to
+ * come back and ask. `remindAfterDays` is how long to wait before the first
+ * nudge — a Karachi hand-delivery is same-day, a truck to Lahore is not — and
+ * `remindEveryHours` is how often to ask again until someone answers.
+ */
+
+export type ChannelKey = "local" | "online" | "cargo" | "logistics";
+
+/** Who is allowed to mark this channel delivered. */
+export type ConfirmedBy =
+  | "sales-rep"      // the rep who owns the order — he handed it over himself
+  | "order-dept"     // back office
+  | "cargo-handler"; // the person in Karachi who chases cargo
+
+export type DeliveryChannel = {
+  key: ChannelKey;
+  name: string;
+  description: string;
+  confirmedBy: ConfirmedBy;
+  /** Courier/transporter names offered for this channel. */
+  carriers: string[];
+  /** Wait this long after dispatch before the first reminder. */
+  remindAfterDays: number;
+  /** Then ask again this often until someone answers. */
+  remindEveryHours: number;
+  /** Mark delivered from the carrier's own system. Needs a backend. */
+  autoConfirm: boolean;
+  /** Consignment note number is required (bilty for freight). */
+  requiresBilty: boolean;
+  isActive: boolean;
+};
+
+export const deliveryChannels: DeliveryChannel[] = [
+  {
+    key: "local",
+    name: "Karachi — own team",
+    description: "Karachi stock handed to the city's own sales rep, delivered by hand.",
+    confirmedBy: "sales-rep",
+    carriers: ["Own rider", "Sales rep"],
+    remindAfterDays: 0,
+    remindEveryHours: 6,
+    autoConfirm: false,
+    requiresBilty: false,
+    isActive: true,
+  },
+  {
+    key: "online",
+    name: "Online courier",
+    description: "Booked with a courier that has its own tracking portal.",
+    confirmedBy: "order-dept",
+    carriers: ["PostEx", "TCS Courier", "Leopards Courier", "M&P Express", "Trax Logistics"],
+    remindAfterDays: 2,
+    remindEveryHours: 24,
+    /* The courier's portal exists but has never been used. Manual until the
+       backend can read it — then this becomes a single switch. */
+    autoConfirm: false,
+    requiresBilty: false,
+    isActive: true,
+  },
+  {
+    key: "cargo",
+    name: "Local cargo",
+    description: "Goods transport companies. Confirmed by phone with the customer.",
+    confirmedBy: "cargo-handler",
+    carriers: ["Pak International Cargo", "Rehman Cargo", "Mehran Railway Cargo"],
+    remindAfterDays: 2,
+    remindEveryHours: 24,
+    autoConfirm: false,
+    requiresBilty: true,
+    isActive: true,
+  },
+  {
+    key: "logistics",
+    name: "Heavy — logistics",
+    description: "Bulk consignments by freight. The bilty receipt is the proof.",
+    confirmedBy: "cargo-handler",
+    carriers: ["Pak International Cargo", "NLC", "Daewoo Cargo"],
+    /* Deliberately manual: freight has no tracking feed to read, and these are
+       the highest-value consignments — a guessed "delivered" is worst here. */
+    remindAfterDays: 4,
+    remindEveryHours: 24,
+    autoConfirm: false,
+    requiresBilty: true,
+    isActive: true,
+  },
+];
+
+export function getChannel(key: ChannelKey) {
+  return deliveryChannels.find((c) => c.key === key);
+}
+
+export const activeChannels = () => deliveryChannels.filter((c) => c.isActive);
+
 /* ═══════════════════════════ Roles & permissions ═══════════════════════════ */
 /**
  * The permission matrix is data, not scattered `if (role === "sales")` checks.
@@ -398,7 +497,9 @@ export const permissionCatalog: PermissionDef[] = [
   { key: "returns.sales",     label: "Handle sales returns",       group: "Sales" },
   { key: "customers.view",    label: "See customers",              group: "Sales" },
   { key: "customers.manage",  label: "Add & edit customers",       group: "Sales" },
+  { key: "customers.tax",     label: "Fill customer tax details",  group: "Sales" },
   { key: "limits.manage",     label: "Set credit limits",          group: "Sales" },
+  { key: "visits.view",       label: "See customer visits",        group: "Sales" },
 
   { key: "purchases.view",    label: "See purchases",              group: "Purchases" },
   { key: "purchases.manage",  label: "Make purchase documents",    group: "Purchases" },
@@ -442,7 +543,7 @@ export const rolePermissions: Record<RoleKey, string[]> = {
   accountant: [
     "orders.view",
     "invoices.view", "invoices.create", "returns.sales",
-    "customers.view", "customers.manage", "limits.manage",
+    "customers.view", "customers.manage", "customers.tax", "limits.manage", "visits.view",
     "purchases.view", "purchases.manage", "suppliers.manage",
     "stock.view", "cost.view",
     "money.view", "money.manage",
@@ -455,19 +556,21 @@ export const rolePermissions: Record<RoleKey, string[]> = {
   "order-dept": [
     "orders.view", "orders.create", "orders.approve",
     "invoices.view", "invoices.create", "returns.sales",
-    "customers.view",
+    "customers.view", "visits.view",
     "purchases.view", "receipts.stock",
     "stock.view", "stock.transfer", "stock.correct", "products.manage", "cost.view",
     "delivery.view", "delivery.manage",
     "reports.view",
   ],
 
+  /**
+   * Deliberately narrow. A rep takes orders and opens customer accounts —
+   * nothing else. Tax registration and credit limits are left out on purpose:
+   * a limit the person selling against it can raise is not a limit.
+   */
   sales: [
     "orders.view", "orders.create",
-    "invoices.view",
     "customers.view", "customers.manage",
-    "stock.view",
-    "delivery.view",
     "reports.view",
   ],
 };

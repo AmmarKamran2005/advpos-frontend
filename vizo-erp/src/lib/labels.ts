@@ -49,7 +49,10 @@ const STATUS_LABELS: Record<string, string> = {
   UNPAID: "Unpaid",
   OVERDUE: "Overdue",
 
-  /* Delivery */
+  /* Delivery — "we sent it" and "it arrived" are different questions */
+  NOT_DISPATCHED: "Not sent yet",
+  AWAITING: "Not confirmed",
+  ON_THE_WAY: "On the way",
   BOOKED: "Booked",
   IN_TRANSIT: "On the Way",
   OUT_FOR_DELIVERY: "Out for Delivery",

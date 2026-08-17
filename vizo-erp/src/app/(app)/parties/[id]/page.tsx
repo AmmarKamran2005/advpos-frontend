@@ -17,6 +17,7 @@ import {
   Building,
   CreditCard,
   AlertCircle,
+  FileText,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardBody } from "@/components/ui/card";
@@ -136,6 +137,12 @@ export default function PartyDetailPage() {
         }
         actions={
           <>
+            <Button variant="ghost" size="md" className="gap-1.5" asChild>
+              <Link href={`/parties/${party.id}/statement`}>
+                <FileText />
+                <span className="hidden sm:inline">Statement</span>
+              </Link>
+            </Button>
             <Button variant="secondary" size="md" className="gap-1.5" asChild>
               <Link href={`/parties/new?id=${party.id}`}>
                 <Edit3 />

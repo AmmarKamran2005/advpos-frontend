@@ -66,7 +66,7 @@ export const navigation: NavNode[] = [
     icon: ShoppingCart,
     match: "sales",
     children: [
-      { label: "Customer Orders", href: "/sales/orders",       match: "sales.orders",   perms: ["orders.view"] },
+      { label: "Orders",          href: "/sales/orders",       match: "sales.orders",   perms: ["orders.view"] },
       { label: "Sale Invoices",   href: "/sales/invoices",     match: "sales.invoices", perms: ["invoices.view"] },
       { label: "Sales Returns",   href: "/sales/returns",      match: "sales.returns",  perms: ["returns.sales"] },
       { label: "Limit Alerts",    href: "/sales/credit-holds", match: "sales.credit-holds", perms: ["limits.manage"], badge: { text: "3", variant: "warning" } },
@@ -102,7 +102,7 @@ export const navigation: NavNode[] = [
     children: [
       { label: "Customers",       href: "/parties/customers", match: "parties.customers", perms: ["customers.view"] },
       { label: "Suppliers",       href: "/parties/suppliers", match: "parties.suppliers", perms: ["suppliers.manage", "purchases.view"] },
-      { label: "Customer Visits", href: "/parties/visits",    match: "parties.visits",    perms: ["customers.view"] },
+      { label: "Customer Visits", href: "/parties/visits",    match: "parties.visits",    perms: ["visits.view"] },
     ],
   },
 
@@ -149,14 +149,13 @@ export const navigation: NavNode[] = [
     icon: BarChart3,
     match: "reports",
     children: [
-      { label: "All Reports",     href: "/reports",                match: "reports.lib",      perms: ["reports.view"] },
+      { label: "All Reports",     href: "/reports",                match: "reports.lib",      perms: ["reports.full"] },
       { label: "Sales Summary",   href: "/reports/sales-summary",  match: "reports.sales",    perms: ["reports.view"] },
-      { label: "Sales Trends",    href: "/reports/sales-trends",   match: "reports.trends",   perms: ["reports.view"] },
-      { label: "Top Customers",   href: "/reports/top-customers",  match: "reports.top-cust", perms: ["reports.view"] },
+      { label: "Top Customers",   href: "/reports/top-customers",  match: "reports.top-cust", perms: ["reports.full"] },
       { label: "Recovery — Customers", href: "/reports/aging/customer", match: "reports.ar-aging", perms: ["reports.full"] },
       { label: "Recovery — Suppliers", href: "/reports/aging/supplier", match: "reports.ap-aging", perms: ["reports.full"] },
-      { label: "Slow Selling",    href: "/reports/slow-moving",    match: "reports.slow",     perms: ["reports.view"] },
-      { label: "Not Selling",     href: "/reports/dead-stock",     match: "reports.dead",     perms: ["reports.view"] },
+      { label: "Slow Selling",    href: "/reports/slow-moving",    match: "reports.slow",     perms: ["stock.view"] },
+      { label: "Not Selling",     href: "/reports/dead-stock",     match: "reports.dead",     perms: ["stock.view"] },
     ],
   },
 
@@ -186,9 +185,15 @@ export function isActiveMatch(current: string | undefined, target: string) {
   return current === target || current.startsWith(target + ".");
 }
 
+/** Below this, a group is not worth an accordion — show the links directly. */
+const FLATTEN_AT = 2;
+
 /**
- * Trim the tree down to what this role may see. Groups whose children all get
- * filtered out disappear, and so do the section headings left standing alone.
+ * Trim the tree down to what this role may see.
+ *
+ * Groups left with only a link or two are flattened into plain links: a role
+ * with three screens should not have to open three accordions to reach them.
+ * Section headings with nothing under them are dropped.
  */
 export function navigationForRole(role: RoleKey): NavNode[] {
   const visible: NavNode[] = [];
@@ -201,7 +206,22 @@ export function navigationForRole(role: RoleKey): NavNode[] {
 
     if (node.type === "group") {
       const children = node.children.filter((c) => canAny(role, c.perms ?? []));
-      if (children.length > 0) visible.push({ ...node, children });
+      if (children.length === 0) continue;
+
+      if (children.length <= FLATTEN_AT) {
+        for (const child of children) {
+          visible.push({
+            type: "item",
+            label: child.label,
+            icon: node.icon,
+            href: child.href,
+            match: child.match,
+            badge: child.badge,
+          });
+        }
+      } else {
+        visible.push({ ...node, children });
+      }
       continue;
     }
 

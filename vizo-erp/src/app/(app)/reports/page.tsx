@@ -16,7 +16,6 @@ const REPORTS = [
   { category: "Sales",     name: "Sales by Salesperson", href: "/reports/sales-summary",    icon: Users,        description: "Performance per sales rep" },
   { category: "Sales",     name: "Sales by Product",     href: "/reports/sales-summary",    icon: ShoppingCart, description: "Top selling products" },
   { category: "Sales",     name: "Top Customers",        href: "/reports/top-customers",    icon: Star,         description: "Best customers by revenue", featured: true },
-  { category: "Sales",     name: "Sales Trends",         href: "/reports/sales-trends",     icon: BarChart3,    description: "Trends by product and region", featured: true },
 
   { category: "Purchases", name: "Purchase Summary",     href: "/reports/sales-summary",    icon: Truck,        description: "Purchases by supplier and period" },
   { category: "Purchases", name: "Purchase by Supplier", href: "/reports/sales-summary",    icon: Users,        description: "Supplier performance" },

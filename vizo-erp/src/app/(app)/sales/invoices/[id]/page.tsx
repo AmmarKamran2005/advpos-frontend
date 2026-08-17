@@ -30,6 +30,11 @@ export default function InvoiceDetailPage() {
   const id = parseInt(params.id ?? "1", 10);
   const invoice = getInvoice(id);
 
+  /* Declared before the early return so the hook order never changes. */
+  const [pay, setPay] = React.useState(false);
+  const [deleteConfirm, setDeleteConfirm] = React.useState(false);
+  const [shareOpen, setShareOpen] = React.useState(false);
+
   if (!invoice) {
     return <EmptyState icon={AlertCircle} title="Invoice not found" action={<Button asChild><Link href="/sales/invoices">Back</Link></Button>} />;
   }
@@ -37,10 +42,6 @@ export default function InvoiceDetailPage() {
   const customer = getParty(invoice.customerId);
   const subtotal = invoice.total / 1.18;
   const tax = invoice.total - subtotal;
-
-  const [pay, setPay] = React.useState(false);
-  const [deleteConfirm, setDeleteConfirm] = React.useState(false);
-  const [shareOpen, setShareOpen] = React.useState(false);
 
   return (
     <>
