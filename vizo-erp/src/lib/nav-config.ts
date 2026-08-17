@@ -8,6 +8,7 @@ import {
   Wallet,
   BarChart3,
   Send,
+  PackageX,
   Settings2,
 } from "lucide-react";
 import { canAny, type RoleKey } from "@/data/settings";
@@ -68,6 +69,7 @@ export const navigation: NavNode[] = [
     children: [
       { label: "Orders",          href: "/sales/orders",       match: "sales.orders",   perms: ["orders.view"] },
       { label: "Sale Invoices",   href: "/sales/invoices",     match: "sales.invoices", perms: ["invoices.view"] },
+      { label: "Counter Sale",    href: "/sales/direct",       match: "sales.direct",   perms: ["sales.direct"] },
       { label: "Sales Returns",   href: "/sales/returns",      match: "sales.returns",  perms: ["returns.sales"] },
       { label: "Limit Alerts",    href: "/sales/credit-holds", match: "sales.credit-holds", perms: ["limits.manage"], badge: { text: "3", variant: "warning" } },
     ],
@@ -83,6 +85,14 @@ export const navigation: NavNode[] = [
       { label: "Purchase Invoices",  href: "/purchases/invoices", match: "purchases.invoices", perms: ["purchases.view"] },
       { label: "Purchase Returns",   href: "/purchases/returns",  match: "purchases.returns",  perms: ["purchases.view"] },
     ],
+  },
+  {
+    type: "item",
+    label: "Claims",
+    icon: PackageX,
+    href: "/claims",
+    match: "claims",
+    perms: ["claims.view"],
   },
   {
     type: "item",

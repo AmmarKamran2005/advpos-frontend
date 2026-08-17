@@ -95,6 +95,15 @@ export default function CustomerStatementPage() {
   const closing = withBalance.length > 0 ? withBalance[withBalance.length - 1].balance : opening;
   const pending = collectionsFor(id).filter((c) => c.status === "AWAITING");
 
+  /* The two dates the shopkeeper is actually asked about on the phone. */
+  const lastPayment = theirCollections.length > 0
+    ? theirCollections[theirCollections.length - 1].collectedOn
+    : null;
+  const lastOrder = theirOrders.length > 0
+    ? theirOrders[theirOrders.length - 1].orderDate
+    : null;
+  const sincePayment = lastPayment ? daysOld(lastPayment) : null;
+
   /* Aging works off unpaid orders, not the running balance. */
   const unpaid = theirOrders.filter((o) => o.total - o.paidAmount > 0);
   const buckets = BUCKETS.map((b) => ({
@@ -125,7 +134,7 @@ export default function CustomerStatementPage() {
             </Button>
             <Button variant="ghost" size="md" className="gap-1.5"
               onClick={() => { window.print(); toast.info("Print dialog opened"); }}>
-              <Printer /><span className="hidden sm:inline">Print</span>
+              <Printer /><span className="hidden sm:inline">Print / Save PDF</span>
             </Button>
             <Button variant="secondary" size="md" className="gap-1.5" onClick={() => setSharing(true)}>
               <MessageCircle /><span className="hidden sm:inline">WhatsApp</span>
@@ -191,6 +200,23 @@ export default function CustomerStatementPage() {
                   {formatMoney(pending.reduce((s, c) => s + c.amount, 0))} received, awaiting confirmation
                 </div>
               )}
+              <dl className="mt-3 space-y-0.5 text-2xs text-slate-600 dark:text-slate-300">
+                <div className="sm:justify-end flex gap-2">
+                  <dt className="text-slate-500 dark:text-slate-400">Last order</dt>
+                  <dd className="tabular">{lastOrder ? formatDate(lastOrder) : "—"}</dd>
+                </div>
+                <div className="sm:justify-end flex gap-2">
+                  <dt className="text-slate-500 dark:text-slate-400">Last payment</dt>
+                  <dd className="tabular">
+                    {lastPayment ? formatDate(lastPayment) : "—"}
+                    {sincePayment !== null && sincePayment > 0 && (
+                      <span className={cn("ml-1", sincePayment > 45 ? "text-danger" : "text-slate-500")}>
+                        ({sincePayment} days ago)
+                      </span>
+                    )}
+                  </dd>
+                </div>
+              </dl>
             </div>
           </div>
 
@@ -305,12 +331,21 @@ export default function CustomerStatementPage() {
         customerName={party.displayName}
         customerPhone={party.phone}
         total={closing}
-        note={
+        note={[
+          lastOrder ? `Last order: ${formatDate(lastOrder)}` : null,
+          lastPayment ? `Last payment: ${formatDate(lastPayment)}` : "No payment received yet",
+          "",
+          sincePayment !== null && sincePayment > 0 && closing > 0
+            ? `Aap ki aakhri adaigi ko ${sincePayment} din ho gaye hain. Baraye meharbani adaigi karwa dein.`
+            : closing > 0
+              ? "Baraye meharbani adaigi karwa dein."
+              : "Shukriya — aap ka hisaab clear hai.",
           buckets[3].amount > 0
-            ? `${formatMoney(buckets[3].amount)} is over 90 days old. Baraye meharbani adaigi karwa dein.`
-            : "Baraye meharbani adaigi karwa dein."
-        }
+            ? `${formatMoney(buckets[3].amount)} 90 din se zyada purana hai.`
+            : null,
+        ].filter(Boolean).join("\n")}
       />
+
     </>
   );
 }

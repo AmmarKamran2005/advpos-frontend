@@ -114,7 +114,24 @@ export const locations: StockLocation[] = [
     isDefault: false,
     excludeFromSellable: false,
   },
+  {
+    /* Faulty goods live here until the supplier settles them. Kept out of
+       sellable stock so the shelf figure never counts something broken. */
+    id: 4,
+    code: "LOC-04",
+    name: "Claim Stock",
+    kind: "claim",
+    inCharge: "Ahmed Riaz",
+    address: "Kohinoor Market, Saddar, Karachi",
+    isActive: true,
+    isDefault: false,
+    excludeFromSellable: true,
+  },
 ];
+
+/** Locations whose stock can actually be sold. */
+export const sellableLocations = () =>
+  locations.filter((l) => l.isActive && !l.excludeFromSellable);
 
 export const locationKindLabels: Record<LocationKind, string> = {
   warehouse: "Warehouse",
@@ -495,6 +512,7 @@ export const permissionCatalog: PermissionDef[] = [
   { key: "invoices.view",     label: "See sale invoices",          group: "Sales" },
   { key: "invoices.create",   label: "Make a sale invoice",        group: "Sales" },
   { key: "returns.sales",     label: "Handle sales returns",       group: "Sales" },
+  { key: "sales.direct",      label: "Sell over the counter",       group: "Sales" },
   { key: "customers.view",    label: "See customers",              group: "Sales" },
   { key: "customers.manage",  label: "Add & edit customers",       group: "Sales" },
   { key: "customers.tax",     label: "Fill customer tax details",  group: "Sales" },
@@ -521,6 +539,10 @@ export const permissionCatalog: PermissionDef[] = [
 
   { key: "delivery.view",     label: "See deliveries",             group: "Delivery" },
   { key: "delivery.manage",   label: "Book & update deliveries",   group: "Delivery" },
+
+  { key: "claims.view",       label: "See claims",                 group: "Claims" },
+  { key: "claims.receive",    label: "Take claims from customers", group: "Claims" },
+  { key: "claims.settle",     label: "Send & settle with supplier",group: "Claims" },
 
   { key: "reports.view",      label: "See reports",                group: "Reports" },
   { key: "reports.full",      label: "See profit & cost reports",  group: "Reports" },
@@ -549,17 +571,19 @@ export const rolePermissions: Record<RoleKey, string[]> = {
     "money.view", "money.manage",
     "ledger.view", "ledger.manage", "statements.view", "expenses.manage",
     "delivery.view",
+    "claims.view",
     "reports.view", "reports.full",
     "activity.view", "records.delete",
   ],
 
   "order-dept": [
     "orders.view", "orders.create", "orders.approve",
-    "invoices.view", "invoices.create", "returns.sales",
-    "customers.view", "visits.view",
+    "invoices.view", "invoices.create", "returns.sales", "sales.direct",
+    "customers.view", "customers.manage", "visits.view",
     "purchases.view", "receipts.stock",
     "stock.view", "stock.transfer", "stock.correct", "products.manage", "cost.view",
     "delivery.view", "delivery.manage",
+    "claims.view", "claims.receive", "claims.settle",
     "reports.view",
   ],
 
@@ -690,3 +714,54 @@ export const shortcuts: Shortcut[] = [
   { keys: "Ctrl+K", label: "Command palette",           group: "Global" },
   { keys: "?",      label: "Shortcut help",             group: "Global" },
 ];
+
+/* ═══════════════════════ Claims & warranty ═══════════════════════ */
+/**
+ * The claim desk is the backbone of this business, in the owner's own words.
+ * Faulty pieces come back from shops, sit in claim stock, go to the supplier,
+ * and either come back replaced or get written off to the warranty account.
+ *
+ * Nothing here is per-order: a shopkeeper returns one dead battery months
+ * later and has no idea which invoice it came on. Claims are per item.
+ */
+
+export type ClaimReason = {
+  key: string;
+  label: string;
+  /** Faults the supplier normally accepts, vs ones usually refused. */
+  usuallyAccepted: boolean;
+};
+
+export const claimReasons: ClaimReason[] = [
+  { key: "dead",       label: "Dead on arrival",     usuallyAccepted: true },
+  { key: "not-working",label: "Stopped working",     usuallyAccepted: true },
+  { key: "weak",       label: "Weak / low backup",   usuallyAccepted: true },
+  { key: "damaged",    label: "Physically damaged",  usuallyAccepted: false },
+  { key: "burnt",      label: "Burnt",               usuallyAccepted: false },
+  { key: "wrong-item", label: "Wrong item supplied", usuallyAccepted: true },
+  { key: "short",      label: "Short in packing",    usuallyAccepted: true },
+];
+
+export type ClaimPolicy = {
+  /** Days after purchase a claim is still accepted from the customer. */
+  windowDays: number;
+  /** Chase the supplier once a claim has sat this long. */
+  remindSupplierAfterDays: number;
+  /** Then keep asking this often. */
+  remindEveryHours: number;
+  /** Nudge the desk if claims sit in stock unsent this long. */
+  remindUnsentAfterDays: number;
+  /** Hand the shop a replacement immediately, before the supplier settles. */
+  replaceUpfront: boolean;
+  /** Rejected claims are written off here. */
+  writeOffAccount: string;
+};
+
+export const claimPolicy: ClaimPolicy = {
+  windowDays: 180,
+  remindSupplierAfterDays: 14,
+  remindEveryHours: 48,
+  remindUnsentAfterDays: 3,
+  replaceUpfront: true,
+  writeOffAccount: "Warranty & Claims",
+};

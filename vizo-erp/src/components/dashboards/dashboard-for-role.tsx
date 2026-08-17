@@ -3,15 +3,17 @@
 import * as React from "react";
 import { useSession } from "@/components/providers/session-provider";
 import { SalesDashboard } from "./sales-dashboard";
+import { OrderDeptDashboard } from "./order-dept-dashboard";
 
 /**
- * The sales team needs a different first screen from everyone else: orders and
- * money, not revenue charts. Other roles keep the full dashboard until each of
- * their portals is finalised in turn.
+ * Each role opens on the work it actually does. Sales sees orders and money;
+ * the order department sees a work queue. Accounts and admin keep the full
+ * dashboard until their portals are finalised in turn.
  */
 export function DashboardForRole({ children }: { children: React.ReactNode }) {
   const { role } = useSession();
 
   if (role === "sales") return <SalesDashboard />;
+  if (role === "order-dept") return <OrderDeptDashboard />;
   return <>{children}</>;
 }
