@@ -48,10 +48,8 @@ const MOVEMENTS: Movement[] = [
 
 export default function MovementsPage() {
   const [search, setSearch] = React.useState("");
-  const today = new Date().toISOString().slice(0, 10);
-  const monthAgo = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
-  const [from, setFrom] = React.useState(monthAgo);
-  const [to, setTo] = React.useState(today);
+  const [from, setFrom] = React.useState(() => new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10));
+  const [to, setTo] = React.useState(() => new Date().toISOString().slice(0, 10));
   const [locationId, setLocationId] = React.useState<number | null>(null);
 
   const filtered = MOVEMENTS.filter((m) =>

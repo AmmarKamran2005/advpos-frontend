@@ -96,11 +96,11 @@ export type PI = {
 };
 
 export const purchaseInvoices: PI[] = [
-  { id: 1, invoiceNo: "PI-26-0042", supplierInvoiceNo: "CMP-INV-2026-1842", supplierName: "China Mobile Plaza Trading", supplierInitials: "CM", poNo: "PO-26-0040", invoiceDate: "2026-04-29", dueDate: "2026-05-29", total: 482000, paid: 0,      balance: 482000, paymentMethod: "CREDIT", whtAmount: 21690, status: "POSTED"  },
-  { id: 2, invoiceNo: "PI-26-0041", supplierInvoiceNo: "SEH-INV-2026-2241", supplierName: "Shenzhen Electronics Hub",   supplierInitials: "SE", poNo: "PO-26-0041", invoiceDate: "2026-04-28", dueDate: "2026-05-28", total: 720000, paid: 360000, balance: 360000, paymentMethod: "BANK",   whtAmount: 32400, status: "PARTIAL" },
-  { id: 3, invoiceNo: "PI-26-0040", supplierInvoiceNo: "PAI-INV-2026-0421", supplierName: "Pak Accessories Imports",    supplierInitials: "PA", poNo: "PO-26-0039", invoiceDate: "2026-04-26", dueDate: "2026-05-26", total: 320000, paid: 320000, balance: 0,      paymentMethod: "BANK",   whtAmount: 14400, status: "PAID"    },
-  { id: 4, invoiceNo: "PI-26-0014", supplierInvoiceNo: "ATI-INV-2026-1124", supplierName: "Audio Tech International",   supplierInitials: "AT", poNo: "PO-26-0017", invoiceDate: "2026-04-24", dueDate: "2026-05-24", total: 285000, paid: 0,      balance: 285000, paymentMethod: "CREDIT", whtAmount: 12825, status: "POSTED"  },
-  { id: 5, invoiceNo: "PI-26-0039", supplierInvoiceNo: "KWC-INV-2026-0942", supplierName: "Karachi Wholesale Cells",    supplierInitials: "KW", poNo: "PO-26-0040", invoiceDate: "2026-03-15", dueDate: "2026-04-15", total: 145000, paid: 0,      balance: 145000, paymentMethod: "CREDIT", whtAmount: 6525,  status: "OVERDUE" },
+  { id: 1, invoiceNo: "PI-26-0042", supplierInvoiceNo: "CMP-INV-2026-1842", supplierName: "China Mobile Plaza Trading", supplierInitials: "CM", poNo: "PO-26-0040", invoiceDate: "2026-07-19", dueDate: "2026-08-18", total: 482000, paid: 0,      balance: 482000, paymentMethod: "CREDIT", whtAmount: 21690, status: "POSTED"  },
+  { id: 2, invoiceNo: "PI-26-0041", supplierInvoiceNo: "SEH-INV-2026-2241", supplierName: "Shenzhen Electronics Hub",   supplierInitials: "SE", poNo: "PO-26-0041", invoiceDate: "2026-07-21", dueDate: "2026-08-20", total: 720000, paid: 360000, balance: 360000, paymentMethod: "BANK",   whtAmount: 32400, status: "PARTIAL" },
+  { id: 3, invoiceNo: "PI-26-0040", supplierInvoiceNo: "PAI-INV-2026-0421", supplierName: "Pak Accessories Imports",    supplierInitials: "PA", poNo: "PO-26-0039", invoiceDate: "2026-07-16", dueDate: "2026-08-15", total: 320000, paid: 320000, balance: 0,      paymentMethod: "BANK",   whtAmount: 14400, status: "PAID"    },
+  { id: 4, invoiceNo: "PI-26-0014", supplierInvoiceNo: "ATI-INV-2026-1124", supplierName: "Audio Tech International",   supplierInitials: "AT", poNo: "PO-26-0017", invoiceDate: "2026-07-11", dueDate: "2026-08-10", total: 285000, paid: 0,      balance: 285000, paymentMethod: "CREDIT", whtAmount: 12825, status: "OVERDUE" },
+  { id: 5, invoiceNo: "PI-26-0039", supplierInvoiceNo: "KWC-INV-2026-0942", supplierName: "Karachi Wholesale Cells",    supplierInitials: "KW", poNo: "PO-26-0040", invoiceDate: "2026-06-15", dueDate: "2026-07-15", total: 145000, paid: 0,      balance: 145000, paymentMethod: "CREDIT", whtAmount: 6525,  status: "OVERDUE" },
 ];
 
 export const PI_STATUS_VARIANT: Record<PIStatus, "success" | "warning" | "danger" | "info" | "muted"> = {
@@ -111,6 +111,24 @@ export const PI_STATUS_VARIANT: Record<PIStatus, "success" | "warning" | "danger
   OVERDUE: "danger",
   VOID:    "muted",
 };
+
+/**
+ * Unpaid purchase invoices that are overdue, or due within `withinDays`.
+ *
+ * Judged purely off the due date, not the `status` field — a status set once
+ * and never revisited drifts out of sync with the calendar. This is the same
+ * check the reminder for it uses, so the dashboard counter and the reminder
+ * never disagree.
+ */
+export function payablesDueSoon(withinDays = 3, today = "2026-08-15") {
+  return purchaseInvoices.filter((pi) => {
+    if (pi.balance <= 0) return false;
+    const daysPastDue = Math.round(
+      (new Date(today).getTime() - new Date(pi.dueDate).getTime()) / 86400000
+    );
+    return daysPastDue > -withinDays;
+  });
+}
 
 /* Purchase Returns */
 export const purchaseReturns = [

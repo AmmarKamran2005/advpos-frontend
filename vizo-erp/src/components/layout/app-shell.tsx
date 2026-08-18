@@ -10,15 +10,28 @@ import { Toaster } from "@/components/ui/toaster";
 
 const SIDEBAR_COLLAPSED_KEY = "vizo-sidebar-collapsed";
 
-export function AppShell({ children }: { children: React.ReactNode }) {
-  const [collapsed, setCollapsed] = React.useState(false);
-  const [mobileOpen, setMobileOpen] = React.useState(false);
+/* Read through useSyncExternalStore, not an effect, so the collapsed state is
+   correct on the very first client render instead of flashing expanded. */
+function subscribeToCollapsed(onChange: () => void) {
+  window.addEventListener("storage", onChange);
+  return () => window.removeEventListener("storage", onChange);
+}
+function getCollapsedSnapshot() {
+  return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1";
+}
+function getCollapsedServerSnapshot() {
+  return false;
+}
 
-  /* Restore collapsed state from localStorage */
-  React.useEffect(() => {
-    const stored = localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
-    if (stored === "1") setCollapsed(true);
-  }, []);
+export function AppShell({ children }: { children: React.ReactNode }) {
+  const storedCollapsed = React.useSyncExternalStore(
+    subscribeToCollapsed,
+    getCollapsedSnapshot,
+    getCollapsedServerSnapshot
+  );
+  const [override, setOverride] = React.useState<boolean | null>(null);
+  const collapsed = override ?? storedCollapsed;
+  const [mobileOpen, setMobileOpen] = React.useState(false);
 
   /* Close mobile sidebar on route navigation */
   React.useEffect(() => {
@@ -30,7 +43,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   function toggleCollapsed() {
     const next = !collapsed;
-    setCollapsed(next);
+    setOverride(next);
     localStorage.setItem(SIDEBAR_COLLAPSED_KEY, next ? "1" : "0");
   }
 

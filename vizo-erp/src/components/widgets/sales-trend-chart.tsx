@@ -14,11 +14,21 @@ import { useTheme } from "next-themes";
 import { salesTrendData } from "@/data/mock";
 import { formatCompact } from "@/lib/format";
 
+/* recharts measures the DOM, so it can't render correctly during SSR — gate on
+   the client with useSyncExternalStore rather than a setState-in-effect. */
+function subscribe() {
+  return () => {};
+}
+function getClientSnapshot() {
+  return true;
+}
+function getServerSnapshot() {
+  return false;
+}
+
 export function SalesTrendChart() {
   const { resolvedTheme } = useTheme();
-  const [mounted, setMounted] = React.useState(false);
-
-  React.useEffect(() => setMounted(true), []);
+  const mounted = React.useSyncExternalStore(subscribe, getClientSnapshot, getServerSnapshot);
 
   const isDark = resolvedTheme === "dark";
   const tickColor = isDark ? "#94A3B8" : "#64748B";

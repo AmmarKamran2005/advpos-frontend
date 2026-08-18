@@ -8,6 +8,7 @@ import {
   Wallet,
   BarChart3,
   Send,
+  PackageCheck,
   PackageX,
   Settings2,
 } from "lucide-react";
@@ -88,6 +89,22 @@ export const navigation: NavNode[] = [
   },
   {
     type: "item",
+    label: "Packing",
+    icon: PackageCheck,
+    href: "/packing",
+    match: "packing",
+    perms: ["orders.approve"],
+  },
+  {
+    type: "item",
+    label: "Dispatch",
+    icon: Send,
+    href: "/dispatch",
+    match: "dispatch",
+    perms: ["delivery.manage"],
+  },
+  {
+    type: "item",
     label: "Claims",
     icon: PackageX,
     href: "/claims",
@@ -97,7 +114,7 @@ export const navigation: NavNode[] = [
   {
     type: "item",
     label: "Delivery",
-    icon: Send,
+    icon: Truck,
     href: "/delivery",
     match: "delivery",
     perms: ["delivery.view"],
@@ -140,7 +157,8 @@ export const navigation: NavNode[] = [
     icon: Wallet,
     match: "accounting",
     children: [
-      { label: "Money Received",   href: "/accounting/vouchers",        match: "accounting.vouchers", perms: ["money.view"] },
+      { label: "Confirm Collections", href: "/accounting/collections",  match: "accounting.collections", perms: ["money.manage"], badge: { text: "2", variant: "warning" } },
+      { label: "Vouchers",         href: "/accounting/vouchers",        match: "accounting.vouchers", perms: ["money.view"] },
       { label: "Expenses",         href: "/accounting/expenses",        match: "accounting.expenses", perms: ["expenses.manage"] },
       { label: "Account List",     href: "/accounting/coa",             match: "accounting.coa",      perms: ["ledger.view"] },
       { label: "Ledgers",          href: "/accounting/ledgers",         match: "accounting.ledgers",  perms: ["ledger.view"] },

@@ -32,15 +32,18 @@ export default function LedgerPage() {
   const initialAccountId = params.get("accountId") ? parseInt(params.get("accountId")!, 10) : 119;
 
   const [accountId, setAccountId] = React.useState<number>(initialAccountId);
-  const today = new Date().toISOString().slice(0, 10);
-  const monthAgo = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
-  const [from, setFrom] = React.useState(monthAgo);
-  const [to, setTo] = React.useState(today);
+  const [from, setFrom] = React.useState(() => new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10));
+  const [to, setTo] = React.useState(() => new Date().toISOString().slice(0, 10));
   const [locationId, setLocationId] = React.useState<number | null>(null);
 
-  React.useEffect(() => {
-    if (params.get("accountId")) setAccountId(parseInt(params.get("accountId")!, 10));
-  }, [params]);
+  /* Follow the URL's accountId (e.g. a link from another page), without an
+     effect — an effect here would run a beat after the mismatched render. */
+  const urlAccountId = params.get("accountId") ? parseInt(params.get("accountId")!, 10) : null;
+  const [syncedAccountId, setSyncedAccountId] = React.useState(urlAccountId);
+  if (urlAccountId !== null && urlAccountId !== syncedAccountId) {
+    setSyncedAccountId(urlAccountId);
+    setAccountId(urlAccountId);
+  }
 
   const account = accounts.find((a) => a.id === accountId);
   const leaves = accounts.filter((a) => !a.isGroup);
