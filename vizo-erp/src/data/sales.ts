@@ -3,6 +3,7 @@
  */
 
 import type { ChannelKey } from "./settings";
+import { products as productList } from "./products";
 
 export type OrderStatus =
   | "DRAFT" | "SUBMITTED" | "CREDIT_HOLD" | "CONFIRMED"
@@ -192,6 +193,41 @@ export function awaitingConfirmation(orders_: Order[] = orders) {
   return orders_.filter(
     (x) => x.deliveryState === "AWAITING" || x.deliveryState === "ON_THE_WAY"
   );
+}
+
+/**
+ * The lines on an order.
+ *
+ * Generated from the order id so the same order always shows the same items —
+ * the mock has no line table, and a picking screen is worthless if the list
+ * changes on every refresh.
+ */
+export type OrderLine = {
+  productId: number;
+  name: string;
+  sku: string;
+  qty: number;
+  rate: number;
+  packing: number;
+};
+
+export function orderLines(order: Order): OrderLine[] {
+  const catalogue = productList.filter((p) => p.isActive);
+  const lines: OrderLine[] = [];
+
+  for (let i = 0; i < order.itemCount; i++) {
+    const p = catalogue[(order.id * 5 + i * 3) % catalogue.length];
+    if (lines.some((l) => l.productId === p.id)) continue;
+    lines.push({
+      productId: p.id,
+      name: p.name,
+      sku: p.sku,
+      qty: ((order.id + i * 7) % 24) + 1,
+      rate: p.salePrice,
+      packing: p.packing,
+    });
+  }
+  return lines;
 }
 
 export function getOrder(id: number) {

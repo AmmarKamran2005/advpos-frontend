@@ -3,8 +3,8 @@
 Read `plan.md` for overall scope, `flow.md` for the daily chain, `sales-portal.md`
 for the sales side and the delivery-channel decoding.
 
-**Status: first pass built.** Claims, reminders, counter sale and the work-queue
-dashboard are in. Packing and dispatch screens are next.
+**Status: built.** Claims, reminders, counter sale, the work-queue dashboard,
+packing and dispatch are all in. Claim-out batching is the remaining piece.
 
 ---
 
@@ -138,6 +138,43 @@ battery aa rahi hai, tou masla us piece ka nahi — us line ka hai.
 | Order Dept dashboard — work queue | `dashboards/order-dept-dashboard.tsx` |
 | Counter Sale | `sales/direct/page.tsx` |
 | Statement: last order/payment + reminder text | `parties/[id]/statement/page.tsx` |
+| Packing bench — pick list, short lines, packet counts | `packing/page.tsx` |
+| Dispatch — route, carrier, tracking/bilty | `dispatch/page.tsx` |
+| Per-location stock + deterministic order lines | `data/products.ts`, `data/sales.ts` |
+
+### Packing
+
+Queue on the left, the order being packed on the right. The line that matters is
+the **short** one: jab shelf poora cover na kar sake, line par hi likh deta hai
+kitna kam hai **aur baqi kis location par para hai** — "Warehouse: 6 · Shop 2: 2".
+Wahin se Move Stock ka button hai.
+
+Packet ke hisaab se bhi dikhata hai (`3 pkt + 4`), kyunki bande dabbe ginte hain,
+pieces nahi.
+
+Adha packed karna mana nahi — lekin **reason lazmi** hai, aur baqi order par
+outstanding reh jata hai. Warna dabba chup chaap adhoora chala jata hai.
+
+### Dispatch
+
+Yahan wo chaar routes asal mein kaam aate hain. Route chunte hi teen cheezein
+khud badal jati hain:
+
+| Route | Carrier list | Reference | Kaun confirm karega |
+|---|---|---|---|
+| Karachi — own team | Own rider, Sales rep | — | **us order ka apna rep** (naam se) |
+| Online courier | PostEx, TCS, Leopards, M&P, Trax | tracking (optional) | ye desk |
+| Local cargo | Pak Intl, Rehman, Mehran Railway | **bilty lazmi** | cargo desk |
+| Heavy — logistics | Pak Intl, NLC, Daewoo | **bilty lazmi** | cargo desk |
+
+Karachi ka pata ho tou route khud "own team" par set ho jata hai.
+
+**Bilty freight par lazmi hai** aur screen wajah bhi batati hai: freight ka koi
+tracking feed nahi hota, bilty hi wahid saboot hai.
+
+Button dabane se pehle neeche saaf likha hota hai ke **iske baad kis se poocha
+jayega aur kab** — "Zara Malik confirms this one… reminders start today, then
+repeat every 6 hours". Yehi wo cheez hai jo client ne poochi thi.
 
 ---
 

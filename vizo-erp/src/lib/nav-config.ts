@@ -8,6 +8,7 @@ import {
   Wallet,
   BarChart3,
   Send,
+  PackageCheck,
   PackageX,
   Settings2,
 } from "lucide-react";
@@ -88,6 +89,22 @@ export const navigation: NavNode[] = [
   },
   {
     type: "item",
+    label: "Packing",
+    icon: PackageCheck,
+    href: "/packing",
+    match: "packing",
+    perms: ["orders.approve"],
+  },
+  {
+    type: "item",
+    label: "Dispatch",
+    icon: Send,
+    href: "/dispatch",
+    match: "dispatch",
+    perms: ["delivery.manage"],
+  },
+  {
+    type: "item",
     label: "Claims",
     icon: PackageX,
     href: "/claims",
@@ -97,7 +114,7 @@ export const navigation: NavNode[] = [
   {
     type: "item",
     label: "Delivery",
-    icon: Send,
+    icon: Truck,
     href: "/delivery",
     match: "delivery",
     perms: ["delivery.view"],

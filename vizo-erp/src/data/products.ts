@@ -196,3 +196,33 @@ export function toPackets(qty: number, packing: number) {
   if (packing <= 1) return { packets: qty, loose: 0 };
   return { packets: Math.floor(qty / packing), loose: qty % packing };
 }
+
+/**
+ * How much of an item sits at one location.
+ *
+ * Derived, not stored — the mock has a single total per item and this splits
+ * it the same way every render so the numbers never jump between screens.
+ * When the backend lands this becomes a real per-location balance.
+ */
+export function stockAt(productId: number, locationCode: string): number {
+  const p = getProduct(productId);
+  if (!p || p.totalStock <= 0) return 0;
+
+  /* Claim stock is counted separately and is never sellable. */
+  if (locationCode === "LOC-04") return 0;
+
+  const share: Record<string, number> = {
+    "LOC-01": 0.5, // warehouse holds the bulk
+    "LOC-02": 0.3, // order department keeps a working stock
+    "LOC-03": 0.2, // shop keeps the least
+  };
+  return Math.floor(p.totalStock * (share[locationCode] ?? 0));
+}
+
+/** Every location that currently has some of this item, best first. */
+export function stockSpread(productId: number) {
+  return ["LOC-01", "LOC-02", "LOC-03"]
+    .map((code) => ({ code, qty: stockAt(productId, code) }))
+    .filter((x) => x.qty > 0)
+    .sort((a, b) => b.qty - a.qty);
+}
