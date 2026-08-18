@@ -20,6 +20,8 @@ const KIND_LABEL: Record<Reminder["kind"], string> = {
   "claim-unsent": "Claim",
   "claim-with-supplier": "Claim",
   "order-unpacked": "Order",
+  "collection-unconfirmed": "Money",
+  "payable-due": "Payable",
 };
 
 /**

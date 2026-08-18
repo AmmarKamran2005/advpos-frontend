@@ -157,7 +157,8 @@ export const navigation: NavNode[] = [
     icon: Wallet,
     match: "accounting",
     children: [
-      { label: "Money Received",   href: "/accounting/vouchers",        match: "accounting.vouchers", perms: ["money.view"] },
+      { label: "Confirm Collections", href: "/accounting/collections",  match: "accounting.collections", perms: ["money.manage"], badge: { text: "2", variant: "warning" } },
+      { label: "Vouchers",         href: "/accounting/vouchers",        match: "accounting.vouchers", perms: ["money.view"] },
       { label: "Expenses",         href: "/accounting/expenses",        match: "accounting.expenses", perms: ["expenses.manage"] },
       { label: "Account List",     href: "/accounting/coa",             match: "accounting.coa",      perms: ["ledger.view"] },
       { label: "Ledgers",          href: "/accounting/ledgers",         match: "accounting.ledgers",  perms: ["ledger.view"] },

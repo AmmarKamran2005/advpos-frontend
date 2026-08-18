@@ -12,13 +12,17 @@
 
 import { orders, type Order } from "./sales";
 import { claims, type Claim } from "./claims";
+import { collections, type Collection } from "./collections";
+import { purchaseInvoices, type PI } from "./purchases";
 import { getChannel, claimPolicy, type RoleKey } from "./settings";
 
 export type ReminderKind =
   | "delivery-unconfirmed"
   | "claim-unsent"
   | "claim-with-supplier"
-  | "order-unpacked";
+  | "order-unpacked"
+  | "collection-unconfirmed"
+  | "payable-due";
 
 export type Reminder = {
   id: string;
@@ -149,6 +153,60 @@ function unpackedOrderReminders(): Reminder[] {
     });
 }
 
+/* ─────────────────── money the rep collected, not yet confirmed ─────────────────── */
+
+function collectionReminders(): Reminder[] {
+  return collections
+    .filter((c) => c.status === "AWAITING")
+    .flatMap((c: Collection) => {
+      const age = daysSince(c.collectedOn);
+      if (age < 1) return [];
+
+      return [{
+        id: `col-${c.id}`,
+        kind: "collection-unconfirmed" as const,
+        severity: age > 3 ? ("danger" as const) : ("warning" as const),
+        title: `${c.customerName} — confirm this receipt`,
+        detail: `${c.collectedBy} collected it ${age} ${age === 1 ? "day" : "days"} ago · ${c.method.toLowerCase()}`,
+        href: `/accounting/collections`,
+        ageDays: age,
+        owners: ["accountant", "super-admin"],
+        ref: c.receiptNo,
+      }];
+    });
+}
+
+/* ─────────────────── supplier payments coming due ─────────────────── */
+
+function payableDueReminders(): Reminder[] {
+  return purchaseInvoices
+    .filter((pi) => pi.balance > 0)
+    .flatMap((pi: PI) => {
+      /* Judged off the date, not the status field — a status set once and
+         never revisited drifts out of sync with the calendar. */
+      const daysPastDue = daysSince(pi.dueDate);
+      const overdue = daysPastDue > 0;
+      const daysRemaining = -daysPastDue;
+      if (!overdue && daysRemaining > 3) return [];
+
+      return [{
+        id: `pay-${pi.id}`,
+        kind: "payable-due" as const,
+        severity: overdue ? ("danger" as const) : ("warning" as const),
+        title: `${pi.supplierName} — payment ${overdue ? "overdue" : "due soon"}`,
+        detail: overdue
+          ? `${daysPastDue} ${daysPastDue === 1 ? "day" : "days"} past due`
+          : daysRemaining === 0
+            ? "Due today"
+            : `Due in ${daysRemaining} ${daysRemaining === 1 ? "day" : "days"}`,
+        href: `/purchases/invoices/${pi.id}`,
+        ageDays: overdue ? daysPastDue : 0,
+        owners: ["accountant", "super-admin"],
+        ref: pi.invoiceNo,
+      }];
+    });
+}
+
 /* ─────────────────── the whole list ─────────────────── */
 
 const SEVERITY_ORDER = { danger: 0, warning: 1, info: 2 } as const;
@@ -159,6 +217,8 @@ export function allReminders(): Reminder[] {
     ...claimUnsentReminders(),
     ...claimWithSupplierReminders(),
     ...unpackedOrderReminders(),
+    ...collectionReminders(),
+    ...payableDueReminders(),
   ].sort(
     (a, b) =>
       SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity] ||
