@@ -2,8 +2,8 @@
 
 import * as React from "react";
 import { useSession } from "@/components/providers/session-provider";
-import { SalesDashboard } from "./sales-dashboard";
-import { OrderDeptDashboard } from "./order-dept-dashboard";
+import { SalesDashboard } from "./sales/sales-dashboard";
+import { OrderDeptDashboard } from "./order-dept/order-dept-dashboard";
 
 /**
  * Each role opens on the work it actually does. Sales sees orders and money;

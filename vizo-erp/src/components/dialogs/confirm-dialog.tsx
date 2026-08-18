@@ -51,12 +51,16 @@ export function ConfirmDialog({
   const meta = VARIANT_ICON[variant];
   const Icon = meta.icon;
 
-  React.useEffect(() => {
+  /* Clear the form the moment it closes, without waiting a tick for an effect
+     — otherwise the old reason flashes for a frame the next time it opens. */
+  const [wasOpen, setWasOpen] = React.useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
     if (!open) {
       setReason("");
       setReasonError(null);
     }
-  }, [open]);
+  }
 
   async function handleConfirm() {
     if (requireReason && reason.trim().length < 5) {

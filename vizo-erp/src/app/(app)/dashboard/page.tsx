@@ -41,7 +41,7 @@ import {
 } from "@/data/mock";
 import { formatCompact, formatMoney, formatNumber, formatPercent } from "@/lib/format";
 import { statusLabel } from "@/lib/labels";
-import { DashboardForRole } from "@/components/dashboards/dashboard-for-role";
+import { DashboardForRole } from "@/components/portals/dashboard-for-role";
 import { cn } from "@/lib/utils";
 
 const STOCK_ALERT_STYLES = {

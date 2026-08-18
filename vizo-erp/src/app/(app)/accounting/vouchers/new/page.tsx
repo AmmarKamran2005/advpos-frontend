@@ -211,7 +211,7 @@ export default function NewVoucherPage() {
                   )}
                   {(method === "EASYPAISA" || method === "JAZZCASH") && (
                     <FormField control={form.control} name="walletTxnId" render={({ field }) => (
-                      <FormItem className="sm:col-span-2"><FormLabel required>Wallet Txn ID</FormLabel><FormControl><Input placeholder="EP-... / JC-..." {...field} /></FormControl><FormDescription>From wallet provider's confirmation</FormDescription><FormMessage /></FormItem>
+                      <FormItem className="sm:col-span-2"><FormLabel required>Wallet Txn ID</FormLabel><FormControl><Input placeholder="EP-... / JC-..." {...field} /></FormControl><FormDescription>From wallet provider&apos;s confirmation</FormDescription><FormMessage /></FormItem>
                     )} />
                   )}
 
