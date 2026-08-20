@@ -61,6 +61,26 @@ export const navigation: NavNode[] = [
     match: "dashboard",
   },
 
+
+
+    { type: "section", label: "Stock" },
+  {
+    type: "group",
+    label: "Stock",
+    icon: Package,
+    match: "inventory",
+    children: [
+      { label: "Items",            href: "/inventory/products",     match: "inventory.products",     perms: ["stock.view"] },
+      { label: "Categories",       href: "/inventory/categories",   match: "inventory.categories",   perms: ["products.manage"] },
+      { label: "Brands",           href: "/inventory/brands",       match: "inventory.brands",       perms: ["products.manage"] },
+      { label: "Stock in Hand",    href: "/inventory/stock-levels", match: "inventory.stock-levels", perms: ["stock.view"] },
+      { label: "Transfers",        href: "/inventory/transfers",    match: "inventory.transfers",    perms: ["stock.transfer"] },
+      { label: "Stock Correction", href: "/inventory/adjustments",  match: "inventory.adjustments",  perms: ["stock.correct"] },
+      { label: "Stock History",    href: "/inventory/movements",    match: "inventory.movements",    perms: ["stock.view"] },
+    ],
+  },
+
+  
   { type: "section", label: "Daily Work" },
   {
     type: "group",
@@ -133,22 +153,7 @@ export const navigation: NavNode[] = [
     ],
   },
 
-  { type: "section", label: "Stock" },
-  {
-    type: "group",
-    label: "Stock",
-    icon: Package,
-    match: "inventory",
-    children: [
-      { label: "Items",            href: "/inventory/products",     match: "inventory.products",     perms: ["stock.view"] },
-      { label: "Categories",       href: "/inventory/categories",   match: "inventory.categories",   perms: ["products.manage"] },
-      { label: "Brands",           href: "/inventory/brands",       match: "inventory.brands",       perms: ["products.manage"] },
-      { label: "Stock in Hand",    href: "/inventory/stock-levels", match: "inventory.stock-levels", perms: ["stock.view"] },
-      { label: "Transfers",        href: "/inventory/transfers",    match: "inventory.transfers",    perms: ["stock.transfer"] },
-      { label: "Stock Correction", href: "/inventory/adjustments",  match: "inventory.adjustments",  perms: ["stock.correct"] },
-      { label: "Stock History",    href: "/inventory/movements",    match: "inventory.movements",    perms: ["stock.view"] },
-    ],
-  },
+
 
   { type: "section", label: "Money", perms: ["money.view", "ledger.view"] },
   {
