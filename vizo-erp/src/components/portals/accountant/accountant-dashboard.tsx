@@ -36,6 +36,11 @@ const METHOD_ICON: Record<Collection["method"], typeof Banknote> = {
  */
 export function AccountantDashboard() {
   const { user } = useSession();
+  /* The shell does not mount this until the session has resolved, so user
+     is set. An early `return null` here would sit above the hooks below
+     and change the hook count between renders. */
+  const me = user!;
+
 
   const awaiting = awaitingConfirmation();
   const confirmedToday = collections.filter(
@@ -50,7 +55,7 @@ export function AccountantDashboard() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-navy-900 dark:text-white">
-          Good morning, {user.fullName.split(" ")[0]}
+          Good morning, {me.fullName.split(" ")[0]}
         </h1>
         <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
           {awaiting.length > 0

@@ -27,6 +27,11 @@ import { cn } from "@/lib/utils";
  */
 export function OrderDeptDashboard() {
   const { user } = useSession();
+  /* The shell does not mount this until the session has resolved, so user
+     is set. An early `return null` here would sit above the hooks below
+     and change the hook count between renders. */
+  const me = user!;
+
 
   const incoming = orders.filter((o) => ["SUBMITTED", "CREDIT_HOLD"].includes(o.status));
   const toPack = orders.filter((o) => ["CONFIRMED", "PROCESSING"].includes(o.status));
@@ -50,7 +55,7 @@ export function OrderDeptDashboard() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-navy-900 dark:text-white">
-            Good morning, {user.fullName.split(" ")[0]}
+            Good morning, {me.fullName.split(" ")[0]}
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
             {incoming.length > 0

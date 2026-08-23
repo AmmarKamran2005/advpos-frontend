@@ -3,7 +3,8 @@
 import * as React from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, Save, Shield, Lock, AlertCircle, Loader2 } from "lucide-react";
+import axios from "axios";
+import { ArrowLeft, Save, Shield, Lock, AlertCircle, Loader2, RefreshCw } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardBody } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -13,118 +14,123 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Skeleton } from "@/components/ui/skeleton";
 import { ConfirmDialog } from "@/components/dialogs";
-import { roles } from "@/data/admin";
 import { toast } from "@/components/ui/toaster";
+import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
 
-const PERMISSION_GROUPS: { module: string; permissions: { key: string; label: string }[] }[] = [
-  { module: "Identity", permissions: [
-    { key: "users.read",   label: "View users" },
-    { key: "users.create", label: "Create users" },
-    { key: "users.update", label: "Update users" },
-    { key: "users.delete", label: "Delete users" },
-    { key: "roles.manage", label: "Manage roles" },
-    { key: "locationes.manage", label: "Manage locationes" },
-  ] },
-  { module: "Sales", permissions: [
-    { key: "orders.read",   label: "View orders" },
-    { key: "orders.create", label: "Create orders" },
-    { key: "orders.confirm", label: "Confirm orders" },
-    { key: "orders.dispatch", label: "Dispatch orders" },
-    { key: "orders.cancel", label: "Cancel orders" },
-    { key: "credit.override", label: "Override credit hold" },
-    { key: "invoices.create", label: "Create invoices" },
-    { key: "invoices.delete", label: "Delete invoices" },
-    { key: "returns.approve", label: "Approve returns" },
-  ] },
-  { module: "Purchases", permissions: [
-    { key: "purchases.order.create", label: "Create POs" },
-    { key: "purchases.order.approve", label: "Approve POs" },
-    { key: "purchases.grn.post", label: "Post GRN" },
-    { key: "purchases.invoice.post", label: "Post purchase invoices" },
-    { key: "purchases.invoice.pay", label: "Pay suppliers" },
-  ] },
-  { module: "Inventory", permissions: [
-    { key: "stock.read", label: "View stock" },
-    { key: "stock.adjust", label: "Adjust stock" },
-    { key: "stock.view-total", label: "View total stock (override hide_stock)" },
-    { key: "transfers.approve", label: "Approve transfers" },
-    { key: "products.create", label: "Create products" },
-    { key: "products.update", label: "Update products" },
-  ] },
-  { module: "Accounting", permissions: [
-    { key: "accounting.read", label: "View accounting" },
-    { key: "accounting.journal.create", label: "Create journal entries" },
-    { key: "accounting.journal.post", label: "Post journal entries" },
-    { key: "accounting.journal.reverse", label: "Reverse posted JEs" },
-    { key: "vouchers.post", label: "Post vouchers" },
-    { key: "vouchers.reconcile", label: "Reconcile vouchers" },
-    { key: "period.close", label: "Close periods" },
-  ] },
-  { module: "Reports", permissions: [
-    { key: "reports.sales", label: "Sales reports" },
-    { key: "reports.finance", label: "Financial reports" },
-    { key: "reports.finance.consolidated", label: "Consolidated (across locationes)" },
-    { key: "reports.aging", label: "Aging reports" },
-  ] },
-  { module: "Notifications & AI", permissions: [
-  ] },
-  { module: "Backup", permissions: [
-    { key: "backup.run", label: "Run backups" },
-    { key: "backup.restore", label: "Restore from backup" },
-    { key: "backup.download", label: "Download backups" },
-  ] },
-];
+type PermissionGroup = { module: string; permissions: { key: string; label: string }[] };
 
-const ALL_KEYS = PERMISSION_GROUPS.flatMap((g) => g.permissions.map((p) => p.key));
-
-/* Default presets per role (for demo) */
-const ROLE_DEFAULTS: Record<string, string[]> = {
-  SuperAdmin: ALL_KEYS,
-  Accountant: ["accounting.read", "accounting.journal.create", "accounting.journal.post", "accounting.journal.reverse", "vouchers.post", "vouchers.reconcile", "period.close", "reports.finance", "reports.finance.consolidated", "reports.aging", "ai.ask", "credit.override", "invoices.create", "invoices.void"],
-  "Order Department": ["orders.read", "orders.create", "orders.confirm", "orders.dispatch", "stock.read", "transfers.approve", "ai.ask"],
-  Sales: ["orders.read", "orders.create", "stock.read", "ai.ask", "sms.send"],
-  "Purchase Officer": ["purchases.order.create", "purchases.grn.post", "stock.read", "ai.ask"],
-  "Location Manager": ["orders.confirm", "orders.dispatch", "credit.override", "purchases.order.approve", "stock.read", "stock.view-total", "reports.finance", "reports.aging", "ai.ask"],
-  Collections: ["reports.aging", "vouchers.post", "sms.send", "ai.ask"],
+type RoleDetail = {
+  id: number;
+  key: string;
+  name: string;
+  description: string;
+  homePath: string;
+  isSystem: boolean;
+  isStaffRole: boolean;
+  userCount: number;
+  permissions: string[];
 };
+
+function apiMessage(e: unknown, fallback: string) {
+  if (axios.isAxiosError(e) && e.response) {
+    return (e.response.data as { message?: string })?.message ?? fallback;
+  }
+  return "Cannot reach the server.";
+}
 
 export default function RoleEditPage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
-  const id = parseInt(params.id ?? "0", 10);
-  const isNew = id === 0 || isNaN(id);
-  const role = roles.find((r) => r.id === id);
+  const parsed = parseInt(params?.id ?? "0", 10);
+  const id = Number.isNaN(parsed) ? 0 : parsed;
+  const isNew = id === 0;
 
-  const [name, setName] = React.useState(role?.name ?? "");
-  const [description, setDescription] = React.useState(role?.description ?? "");
-  const [perms, setPerms] = React.useState<Set<string>>(() => new Set(ROLE_DEFAULTS[role?.name ?? ""] ?? []));
-  const [confirmDel, setConfirmDel] = React.useState(false);
+  const [groups, setGroups] = React.useState<PermissionGroup[]>([]);
+  const [role, setRole] = React.useState<RoleDetail | null>(null);
+  const [name, setName] = React.useState("");
+  const [description, setDescription] = React.useState("");
+  const [homePath, setHomePath] = React.useState("/dashboard");
+  const [perms, setPerms] = React.useState<Set<string>>(() => new Set<string>());
+
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+  const [notFound, setNotFound] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
+  const [deleting, setDeleting] = React.useState(false);
+  const [confirmDel, setConfirmDel] = React.useState(false);
 
-  if (id !== 0 && !role && !isNew) {
-    return <EmptyState icon={AlertCircle} title="Role not found" action={<Button asChild><Link href="/admin/roles">Back</Link></Button>} />;
-  }
+  /* The catalogue is the only source of permission keys — there is no inline
+     list any more. An existing role additionally seeds the ticked boxes. */
+  const load = React.useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    setNotFound(false);
+    try {
+      const catalogue = await axios.get<PermissionGroup[]>(`${API_BASE_URL}/admin/permissions`, {
+        headers: authHeader(),
+      });
+      setGroups(catalogue.data);
+
+      if (isNew) {
+        setRole(null);
+        setName("");
+        setDescription("");
+        setHomePath("/dashboard");
+        setPerms(new Set<string>());
+      } else {
+        const res = await axios.get<RoleDetail>(`${API_BASE_URL}/admin/roles/${id}`, {
+          headers: authHeader(),
+        });
+        setRole(res.data);
+        setName(res.data.name ?? "");
+        setDescription(res.data.description ?? "");
+        setHomePath(res.data.homePath || "/dashboard");
+        setPerms(new Set(res.data.permissions ?? []));
+      }
+    } catch (e) {
+      if (axios.isAxiosError(e) && e.response?.status === 404) {
+        setNotFound(true);
+      } else {
+        setError(apiMessage(e, "Could not load this role."));
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [id, isNew]);
+
+  React.useEffect(() => {
+    void load();
+  }, [load]);
+
+  const allKeys = React.useMemo(
+    () => groups.flatMap((g) => g.permissions.map((p) => p.key)),
+    [groups]
+  );
 
   function toggle(key: string) {
     setPerms((cur) => {
       const next = new Set(cur);
-      if (next.has(key)) next.delete(key); else next.add(key);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
       return next;
     });
   }
 
-  function toggleGroup(group: typeof PERMISSION_GROUPS[number]) {
+  function toggleGroup(group: PermissionGroup) {
     const allHave = group.permissions.every((p) => perms.has(p.key));
     setPerms((cur) => {
       const next = new Set(cur);
-      group.permissions.forEach((p) => allHave ? next.delete(p.key) : next.add(p.key));
+      group.permissions.forEach((p) => (allHave ? next.delete(p.key) : next.add(p.key)));
       return next;
     });
   }
 
   async function save() {
-    if (!name || name.length < 2) {
+    /* Client-side guards mirror the server so the round trip is skipped —
+       if the server still refuses, its message wins below. */
+    if (!name || name.trim().length < 2) {
       toast.error("Role name is required");
       return;
     }
@@ -133,10 +139,125 @@ export default function RoleEditPage() {
       return;
     }
     setSaving(true);
-    await new Promise((r) => setTimeout(r, 700));
-    setSaving(false);
-    toast.success(isNew ? "Role created" : "Role updated", { description: `${name} now has ${perms.size} permissions` });
-    router.push("/admin/roles");
+    const body = {
+      name: name.trim(),
+      description: description.trim(),
+      homePath: homePath.trim() || "/dashboard",
+      permissions: Array.from(perms),
+    };
+    try {
+      if (isNew) {
+        const res = await axios.post<{ id: number; message: string }>(
+          `${API_BASE_URL}/admin/roles`,
+          body,
+          { headers: authHeader() }
+        );
+        toast.success(res.data.message);
+        router.push("/admin/roles");
+      } else {
+        const res = await axios.put<{ message: string }>(
+          `${API_BASE_URL}/admin/roles/${id}`,
+          body,
+          { headers: authHeader() }
+        );
+        toast.success(res.data.message);
+        await load();
+      }
+    } catch (e) {
+      toast.error(apiMessage(e, "Could not save this role."));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function remove(reason?: string) {
+    setDeleting(true);
+    try {
+      const res = await axios.delete<{ message: string }>(`${API_BASE_URL}/admin/roles/${id}`, {
+        headers: authHeader(),
+        data: { reason: reason ?? "" },
+      });
+      toast.success(res.data.message);
+      setConfirmDel(false);
+      router.push("/admin/roles");
+    } catch (e) {
+      toast.error(apiMessage(e, "Could not delete this role."));
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  if (notFound) {
+    return (
+      <EmptyState
+        icon={AlertCircle}
+        title="Role not found"
+        action={
+          <Button asChild>
+            <Link href="/admin/roles">Back</Link>
+          </Button>
+        }
+      />
+    );
+  }
+
+  if (error) {
+    return (
+      <EmptyState
+        icon={AlertCircle}
+        title="Could not load this role"
+        description={error}
+        action={
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" asChild>
+              <Link href="/admin/roles">
+                <ArrowLeft />
+                Back
+              </Link>
+            </Button>
+            <Button variant="accent" onClick={() => void load()}>
+              <RefreshCw />
+              Try again
+            </Button>
+          </div>
+        }
+      />
+    );
+  }
+
+  if (loading) {
+    return (
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-1">
+          <Card>
+            <CardBody>
+              <Skeleton className="h-4 w-28 mb-4" />
+              <Skeleton className="h-9 w-full" />
+              <Skeleton className="h-20 w-full mt-4" />
+              <Skeleton className="h-9 w-24 mt-6" />
+            </CardBody>
+          </Card>
+        </div>
+        <div className="lg:col-span-2 space-y-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Card key={i}>
+              <CardBody>
+                <div className="flex items-center justify-between pb-3 mb-3 border-b border-slate-100 dark:border-navy-700">
+                  <Skeleton className="h-4 w-32" />
+                  <Skeleton className="h-5 w-12 rounded-md" />
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <Skeleton className="h-10" />
+                  <Skeleton className="h-10" />
+                  <Skeleton className="h-10" />
+                  <Skeleton className="h-10" />
+                </div>
+              </CardBody>
+            </Card>
+          ))}
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -190,7 +311,7 @@ export default function RoleEditPage() {
                 </div>
                 <div className="pt-3 border-t border-slate-100 dark:border-navy-700">
                   <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Selected Permissions</div>
-                  <div className="text-2xl tabular font-bold text-brand-yellow mt-1">{perms.size} <span className="text-sm text-slate-500 dark:text-slate-400 font-normal">/ {ALL_KEYS.length}</span></div>
+                  <div className="text-2xl tabular font-bold text-brand-yellow mt-1">{perms.size} <span className="text-sm text-slate-500 dark:text-slate-400 font-normal">/ {allKeys.length}</span></div>
                 </div>
               </div>
             </CardBody>
@@ -198,39 +319,51 @@ export default function RoleEditPage() {
         </div>
 
         <div className="lg:col-span-2 space-y-4">
-          {PERMISSION_GROUPS.map((g) => {
-            const groupCount = g.permissions.filter((p) => perms.has(p.key)).length;
-            const allChecked = groupCount === g.permissions.length;
-            const someChecked = groupCount > 0;
-            return (
-              <Card key={g.module}>
-                <CardBody>
-                  <div className="flex items-center justify-between pb-3 mb-3 border-b border-slate-100 dark:border-navy-700">
-                    <div className="flex items-center gap-3">
-                      <Checkbox
-                        checked={allChecked ? true : someChecked ? "indeterminate" : false}
-                        onCheckedChange={() => toggleGroup(g)}
-                        id={`group-${g.module}`}
-                      />
-                      <Label htmlFor={`group-${g.module}`} className="text-sm font-bold cursor-pointer">{g.module}</Label>
+          {groups.length === 0 ? (
+            <Card>
+              <CardBody>
+                <EmptyState
+                  icon={Shield}
+                  title="No permissions defined"
+                  description="The server returned an empty permission catalogue, so there is nothing to assign yet."
+                />
+              </CardBody>
+            </Card>
+          ) : (
+            groups.map((g) => {
+              const groupCount = g.permissions.filter((p) => perms.has(p.key)).length;
+              const allChecked = groupCount === g.permissions.length && g.permissions.length > 0;
+              const someChecked = groupCount > 0;
+              return (
+                <Card key={g.module}>
+                  <CardBody>
+                    <div className="flex items-center justify-between pb-3 mb-3 border-b border-slate-100 dark:border-navy-700">
+                      <div className="flex items-center gap-3">
+                        <Checkbox
+                          checked={allChecked ? true : someChecked ? "indeterminate" : false}
+                          onCheckedChange={() => toggleGroup(g)}
+                          id={`group-${g.module}`}
+                        />
+                        <Label htmlFor={`group-${g.module}`} className="text-sm font-bold cursor-pointer">{g.module}</Label>
+                      </div>
+                      <Badge variant="muted">{groupCount} / {g.permissions.length}</Badge>
                     </div>
-                    <Badge variant="muted">{groupCount} / {g.permissions.length}</Badge>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {g.permissions.map((p) => (
-                      <label key={p.key} className="flex items-start gap-2.5 p-2 rounded-md hover:bg-slate-50 dark:hover:bg-navy-700 cursor-pointer">
-                        <Checkbox checked={perms.has(p.key)} onCheckedChange={() => toggle(p.key)} className="mt-0.5" />
-                        <div>
-                          <div className="text-sm text-navy-900 dark:text-white">{p.label}</div>
-                          <div className="text-2xs tabular text-slate-500 dark:text-slate-400">{p.key}</div>
-                        </div>
-                      </label>
-                    ))}
-                  </div>
-                </CardBody>
-              </Card>
-            );
-          })}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {g.permissions.map((p) => (
+                        <label key={p.key} className="flex items-start gap-2.5 p-2 rounded-md hover:bg-slate-50 dark:hover:bg-navy-700 cursor-pointer">
+                          <Checkbox checked={perms.has(p.key)} onCheckedChange={() => toggle(p.key)} className="mt-0.5" />
+                          <div>
+                            <div className="text-sm text-navy-900 dark:text-white">{p.label}</div>
+                            <div className="text-2xs tabular text-slate-500 dark:text-slate-400">{p.key}</div>
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                  </CardBody>
+                </Card>
+              );
+            })
+          )}
         </div>
       </div>
 
@@ -242,7 +375,8 @@ export default function RoleEditPage() {
         variant="danger"
         confirmLabel="Yes, delete role"
         requireReason
-        onConfirm={() => { toast.success("Role deleted"); setConfirmDel(false); router.push("/admin/roles"); }}
+        loading={deleting}
+        onConfirm={(reason) => remove(reason)}
       />
     </>
   );

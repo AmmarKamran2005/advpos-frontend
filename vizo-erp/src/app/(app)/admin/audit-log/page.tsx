@@ -1,49 +1,209 @@
 "use client";
 
 import * as React from "react";
-import { Filter, Globe, Building2, Clock } from "lucide-react";
+import axios from "axios";
+import {
+  Filter, Globe, Building2, Clock, Mail, Tag, AlertCircle, RefreshCw,
+  ChevronLeft, ChevronRight, ScrollText, Loader2,
+} from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { ReportToolbar } from "@/components/widgets/report-toolbar";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/ui/empty-state";
 import { FilterBar } from "@/components/ui/filter-bar";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { initials } from "@/lib/format";
+import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
+import { initials, formatDate, formatRelative, formatNumber } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-const ACTIONS = [
-  { id: 1, user: "Sara Khan",     action: "DISPATCHED", entity: "Order ORD-26-0142",     time: "2 min ago",    ip: "182.181.45.22", location: "Order Department",    severity: "info" as const },
-  { id: 2, user: "System",        action: "AUTO-POST",  entity: "Journal Entry JE-26-1042",  time: "2 min ago",    ip: "internal",      location: "Order Department",    severity: "muted" as const },
-  { id: 3, user: "Hassan Raza",   action: "OVERRIDDEN", entity: "Credit Hold ORD-26-0089", time: "15 min ago", ip: "182.181.45.30", location: "Shop 2",     severity: "warning" as const },
-  { id: 4, user: "Bilal Ahmed",   action: "POSTED",     entity: "GRN-26-0089",            time: "1 hour ago",  ip: "182.181.45.45", location: "Order Department",    severity: "info" as const },
-  { id: 5, user: "Hassan Raza",   action: "CREATED",    entity: "Voucher VCH-26-0089",    time: "2 hours ago", ip: "182.181.45.30", location: "Order Department",    severity: "info" as const },
-  { id: 6, user: "Umer Memon",    action: "UPDATED",    entity: "Party VZ-C-0008 (credit limit)", time: "3 hours ago", ip: "182.181.45.10", location: "Order Department", severity: "warning" as const },
-  { id: 7, user: "Umer Memon",    action: "CREATED",    entity: "Customer VZ-C-0024",         time: "3 hours ago", ip: "182.181.45.10", location: "Order Department",    severity: "info" as const },
-  { id: 8, user: "Sara Khan",     action: "LOGIN",      entity: "User session",                time: "5 hours ago", ip: "182.181.45.22", location: "Shop 2",     severity: "muted" as const },
-  { id: 9, user: "Asad Ali",      action: "LOGIN_FAIL", entity: "Failed authentication",       time: "Yesterday",   ip: "39.40.123.55",  location: "—",           severity: "danger" as const },
-  { id: 10, user: "Umer Memon",   action: "DELETED",    entity: "Product VZ-OLD-005",          time: "Yesterday",   ip: "182.181.45.10", location: "Order Department",    severity: "danger" as const },
-];
+/* ─────────────────────────── shapes from the API ─────────────────────────── */
 
-type Action = (typeof ACTIONS)[number];
-const SEVERITY_LABELS = ["all", "info", "warning", "danger"] as const;
-type SeverityFilter = (typeof SEVERITY_LABELS)[number];
+type AuditRow = {
+  id: number;
+  user: string;
+  action: string;
+  entityType: string | null;
+  entityReference: string | null;
+  entity: string | null;
+  detail: string | null;
+  time: string;
+  ip: string | null;
+  location: string | null;
+  severity: string;
+};
+
+type AuditDetail = AuditRow & { userEmail: string | null };
+
+type AuditPage = {
+  items: AuditRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+};
+
+type AuditStats = {
+  totalToday: number;
+  failedLogins: number;
+  permissionChanges: number;
+  recentLogins: number;
+};
+
+type SeverityLevel = { id: number; key: string; name: string };
+
+type BadgeVariant = "success" | "warning" | "danger" | "info" | "muted" | "accent" | "outline";
+
+const SEVERITY_VARIANT: Record<string, BadgeVariant> = {
+  info: "info",
+  success: "success",
+  warning: "warning",
+  danger: "danger",
+  muted: "muted",
+};
+
+function severityVariant(key: string): BadgeVariant {
+  return SEVERITY_VARIANT[key] ?? "muted";
+}
+
+function apiMessage(e: unknown, fallback: string) {
+  if (axios.isAxiosError(e) && e.response) {
+    return (e.response.data as { message?: string })?.message ?? fallback;
+  }
+  return "Cannot reach the server.";
+}
+
+const PAGE_SIZE = 25;
 
 export default function AuditLogPage() {
+  /* filters — every one of them is applied by the server */
   const [search, setSearch] = React.useState("");
+  const [q, setQ] = React.useState("");
   const [from, setFrom] = React.useState(() => new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10));
   const [to, setTo] = React.useState(() => new Date().toISOString().slice(0, 10));
-  const [severity, setSeverity] = React.useState<SeverityFilter>("all");
-  const [selected, setSelected] = React.useState<Action | null>(null);
+  const [severity, setSeverity] = React.useState("all");
+  const [page, setPage] = React.useState(1);
 
-  const filtered = ACTIONS.filter((a) => {
-    if (severity !== "all" && a.severity !== severity) return false;
-    if (!search) return true;
-    const q = search.toLowerCase();
-    return a.user.toLowerCase().includes(q) || a.action.toLowerCase().includes(q) || a.entity.toLowerCase().includes(q);
-  });
+  const [data, setData] = React.useState<AuditPage | null>(null);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+
+  const [stats, setStats] = React.useState<AuditStats | null>(null);
+  const [levels, setLevels] = React.useState<SeverityLevel[]>([]);
+
+  const [selectedId, setSelectedId] = React.useState<number | null>(null);
+  const [detail, setDetail] = React.useState<AuditDetail | null>(null);
+  const [detailLoading, setDetailLoading] = React.useState(false);
+  const [detailError, setDetailError] = React.useState<string | null>(null);
+
+  /* Typing shouldn't hit the API on every keystroke — settle for ~300ms first,
+     and drop back to page 1 in the same tick so only one request goes out. */
+  React.useEffect(() => {
+    const t = setTimeout(() => {
+      setQ(search);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  const load = React.useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await axios.get<AuditPage>(`${API_BASE_URL}/admin/audit-log`, {
+        headers: authHeader(),
+        params: {
+          q: q || undefined,
+          from: from || undefined,
+          to: to || undefined,
+          severity: severity === "all" ? undefined : severity,
+          page,
+          pageSize: PAGE_SIZE,
+        },
+      });
+      setData(res.data);
+    } catch (e) {
+      setError(apiMessage(e, "Could not load the audit log."));
+    } finally {
+      setLoading(false);
+    }
+  }, [q, from, to, severity, page]);
+
+  React.useEffect(() => {
+    void load();
+  }, [load]);
+
+  const loadStats = React.useCallback(async () => {
+    try {
+      const res = await axios.get<AuditStats>(`${API_BASE_URL}/admin/audit-log/stats`, {
+        headers: authHeader(),
+      });
+      setStats(res.data);
+    } catch {
+      setStats(null);
+    }
+  }, []);
+
+  const loadLevels = React.useCallback(async () => {
+    try {
+      const res = await axios.get<SeverityLevel[]>(`${API_BASE_URL}/admin/severity-levels`, {
+        headers: authHeader(),
+      });
+      setLevels(res.data);
+    } catch {
+      setLevels([]);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    void loadStats();
+    void loadLevels();
+  }, [loadStats, loadLevels]);
+
+  /* The row list carries a summary; the dialog shows the stored record itself. */
+  React.useEffect(() => {
+    if (selectedId === null) return;
+    let cancelled = false;
+    setDetailLoading(true);
+    setDetailError(null);
+    setDetail(null);
+    axios
+      .get<AuditDetail>(`${API_BASE_URL}/admin/audit-log/${selectedId}`, { headers: authHeader() })
+      .then((res) => {
+        if (!cancelled) setDetail(res.data);
+      })
+      .catch((e) => {
+        if (!cancelled) setDetailError(apiMessage(e, "Could not load this entry."));
+      })
+      .finally(() => {
+        if (!cancelled) setDetailLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedId]);
+
+  function applyRange(f: string, t: string) {
+    setFrom(f);
+    setTo(t);
+    setPage(1);
+  }
+
+  function applySeverity(s: string) {
+    setSeverity(s);
+    setPage(1);
+  }
+
+  const rows = data?.items ?? [];
+  const total = data?.total ?? 0;
+  const pageSize = data?.pageSize ?? PAGE_SIZE;
+  const currentPage = data?.page ?? page;
+  const lastPage = Math.max(1, Math.ceil(total / pageSize));
+  const firstRow = total === 0 ? 0 : (currentPage - 1) * pageSize + 1;
+  const lastRow = Math.min(currentPage * pageSize, total);
 
   return (
     <>
@@ -52,27 +212,15 @@ export default function AuditLogPage() {
         title="Audit Log"
         subtitle="Complete trail of every action across the system"
         actions={
-          <ReportToolbar mode="range" reportName="Audit Log" fromDate={from} toDate={to} onRangeChange={(f, t) => { setFrom(f); setTo(t); }} />
+          <ReportToolbar mode="range" reportName="Audit Log" fromDate={from} toDate={to} onRangeChange={applyRange} />
         }
       />
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <Card className="p-4">
-          <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Total Events Today</div>
-          <div className="text-2xl tabular font-bold text-navy-900 dark:text-white mt-1">142</div>
-        </Card>
-        <Card className="p-4">
-          <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Failed Logins</div>
-          <div className="text-2xl tabular font-bold text-danger mt-1">3</div>
-        </Card>
-        <Card className="p-4">
-          <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Permission Changes</div>
-          <div className="text-2xl tabular font-bold text-warning mt-1">2</div>
-        </Card>
-        <Card className="p-4">
-          <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Active Sessions</div>
-          <div className="text-2xl tabular font-bold text-success mt-1">8</div>
-        </Card>
+        <StatCard label="Total Events Today" value={stats?.totalToday} tone="text-navy-900 dark:text-white" />
+        <StatCard label="Failed Logins" value={stats?.failedLogins} tone="text-danger" />
+        <StatCard label="Permission Changes" value={stats?.permissionChanges} tone="text-warning" />
+        <StatCard label="Logins (last 24h)" value={stats?.recentLogins} tone="text-success" />
       </div>
 
       <FilterBar
@@ -88,16 +236,25 @@ export default function AuditLogPage() {
               </Button>
             </PopoverTrigger>
             <PopoverContent align="end" className="w-44 p-1">
-              {SEVERITY_LABELS.map((s) => (
+              <button
+                onClick={() => applySeverity("all")}
+                className={cn(
+                  "w-full text-left px-2.5 py-2 text-sm rounded-md hover:bg-slate-50 dark:hover:bg-navy-700 capitalize",
+                  severity === "all" && "text-brand-yellow font-semibold"
+                )}
+              >
+                all
+              </button>
+              {levels.map((s) => (
                 <button
-                  key={s}
-                  onClick={() => setSeverity(s)}
+                  key={s.id}
+                  onClick={() => applySeverity(s.key)}
                   className={cn(
                     "w-full text-left px-2.5 py-2 text-sm rounded-md hover:bg-slate-50 dark:hover:bg-navy-700 capitalize",
-                    s === severity && "text-brand-yellow font-semibold"
+                    s.key === severity && "text-brand-yellow font-semibold"
                   )}
                 >
-                  {s}
+                  {s.name}
                 </button>
               ))}
             </PopoverContent>
@@ -106,69 +263,153 @@ export default function AuditLogPage() {
       />
 
       <Card className="p-0 overflow-hidden">
-        <div className="divide-y divide-slate-100 dark:divide-navy-700">
-          {filtered.map((a) => (
-            <button
-              key={a.id}
-              onClick={() => setSelected(a)}
-              className="w-full flex items-start gap-3 p-4 hover:bg-slate-50 dark:hover:bg-navy-800 transition-colors text-left"
-            >
-              <Avatar initials={a.user === "System" ? "SY" : initials(a.user)} size="sm" />
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-sm font-semibold text-navy-900 dark:text-white">{a.user}</span>
-                  <Badge variant={a.severity}>{a.action}</Badge>
-                  <span className="text-sm text-slate-600 dark:text-slate-300 truncate">{a.entity}</span>
-                </div>
-                <div className="flex items-center gap-3 mt-1 text-2xs text-slate-500 dark:text-slate-400">
-                  <span>{a.time}</span>
-                  <span>·</span>
-                  <span className="tabular">{a.ip}</span>
-                  {a.location !== "—" && (
-                    <>
-                      <span>·</span>
-                      <span>{a.location}</span>
-                    </>
-                  )}
+        {loading ? (
+          <div className="divide-y divide-slate-100 dark:divide-navy-700">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <div key={i} className="flex items-start gap-3 p-4">
+                <Skeleton className="size-8 rounded-full" />
+                <div className="flex-1 space-y-2">
+                  <Skeleton className="h-4 w-64" />
+                  <Skeleton className="h-3 w-40" />
                 </div>
               </div>
-              <span className="text-xs text-brand-yellow font-medium flex-shrink-0">View details →</span>
-            </button>
-          ))}
-          {filtered.length === 0 && (
-            <div className="text-center py-12 text-sm text-slate-500 dark:text-slate-400">No events match the current filters.</div>
-          )}
-        </div>
+            ))}
+          </div>
+        ) : error ? (
+          <EmptyState
+            icon={AlertCircle}
+            title="Could not load the audit log"
+            description={error}
+            action={
+              <Button variant="accent" onClick={() => void load()}>
+                <RefreshCw />
+                Try again
+              </Button>
+            }
+          />
+        ) : rows.length === 0 ? (
+          <EmptyState
+            icon={ScrollText}
+            title="No events match the current filters"
+            description="Widen the date range, clear the search, or pick a different severity."
+          />
+        ) : (
+          <div className="divide-y divide-slate-100 dark:divide-navy-700">
+            {rows.map((a) => (
+              <button
+                key={a.id}
+                onClick={() => setSelectedId(a.id)}
+                className="w-full flex items-start gap-3 p-4 hover:bg-slate-50 dark:hover:bg-navy-800 transition-colors text-left"
+              >
+                <Avatar initials={a.user === "System" ? "SY" : initials(a.user)} size="sm" />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-semibold text-navy-900 dark:text-white">{a.user}</span>
+                    <Badge variant={severityVariant(a.severity)}>{a.action}</Badge>
+                    <span className="text-sm text-slate-600 dark:text-slate-300 truncate">
+                      {a.entity ?? [a.entityType, a.entityReference].filter(Boolean).join(" ")}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-3 mt-1 text-2xs text-slate-500 dark:text-slate-400">
+                    <span>{formatRelative(a.time)}</span>
+                    {a.ip && (
+                      <>
+                        <span>·</span>
+                        <span className="tabular">{a.ip}</span>
+                      </>
+                    )}
+                    {a.location && a.location !== "—" && (
+                      <>
+                        <span>·</span>
+                        <span>{a.location}</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+                <span className="text-xs text-brand-yellow font-medium flex-shrink-0">View details →</span>
+              </button>
+            ))}
+          </div>
+        )}
       </Card>
 
-      <Dialog open={!!selected} onOpenChange={(o) => !o && setSelected(null)}>
+      {!loading && !error && total > 0 && (
+        <div className="flex items-center justify-between gap-3 mt-4">
+          <span className="text-xs text-slate-500 dark:text-slate-400 tabular">
+            Showing {formatNumber(firstRow)}–{formatNumber(lastRow)} of {formatNumber(total)}
+          </span>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              className="gap-1"
+              disabled={currentPage <= 1}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+            >
+              <ChevronLeft className="size-3.5" />
+              Previous
+            </Button>
+            <span className="text-xs text-slate-500 dark:text-slate-400 tabular px-1">
+              Page {currentPage} of {lastPage}
+            </span>
+            <Button
+              variant="secondary"
+              size="sm"
+              className="gap-1"
+              disabled={currentPage >= lastPage}
+              onClick={() => setPage((p) => p + 1)}
+            >
+              Next
+              <ChevronRight className="size-3.5" />
+            </Button>
+          </div>
+        </div>
+      )}
+
+      <Dialog open={selectedId !== null} onOpenChange={(o) => !o && setSelectedId(null)}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Avatar initials={selected?.user === "System" ? "SY" : initials(selected?.user ?? "")} size="sm" />
-              <span>{selected?.user}</span>
-              {selected && <Badge variant={selected.severity}>{selected.action}</Badge>}
+              <Avatar initials={detail?.user === "System" ? "SY" : initials(detail?.user ?? "")} size="sm" />
+              <span>{detail?.user ?? "Audit entry"}</span>
+              {detail && <Badge variant={severityVariant(detail.severity)}>{detail.action}</Badge>}
             </DialogTitle>
           </DialogHeader>
-          {selected && (
+
+          {detailLoading ? (
+            <div className="flex items-center gap-2 py-8 justify-center text-sm text-slate-500 dark:text-slate-400">
+              <Loader2 className="size-4 animate-spin" />
+              Loading entry…
+            </div>
+          ) : detailError ? (
+            <div className="py-6 text-sm text-danger">{detailError}</div>
+          ) : detail ? (
             <div className="space-y-4 mt-2">
               <div className="text-sm text-slate-700 dark:text-slate-200">
-                <span className="font-semibold">Entity:</span> {selected.entity}
+                <span className="font-semibold">Entity:</span>{" "}
+                {[detail.entityType, detail.entityReference].filter(Boolean).join(" · ") || "—"}
               </div>
+              {detail.detail && (
+                <div className="rounded-lg bg-slate-50 dark:bg-navy-800 p-3 text-xs text-slate-600 dark:text-slate-300 max-h-40 overflow-auto">
+                  <div className="text-2xs uppercase font-bold tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
+                    What was recorded
+                  </div>
+                  {detail.detail}
+                </div>
+              )}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                <Meta icon={Clock} label="When" value={selected.time} />
-                <Meta icon={Globe} label="IP Address" value={selected.ip} />
-                <Meta icon={Building2} label="Location" value={selected.location} />
-                <Meta icon={Filter} label="Severity" value={selected.severity} />
-              </div>
-              <div className="rounded-lg bg-slate-50 dark:bg-navy-800 p-3 text-xs font-mono text-slate-600 dark:text-slate-300 max-h-40 overflow-auto">
-                <div className="text-2xs uppercase font-bold tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">Request payload (sample)</div>
-                {`{\n  "user_id": "${selected.user.replace(/\s+/g, '_').toLowerCase()}",\n  "action": "${selected.action}",\n  "entity": "${selected.entity}",\n  "ip_address": "${selected.ip}",\n  "user_agent": "Mozilla/5.0 (Windows NT 10.0)…",\n  "session_id": "sess_${selected.id}9c4f2a"\n}`}
+                <Meta icon={Clock} label="When" value={`${formatDate(detail.time)} · ${formatRelative(detail.time)}`} />
+                <Meta icon={Mail} label="User Email" value={detail.userEmail ?? "—"} plain />
+                <Meta icon={Globe} label="IP Address" value={detail.ip ?? "—"} plain />
+                <Meta icon={Building2} label="Location" value={detail.location ?? "—"} />
+                <Meta icon={Tag} label="Entity Type" value={detail.entityType ?? "—"} />
+                <Meta icon={Filter} label="Severity" value={detail.severity} />
               </div>
             </div>
-          )}
+          ) : null}
+
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setSelected(null)}>Close</Button>
+            <Button variant="ghost" onClick={() => setSelectedId(null)}>Close</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -176,14 +417,44 @@ export default function AuditLogPage() {
   );
 }
 
-function Meta({ icon: Icon, label, value }: { icon: typeof Clock; label: string; value: string }) {
+function StatCard({ label, value, tone }: { label: string; value: number | undefined; tone: string }) {
+  return (
+    <Card className="p-4">
+      <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">{label}</div>
+      {value === undefined ? (
+        <Skeleton className="h-7 w-12 mt-1.5" />
+      ) : (
+        <div className={cn("text-2xl tabular font-bold mt-1", tone)}>{formatNumber(value)}</div>
+      )}
+    </Card>
+  );
+}
+
+function Meta({
+  icon: Icon,
+  label,
+  value,
+  plain,
+}: {
+  icon: typeof Clock;
+  label: string;
+  value: string;
+  plain?: boolean;
+}) {
   return (
     <div>
       <dt className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400 inline-flex items-center gap-1.5">
         <Icon className="size-3.5 text-slate-400" />
         {label}
       </dt>
-      <dd className="text-sm font-medium text-navy-900 dark:text-white mt-1 capitalize">{value}</dd>
+      <dd
+        className={cn(
+          "text-sm font-medium text-navy-900 dark:text-white mt-1 break-words",
+          plain ? "tabular" : "capitalize"
+        )}
+      >
+        {value}
+      </dd>
     </div>
   );
 }

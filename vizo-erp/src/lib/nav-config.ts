@@ -12,7 +12,6 @@ import {
   PackageX,
   Settings2,
 } from "lucide-react";
-import { canAny, type RoleKey } from "@/data/settings";
 
 export type NavBadge = {
   text: string;
@@ -223,17 +222,23 @@ const FLATTEN_AT = 2;
  * with three screens should not have to open three accordions to reach them.
  * Section headings with nothing under them are dropped.
  */
-export function navigationForRole(role: RoleKey): NavNode[] {
+export function navigationFor(can: (permission: string) => boolean): NavNode[] {
+  /* Takes the predicate rather than a role, so the menu is driven by the
+     permission list the API put in the token. Edit a role in Setup > Roles and
+     the sidebar follows on next sign-in -- no code change, no second copy of
+     the permission matrix in the bundle. */
+  const allowed = (perms?: string[]) => !perms || perms.length === 0 || perms.some(can);
+
   const visible: NavNode[] = [];
 
   for (const node of navigation) {
     if (node.type === "item") {
-      if (canAny(role, node.perms ?? [])) visible.push(node);
+      if (allowed(node.perms)) visible.push(node);
       continue;
     }
 
     if (node.type === "group") {
-      const children = node.children.filter((c) => canAny(role, c.perms ?? []));
+      const children = node.children.filter((c) => allowed(c.perms));
       if (children.length === 0) continue;
 
       if (children.length <= FLATTEN_AT) {

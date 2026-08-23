@@ -29,8 +29,14 @@ import { cn } from "@/lib/utils";
  */
 export function SalesDashboard() {
   const { user } = useSession();
-  const mine = React.useMemo(() => ordersForRep(user.fullName), [user.fullName]);
-  const myCollections = React.useMemo(() => collectionsBy(user.fullName), [user.fullName]);
+  /* The shell does not mount this until the session has resolved, so user
+     is set. An early `return null` here would sit above the hooks below
+     and change the hook count between renders. */
+  const me = user!;
+
+
+  const mine = React.useMemo(() => ordersForRep(me.fullName), [me.fullName]);
+  const myCollections = React.useMemo(() => collectionsBy(me.fullName), [me.fullName]);
 
   /* Deliveries this rep handed over himself and has not confirmed yet. */
   const toConfirm = mine.filter(
@@ -54,7 +60,7 @@ export function SalesDashboard() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-navy-900 dark:text-white">
-          {greeting()}, {user.fullName.split(" ")[0]}
+          {greeting()}, {me.fullName.split(" ")[0]}
         </h1>
         <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
           {toConfirm.length > 0

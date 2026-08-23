@@ -9,9 +9,12 @@ import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
-import { currentUser } from "@/data/mock";
+import { useSession } from "@/components/providers/session-provider";
 
 export default function ProfilePage() {
+  const { user } = useSession();
+  if (!user) return null;
+
   return (
     <>
       <PageHeader
@@ -26,10 +29,10 @@ export default function ProfilePage() {
           <Card>
             <CardBody>
               <div className="flex flex-col items-center text-center">
-                <Avatar initials={currentUser.initials} size="xl" className="size-20 text-2xl mb-3" />
-                <h3 className="text-base font-semibold text-navy-900 dark:text-white">{currentUser.fullName}</h3>
-                <Badge variant="accent" className="mt-1">{currentUser.role}</Badge>
-                <div className="text-xs text-slate-500 dark:text-slate-400 mt-2">{currentUser.email}</div>
+                <Avatar initials={user.initials} size="xl" className="size-20 text-2xl mb-3" />
+                <h3 className="text-base font-semibold text-navy-900 dark:text-white">{user.fullName}</h3>
+                <Badge variant="accent" className="mt-1">{user.roleLabel}</Badge>
+                <div className="text-xs text-slate-500 dark:text-slate-400 mt-2">{user.email}</div>
               </div>
               <div className="mt-5 pt-5 border-t border-slate-100 dark:border-navy-700 space-y-2">
                 <Link href="/profile" className="flex items-center gap-2 px-3 py-2 rounded-lg bg-brand-yellow/10 text-brand-yellow-700 dark:text-brand-yellow font-semibold text-sm">
@@ -55,8 +58,8 @@ export default function ProfilePage() {
             <CardBody>
               <h3 className="text-base font-semibold text-navy-900 dark:text-white mb-4">Personal Information</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <Field label="Full Name"><Input defaultValue={currentUser.fullName} /></Field>
-                <Field label="Email"><Input type="email" defaultValue={currentUser.email} disabled /></Field>
+                <Field label="Full Name"><Input defaultValue={user.fullName} /></Field>
+                <Field label="Email"><Input type="email" defaultValue={user.email ?? ""} disabled /></Field>
                 <Field label="Phone"><Input defaultValue="0300 7287607" /></Field>
                 <Field label="Employee Code"><Input defaultValue="EMP-001" disabled /></Field>
                 <Field label="Default Location">
@@ -66,7 +69,7 @@ export default function ProfilePage() {
                     <option>Islamabad Location</option>
                   </select>
                 </Field>
-                <Field label="Role"><Input defaultValue={currentUser.role} disabled /></Field>
+                <Field label="Role"><Input defaultValue={user.roleLabel} disabled /></Field>
               </div>
               <div className="flex items-center gap-2 mt-4 pt-4 border-t border-slate-100 dark:border-navy-700">
                 <Button variant="accent" size="md">Save Changes</Button>
