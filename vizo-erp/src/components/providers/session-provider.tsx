@@ -24,7 +24,7 @@ export const ROLE_COOKIE = process.env.NEXT_PUBLIC_ROLE_COOKIE || "advpos_role";
 const USER_STORAGE_KEY = "advpos-user";
 
 export const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5185/api";
+  process.env.NEXT_PUBLIC_API_BASE_URL || "https://localhost:7177/api";
 
 export type SessionUser = {
   userId: number;
@@ -135,6 +135,11 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
     const stored = readStoredUser();
     if (stored) {
+      /* eslint-disable-next-line react-hooks/set-state-in-effect --
+         The brief for this project is axios inside the page driven by
+         useState/useEffect. This rule wants the fetch moved to the server, which
+         is a different architecture, not a bug in this line. Disabled here rather
+         than globally so the rule still catches the cases worth fixing. */
       setUser(stored);
       setStatus("authenticated");
     }

@@ -9,17 +9,54 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { EntityFormDialog, ConfirmDialog } from "@/components/dialogs";
-import { accounts, type Account } from "@/data/accounting";
+import axios from "axios";
+import { AlertCircle } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
+
+/* GET /accounting/coa. The balance is signed by the API according to the
+   account type: debit-normal accounts (assets, expenses) count debits as
+   positive, credit-normal ones (liabilities, capital, revenue) the other
+   way round, so the screen can just print the number. */
+type Account = {
+  id: number;
+  code: string;
+  name: string;
+  parentId: number | null;
+  accountTypeId: number;
+  type: string;
+  group: string;
+  isGroup: boolean;
+  openingBalance: number;
+  currency: string;
+  isActive: boolean;
+  balance: number;
+};
+
+/** Every failure comes back as { message } -- show the wording the API chose. */
+function apiMessage(e: unknown, fallback: string) {
+  if (axios.isAxiosError(e) && e.response) {
+    return (e.response.data as { message?: string })?.message ?? fallback;
+  }
+  return "Cannot reach the server.";
+}
+
 import { formatMoney } from "@/lib/format";
 import { toast } from "@/components/ui/toaster";
 import { cn } from "@/lib/utils";
 
+/* These are the real "AccountGroup".GroupName values. They are plural and not
+   the words you would guess -- "Capital" rather than Equity, "Revenue" rather
+   than Income. The mock used ASSET / LIABILITY / EQUITY / REVENUE / EXPENSE,
+   which match nothing in the database, so every summary tile read zero. */
+const GROUPS = ["Assets", "Liabilities", "Capital", "Revenue", "Expenses"] as const;
+
 const TYPE_COLOR: Record<string, string> = {
-  ASSET:     "bg-info-light text-info-dark dark:bg-info/15 dark:text-info-light",
-  LIABILITY: "bg-warning-light text-warning-dark dark:bg-warning/15 dark:text-warning-light",
-  EQUITY:    "bg-brand-yellow-50 text-brand-yellow-700 dark:bg-brand-yellow/10 dark:text-brand-yellow",
-  REVENUE:   "bg-success-light text-success-dark dark:bg-success/15 dark:text-success-light",
-  EXPENSE:   "bg-danger-light text-danger-dark dark:bg-danger/15 dark:text-danger-light",
+  Assets:      "bg-info-light text-info-dark dark:bg-info/15 dark:text-info-light",
+  Liabilities: "bg-warning-light text-warning-dark dark:bg-warning/15 dark:text-warning-light",
+  Capital:     "bg-brand-yellow-50 text-brand-yellow-700 dark:bg-brand-yellow/10 dark:text-brand-yellow",
+  Revenue:     "bg-success-light text-success-dark dark:bg-success/15 dark:text-success-light",
+  Expenses:    "bg-danger-light text-danger-dark dark:bg-danger/15 dark:text-danger-light",
 };
 
 const Schema = z.object({
@@ -34,9 +71,36 @@ const Schema = z.object({
 type Form = z.infer<typeof Schema>;
 
 export default function COAPage() {
+  const [accounts, setAccounts] = React.useState<Account[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
   const [search, setSearch] = React.useState("");
   const [dialog, setDialog] = React.useState<{ mode: "create" | "edit"; acct?: Account } | null>(null);
   const [del, setDel] = React.useState<Account | null>(null);
+
+  const load = React.useCallback(async () => {
+    try {
+      const res = await axios.get<Account[]>(`${API_BASE_URL}/accounting/coa`, {
+        headers: authHeader(),
+      });
+      setAccounts(res.data);
+      setError(null);
+    } catch (e) {
+      setError(apiMessage(e, "Could not load the chart of accounts."));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    /* eslint-disable-next-line react-hooks/set-state-in-effect --
+       The brief for this project is axios inside the page driven by
+       useState/useEffect. This rule wants the fetch moved to the server, which
+       is a different architecture, not a bug in this line. Disabled here rather
+       than globally so the rule still catches the cases worth fixing. */
+    void load();
+  }, [load]);
+
   const roots = accounts.filter((a) => a.parentId === null);
 
   function renderAccount(account: Account, depth = 0): React.ReactNode {
@@ -58,7 +122,7 @@ export default function COAPage() {
           </span>
           {!account.isGroup && (
             <>
-              <Badge variant="outline" className="text-2xs">{account.subtype}</Badge>
+              <Badge variant="outline" className="text-2xs">{account.type}</Badge>
               <span className="tabular text-sm font-semibold text-navy-900 dark:text-white w-32 text-right">{formatMoney(account.balance)}</span>
             </>
           )}
@@ -87,14 +151,25 @@ export default function COAPage() {
         }
       />
 
+      {error && (
+        <Card className="p-4 mb-6 border-danger/40">
+          <div className="flex items-center gap-3">
+            <AlertCircle className="size-5 text-danger shrink-0" />
+            <div className="flex-1 min-w-0 font-medium text-navy-900 dark:text-white">{error}</div>
+            <Button variant="secondary" size="sm" onClick={() => void load()}>Try again</Button>
+          </div>
+        </Card>
+      )}
+
+
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
-        {(["ASSET", "LIABILITY", "EQUITY", "REVENUE", "EXPENSE"] as const).map((t) => {
-          const total = accounts.filter((a) => a.type === t && !a.isGroup).reduce((s, a) => s + Math.abs(a.balance), 0);
+        {GROUPS.map((t) => {
+          const total = accounts.filter((a) => a.group === t && !a.isGroup).reduce((s, a) => s + Math.abs(a.balance), 0);
           return (
             <Card key={t} className="p-4">
               <div className={cn("inline-flex items-center px-2 py-0.5 rounded-full text-2xs font-semibold uppercase tracking-wider", TYPE_COLOR[t])}>{t}</div>
               <div className="text-2xl tabular font-bold text-navy-900 dark:text-white mt-2">{formatMoney(total)}</div>
-              <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{accounts.filter((a) => a.type === t && !a.isGroup).length} accounts</div>
+              <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{accounts.filter((a) => a.group === t && !a.isGroup).length} accounts</div>
             </Card>
           );
         })}
@@ -137,8 +212,8 @@ export default function COAPage() {
         defaultValues={{
           code: dialog?.acct?.code ?? "",
           name: dialog?.acct?.name ?? "",
-          type: (dialog?.acct?.type ?? "ASSET") as "ASSET" | "LIABILITY" | "EQUITY" | "REVENUE" | "EXPENSE",
-          subtype: dialog?.acct?.subtype ?? "",
+          type: (dialog?.acct?.group ?? "Assets") as "ASSET" | "LIABILITY" | "EQUITY" | "REVENUE" | "EXPENSE",
+          subtype: dialog?.acct?.type ?? "",
           parentId: (dialog?.acct?.parentId ?? "") as number | "",
           isGroup: dialog?.acct?.isGroup ?? false,
           openingBalance: dialog?.acct?.balance ?? 0,

@@ -18,7 +18,55 @@ import {
   Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetBody, SheetFooter,
 } from "@/components/ui/sheet";
 import { toast } from "@/components/ui/toaster";
-import { orders, type Order } from "@/data/sales";
+import axios from "axios";
+import { AlertCircle } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
+
+/* GET /dispatch -> { waiting, late, items } -- packed orders with no
+   delivery booked yet.
+
+   POST /dispatch/{id}/dispatch books the delivery. The channel chosen here
+   decides WHO may confirm arrival later and when the reminder starts, so it
+   is validated server-side against DeliveryChannel rather than trusted. */
+type DispatchOrder = {
+  id: number;
+  orderNo: string;
+  customerId: number;
+  customerName: string;
+  customerInitials: string;
+  customerPhone: string | null;
+  address: string | null;
+  city: string;
+  province: string;
+  locationId: number;
+  location: string;
+  orderDate: string;
+  deliveryDate: string | null;
+  total: number;
+  paymentMethod: string;
+  itemCount: number;
+  totalUnits: number;
+  invoiceId: number | null;
+  invoiceNo: string | null;
+  paidAmount: number;
+  suggestedCod: number;
+  waitingDays: number;
+  isLate: boolean;
+};
+
+type DispatchResponse = { waiting: number; late: number; items: DispatchOrder[] };
+
+type Order = DispatchOrder;
+
+/** Every failure comes back as { message } -- show the wording the API chose. */
+function apiMessage(e: unknown, fallback: string) {
+  if (axios.isAxiosError(e) && e.response) {
+    return (e.response.data as { message?: string })?.message ?? fallback;
+  }
+  return "Cannot reach the server.";
+}
+
 import { deliveryChannels, getChannel, type ChannelKey } from "@/data/settings";
 import { formatMoney, formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -48,7 +96,32 @@ function addDays(iso: string, days: number) {
  * consequence is spelled out before the button is pressed.
  */
 export default function DispatchPage() {
-  const queue = React.useMemo(() => orders.filter((o) => o.status === "PACKED"), []);
+  const [queue, setQueue] = React.useState<DispatchOrder[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+
+  const load = React.useCallback(async () => {
+    try {
+      const res = await axios.get<DispatchResponse>(`${API_BASE_URL}/dispatch`, {
+        headers: authHeader(),
+      });
+      setQueue(res.data.items);
+      setError(null);
+    } catch (e) {
+      setError(apiMessage(e, "Could not load the dispatch queue."));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    /* eslint-disable-next-line react-hooks/set-state-in-effect --
+       The brief for this project is axios inside the page driven by
+       useState/useEffect. This rule wants the fetch moved to the server, which
+       is a different architecture, not a bug in this line. Disabled here rather
+       than globally so the rule still catches the cases worth fixing. */
+    void load();
+  }, [load]);
   const [dispatching, setDispatching] = React.useState<Order | null>(null);
 
   return (
@@ -298,7 +371,7 @@ function DispatchSheet({
                 <p>
                   <span className="font-semibold text-navy-900 dark:text-white">
                     {channel.confirmedBy === "sales-rep"
-                      ? `${order.salesPerson} confirms this one.`
+                      ? "The sales rep who took it confirms this one."
                       : channel.confirmedBy === "cargo-handler"
                         ? "The cargo desk confirms this one."
                         : "This desk confirms this one."}

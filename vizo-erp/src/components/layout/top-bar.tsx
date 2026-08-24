@@ -113,6 +113,11 @@ export function TopBar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
 
   React.useEffect(() => {
     if (!user) return;
+    /* eslint-disable-next-line react-hooks/set-state-in-effect --
+       The brief for this project is axios inside the page driven by
+       useState/useEffect. This rule wants the fetch moved to the server, which
+       is a different architecture, not a bug in this line. Disabled here rather
+       than globally so the rule still catches the cases worth fixing. */
     void loadNotifications();
   }, [user, loadNotifications]);
 

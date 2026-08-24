@@ -14,11 +14,90 @@ import { SelectNative } from "@/components/ui/select-native";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { StatCard } from "@/components/widgets/stat-card";
 import { toast } from "@/components/ui/toaster";
-import {
-  deliveries, deliveriesInFlight, pendingCodTotal,
-  DELIVERY_STATUS_VARIANT, type Delivery, type DeliveryStatus,
-} from "@/data/delivery";
+import axios from "axios";
+import { AlertCircle } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
 import { couriers, getCourier } from "@/data/settings";
+
+/* GET /delivery -> { inFlight, overdue, pendingCodTotal, items }.
+
+   These are the real "DeliveryStatus".StatusKey values. The mock knew six;
+   the database has eight -- it also carries NOT_DISPATCHED (nothing booked
+   yet) and AWAITING (sent, nobody has confirmed). Missing them meant two
+   states rendered with no colour at all. */
+type DeliveryStatus =
+  | "NOT_DISPATCHED" | "BOOKED" | "AWAITING" | "IN_TRANSIT"
+  | "OUT_FOR_DELIVERY" | "DELIVERED" | "FAILED" | "RETURNED_TO_SENDER";
+
+const DELIVERY_STATUS_VARIANT: Record<DeliveryStatus, "success" | "warning" | "danger" | "info" | "muted"> = {
+  NOT_DISPATCHED: "muted",
+  BOOKED: "muted",
+  AWAITING: "warning",
+  IN_TRANSIT: "info",
+  OUT_FOR_DELIVERY: "warning",
+  DELIVERED: "success",
+  FAILED: "danger",
+  RETURNED_TO_SENDER: "danger",
+};
+
+type Delivery = {
+  id: number;
+  deliveryNo: string;
+  orderId: number;
+  orderNo: string;
+  invoiceId: number | null;
+  invoiceNo: string | null;
+  customerId: number;
+  customerName: string;
+  customerInitials: string;
+  customerPhone: string | null;
+  destination: string;
+  channelId: number;
+  channel: string;
+  channelName: string;
+  confirmedByRoleId: number;
+  confirmedByRole: string;
+  remindAfterDays: number;
+  requiresBilty: boolean;
+  courierId: number | null;
+  courierName: string | null;
+  trackingNo: string | null;
+  trackingUrlTemplate: string | null;
+  bookedDate: string;
+  expectedDate: string | null;
+  deliveredDate: string | null;
+  status: DeliveryStatus;
+  statusName: string;
+  isOpen: boolean;
+  parcels: number;
+  weightKg: number;
+  codAmount: number;
+  codSettled: boolean;
+  bookingCharge: number;
+  remindersSent: number;
+  confirmedBy: string | null;
+  notes: string | null;
+  daysInFlight: number;
+  isOverdue: boolean;
+  needsReminder: boolean;
+};
+
+type DeliveryResponse = {
+  inFlight: number;
+  overdue: number;
+  pendingCodTotal: number;
+  items: Delivery[];
+};
+
+/** Every failure comes back as { message } -- show the wording the API chose. */
+function apiMessage(e: unknown, fallback: string) {
+  if (axios.isAxiosError(e) && e.response) {
+    return (e.response.data as { message?: string })?.message ?? fallback;
+  }
+  return "Cannot reach the server.";
+}
+
 import { formatMoney, formatCompact, formatDate } from "@/lib/format";
 import { statusLabel } from "@/lib/labels";
 import { cn } from "@/lib/utils";
@@ -34,9 +113,41 @@ const STATUS_FILTERS: { value: DeliveryStatus | "all"; label: string }[] = [
 ];
 
 export default function DeliveryPage() {
+  const [deliveries, setDeliveries] = React.useState<Delivery[]>([]);
+  const [summary, setSummary] = React.useState({ inFlight: 0, overdue: 0, pendingCodTotal: 0 });
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
   const [query, setQuery] = React.useState("");
   const [status, setStatus] = React.useState<DeliveryStatus | "all">("all");
   const [courierId, setCourierId] = React.useState<number | "all">("all");
+
+  const load = React.useCallback(async () => {
+    try {
+      const res = await axios.get<DeliveryResponse>(`${API_BASE_URL}/delivery`, {
+        headers: authHeader(),
+      });
+      setDeliveries(res.data.items);
+      setError(null);
+      setSummary({
+        inFlight: res.data.inFlight,
+        overdue: res.data.overdue,
+        pendingCodTotal: res.data.pendingCodTotal,
+      });
+    } catch (e) {
+      setError(apiMessage(e, "Could not load the deliveries."));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    /* eslint-disable-next-line react-hooks/set-state-in-effect --
+       The brief for this project is axios inside the page driven by
+       useState/useEffect. This rule wants the fetch moved to the server, which
+       is a different architecture, not a bug in this line. Disabled here rather
+       than globally so the rule still catches the cases worth fixing. */
+    void load();
+  }, [load]);
 
   const rows = React.useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -46,22 +157,22 @@ export default function DeliveryPage() {
       if (!q) return true;
       return (
         d.deliveryNo.toLowerCase().includes(q) ||
-        d.invoiceNo.toLowerCase().includes(q) ||
+        (d.invoiceNo ?? "").toLowerCase().includes(q) ||
         d.customerName.toLowerCase().includes(q) ||
-        d.trackingNo.toLowerCase().includes(q)
+        (d.trackingNo ?? "").toLowerCase().includes(q)
       );
     });
-  }, [query, status, courierId]);
+  }, [deliveries, query, status, courierId]);
 
-  const inFlight = deliveriesInFlight().length;
-  const pendingCod = pendingCodTotal();
+  const inFlight = summary.inFlight;
+  const pendingCod = summary.pendingCodTotal;
   const deliveredThisWeek = deliveries.filter((d) => d.status === "DELIVERED").length;
   const problems = deliveries.filter(
     (d) => d.status === "FAILED" || d.status === "RETURNED_TO_SENDER"
   ).length;
 
   function copyTracking(d: Delivery) {
-    navigator.clipboard.writeText(d.trackingNo).then(
+    navigator.clipboard.writeText(d.trackingNo ?? "").then(
       () => toast.success("Tracking number copied", { description: d.trackingNo }),
       () => toast.error("Could not copy")
     );
@@ -105,7 +216,7 @@ export default function DeliveryPage() {
       key: "courierId",
       header: "Courier",
       cell: (d) => {
-        const c = getCourier(d.courierId);
+        const c = d.courierId === null ? null : getCourier(d.courierId);
         return (
           <div>
             <div className="text-sm text-navy-900 dark:text-white">{c?.shortName ?? "—"}</div>
@@ -170,7 +281,7 @@ export default function DeliveryPage() {
             {formatDate(d.bookedDate)}
           </div>
           <div className="tabular text-2xs text-slate-500 dark:text-slate-400">
-            {d.deliveredDate ? `del. ${formatDate(d.deliveredDate)}` : `exp. ${formatDate(d.expectedDate)}`}
+            {d.deliveredDate ? `del. ${formatDate(d.deliveredDate)}` : (d.expectedDate ? `exp. ${formatDate(d.expectedDate)}` : "no ETA")}
           </div>
         </div>
       ),
@@ -208,6 +319,17 @@ export default function DeliveryPage() {
           </Button>
         }
       />
+
+      {error && (
+        <Card className="p-4 mb-6 border-danger/40">
+          <div className="flex items-center gap-3">
+            <AlertCircle className="size-5 text-danger shrink-0" />
+            <div className="flex-1 min-w-0 font-medium text-navy-900 dark:text-white">{error}</div>
+            <Button variant="secondary" size="sm" onClick={() => void load()}>Try again</Button>
+          </div>
+        </Card>
+      )}
+
 
       <Card className="mb-4 border-info/30 bg-info/5">
         <CardBody className="flex items-start gap-3 py-3">
