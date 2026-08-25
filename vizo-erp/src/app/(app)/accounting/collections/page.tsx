@@ -330,10 +330,16 @@ function CollectionCard({
             <div className="text-xs font-medium text-navy-900 dark:text-white">
               {COLLECTION_METHOD_LABEL[c.method]}
             </div>
-            {c.reference !== "—" && (
+            {/* Both come back null for a cash receipt, and `null` inside a
+                template literal stringifies to the word "null" on screen --
+                which is what this used to print. Guard on the value, not on
+                the em-dash placeholder that the API never actually sends. */}
+            {(c.reference || c.bank) && (
               <div className="tabular text-2xs text-slate-500 dark:text-slate-400">
-                {c.reference}
-                {c.bank !== "—" && ` · ${c.bank}`}
+                {c.reference && c.reference !== "—" ? c.reference : null}
+                {c.bank && c.bank !== "—"
+                  ? `${c.reference && c.reference !== "—" ? " · " : ""}${c.bank}`
+                  : null}
               </div>
             )}
             {c.chequeDate && (

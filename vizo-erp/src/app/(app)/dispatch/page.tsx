@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import {
-  Send, Truck, Store, PackageCheck, Hash, Info, AlertTriangle, X, Calendar,
+  Send, Truck, Store, PackageCheck, Hash, Info, AlertTriangle, X, Calendar, Loader2,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardBody } from "@/components/ui/card";
@@ -67,19 +67,49 @@ function apiMessage(e: unknown, fallback: string) {
   return "Cannot reach the server.";
 }
 
-import { deliveryChannels, getChannel, type ChannelKey } from "@/data/settings";
 import { formatMoney, formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-const CHANNEL_ICON: Record<ChannelKey, typeof Truck> = {
+/* GET /dispatch/lookups -> the DeliveryChannel rows with the couriers each one
+   allows. Channel keys and their carrier lists used to be a hard-coded array in
+   src/data/settings; a courier added at /admin/couriers never showed up here.
+   `confirmedByRole` is a Role key from the database ("sales", "order-dept",
+   "accountant"), not the "sales-rep" / "cargo-handler" words the mock used. */
+type Carrier = {
+  id: number;
+  name: string;
+  shortName: string;
+  bookingCharge: number;
+  codFeePercent: number;
+  codSettlementDays: number;
+};
+
+type Channel = {
+  id: number;
+  key: string;
+  name: string;
+  description: string;
+  requiresBilty: boolean;
+  remindAfterDays: number;
+  remindEveryHours: number;
+  confirmedByRole: string;
+  confirmedByRoleName: string;
+  carriers: Carrier[];
+};
+
+type DispatchLookups = { channels: Channel[] };
+
+/* Icons are presentation, so they stay in the page keyed by the channel key the
+   database uses; an unknown key falls back rather than crashing. */
+const CHANNEL_ICON: Record<string, typeof Truck> = {
   local: Store,
   online: Send,
   cargo: Truck,
   logistics: PackageCheck,
 };
+const iconFor = (key: string) => CHANNEL_ICON[key] ?? Truck;
 
-/** Today, fixed so the mock reads the same on every render. */
-const TODAY = "2026-08-15";
+const todayIso = () => new Date().toISOString().slice(0, 10);
 
 function addDays(iso: string, days: number) {
   const d = new Date(iso);
@@ -97,15 +127,18 @@ function addDays(iso: string, days: number) {
  */
 export default function DispatchPage() {
   const [queue, setQueue] = React.useState<DispatchOrder[]>([]);
+  const [channels, setChannels] = React.useState<Channel[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
 
   const load = React.useCallback(async () => {
     try {
-      const res = await axios.get<DispatchResponse>(`${API_BASE_URL}/dispatch`, {
-        headers: authHeader(),
-      });
+      const [res, lookups] = await Promise.all([
+        axios.get<DispatchResponse>(`${API_BASE_URL}/dispatch`, { headers: authHeader() }),
+        axios.get<DispatchLookups>(`${API_BASE_URL}/dispatch/lookups`, { headers: authHeader() }),
+      ]);
       setQueue(res.data.items);
+      setChannels(lookups.data.channels);
       setError(null);
     } catch (e) {
       setError(apiMessage(e, "Could not load the dispatch queue."));
@@ -144,10 +177,10 @@ export default function DispatchPage() {
 
       {/* How each route gets confirmed — the thing people forget */}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 mb-5">
-        {deliveryChannels.map((ch) => {
-          const Icon = CHANNEL_ICON[ch.key];
+        {channels.map((ch) => {
+          const Icon = iconFor(ch.key);
           return (
-            <Card key={ch.key}>
+            <Card key={ch.id}>
               <CardBody className="py-3">
                 <div className="flex items-center gap-2 mb-1">
                   <Icon className="size-4 text-brand-yellow" />
@@ -158,11 +191,7 @@ export default function DispatchPage() {
                 <p className="text-2xs text-slate-500 dark:text-slate-400">
                   Confirmed by{" "}
                   <span className="font-medium text-slate-700 dark:text-slate-200">
-                    {ch.confirmedBy === "sales-rep"
-                      ? "the sales rep"
-                      : ch.confirmedBy === "order-dept"
-                        ? "this desk"
-                        : "the cargo desk"}
+                    {ch.confirmedByRoleName}
                   </span>
                   {ch.remindAfterDays === 0
                     ? ", chased same day"
@@ -174,7 +203,11 @@ export default function DispatchPage() {
         })}
       </div>
 
-      {queue.length === 0 ? (
+      {loading ? (
+        <div className="space-y-2">
+          {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-20" />)}
+        </div>
+      ) : queue.length === 0 ? (
         <Card>
           <EmptyState
             icon={Send}
@@ -219,8 +252,10 @@ export default function DispatchPage() {
       {dispatching && (
         <DispatchSheet
           order={dispatching}
+          channels={channels}
           open
           onOpenChange={(v) => !v && setDispatching(null)}
+          onDispatched={() => { setDispatching(null); void load(); }}
         />
       )}
     </>
@@ -228,49 +263,85 @@ export default function DispatchPage() {
 }
 
 function DispatchSheet({
-  order, open, onOpenChange,
+  order, channels, open, onOpenChange, onDispatched,
 }: {
-  order: Order; open: boolean; onOpenChange: (v: boolean) => void;
+  order: Order;
+  channels: Channel[];
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  onDispatched: () => void;
 }) {
-  /* A Karachi address almost always goes out by hand — start there. */
-  const [channelKey, setChannelKey] = React.useState<ChannelKey>(
-    order.city === "Karachi" ? "local" : "cargo"
-  );
-  const channel = getChannel(channelKey)!;
+  /* A Karachi address almost always goes out by hand -- start on the local
+     channel when there is one, otherwise the first channel the API returned. */
+  const initial =
+    (order.city === "Karachi" ? channels.find((c) => c.key === "local") : undefined) ??
+    channels.find((c) => c.key === "cargo") ??
+    channels[0];
 
-  const [carrier, setCarrier] = React.useState(channel.carriers[0] ?? "");
+  const [channelId, setChannelId] = React.useState<number>(initial?.id ?? 0);
+  const channel = channels.find((c) => c.id === channelId) ?? initial;
+
+  const [carrierId, setCarrierId] = React.useState<number | null>(initial?.carriers[0]?.id ?? null);
   const [tracking, setTracking] = React.useState("");
-  const [expected, setExpected] = React.useState(addDays(TODAY, 2));
+  const [expected, setExpected] = React.useState(() =>
+    addDays(todayIso(), Math.max(1, initial?.remindAfterDays ?? 2)));
+  const [parcels, setParcels] = React.useState("1");
+  const [weightKg, setWeightKg] = React.useState("0");
+  /* COD only means anything when the order is not already paid; the API works
+     the suggestion out and this screen just offers it. */
+  const [cod, setCod] = React.useState(String(order.suggestedCod ?? 0));
+  const [notes, setNotes] = React.useState("");
   const [touchedCarrier, setTouchedCarrier] = React.useState(false);
+  const [saving, setSaving] = React.useState(false);
 
   /* Follow the channel unless the user has picked a carrier themselves. */
-  const [lastChannel, setLastChannel] = React.useState<ChannelKey>(channelKey);
-  if (lastChannel !== channelKey) {
-    setLastChannel(channelKey);
-    if (!touchedCarrier) setCarrier(getChannel(channelKey)?.carriers[0] ?? "");
-    setExpected(addDays(TODAY, Math.max(1, getChannel(channelKey)?.remindAfterDays ?? 2)));
+  const [lastChannel, setLastChannel] = React.useState<number>(channelId);
+  if (lastChannel !== channelId) {
+    setLastChannel(channelId);
+    const next = channels.find((c) => c.id === channelId);
+    if (!touchedCarrier) setCarrierId(next?.carriers[0]?.id ?? null);
+    setExpected(addDays(todayIso(), Math.max(1, next?.remindAfterDays ?? 2)));
   }
 
-  const needsRef = channel.requiresBilty;
+  const carrier = channel?.carriers.find((c) => c.id === carrierId) ?? null;
+  const needsRef = channel?.requiresBilty ?? false;
   const missingRef = needsRef && tracking.trim().length === 0;
 
-  function dispatch() {
+  async function dispatch() {
+    if (!channel) return;
     if (missingRef) {
       toast.error("Bilty number needed", {
         description: "Freight cannot be traced without it — that is the only proof you have.",
       });
       return;
     }
-    toast.success("Dispatched", {
-      description: `${order.orderNo} out via ${carrier}. ${
-        channel.confirmedBy === "sales-rep"
-          ? "The rep will be asked to confirm delivery."
-          : channel.confirmedBy === "cargo-handler"
-            ? `The cargo desk will be reminded after ${channel.remindAfterDays} days.`
-            : `This desk will be reminded after ${channel.remindAfterDays} days.`
-      }`,
-    });
-    onOpenChange(false);
+    setSaving(true);
+    try {
+      const res = await axios.post<{ message: string }>(
+        `${API_BASE_URL}/dispatch/${order.id}/dispatch`,
+        {
+          channelId: channel.id,
+          courierId: carrierId,
+          trackingNo: tracking.trim() || null,
+          bookedDate: todayIso(),
+          expectedDate: expected || null,
+          parcels: Number(parcels) || 1,
+          weightKg: Number(weightKg) || 0,
+          codAmount: Number(cod) || 0,
+          /* The courier own booking charge, so the delivery row carries what it
+             actually cost rather than a figure typed from memory. */
+          bookingCharge: carrier?.bookingCharge ?? 0,
+          notes: notes.trim() || null,
+        },
+        { headers: authHeader() }
+      );
+      toast.success("Dispatched", { description: res.data.message });
+      onDispatched();
+    } catch (e) {
+      toast.error("Not dispatched", { description: apiMessage(e, "Please try again.") });
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -286,14 +357,14 @@ function DispatchSheet({
         <SheetBody>
           <Label>How is it going?</Label>
           <div className="grid grid-cols-2 gap-2 mt-1.5 mb-5">
-            {deliveryChannels.filter((c) => c.isActive).map((ch) => {
-              const Icon = CHANNEL_ICON[ch.key];
-              const active = channelKey === ch.key;
+            {channels.map((ch) => {
+              const Icon = iconFor(ch.key);
+              const active = channelId === ch.id;
               return (
                 <button
-                  key={ch.key}
+                  key={ch.id}
                   type="button"
-                  onClick={() => setChannelKey(ch.key)}
+                  onClick={() => setChannelId(ch.id)}
                   className={cn(
                     "text-left p-3 rounded-lg border-2 transition-colors",
                     active
@@ -319,11 +390,19 @@ function DispatchSheet({
             <Label htmlFor="carrier">Who is carrying it</Label>
             <SelectNative
               id="carrier"
-              value={carrier}
-              onChange={(e) => { setCarrier(e.target.value); setTouchedCarrier(true); }}
+              value={carrierId === null ? "" : String(carrierId)}
+              onChange={(e) => {
+                setCarrierId(e.target.value ? Number(e.target.value) : null);
+                setTouchedCarrier(true);
+              }}
               className="mt-1.5"
             >
-              {channel.carriers.map((c) => <option key={c}>{c}</option>)}
+              <option value="">— None —</option>
+              {(channel?.carriers ?? []).map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}{c.bookingCharge > 0 ? ` · ${formatMoney(c.bookingCharge)} booking` : ""}
+                </option>
+              ))}
             </SelectNative>
           </div>
 
@@ -349,6 +428,30 @@ function DispatchSheet({
             )}
           </div>
 
+          <div className="grid grid-cols-2 gap-3 mb-4">
+            <div>
+              <Label htmlFor="parcels">Parcels</Label>
+              <Input id="parcels" type="number" min={1} className="mt-1.5 tabular"
+                value={parcels} onChange={(e) => setParcels(e.target.value)} />
+            </div>
+            <div>
+              <Label htmlFor="weight">Weight (kg)</Label>
+              <Input id="weight" type="number" min={0} step="0.01" className="mt-1.5 tabular"
+                value={weightKg} onChange={(e) => setWeightKg(e.target.value)} />
+            </div>
+          </div>
+
+          <div className="mb-4">
+            <Label htmlFor="cod">Cash to collect on delivery</Label>
+            <Input id="cod" type="number" min={0} step="0.01" className="mt-1.5 tabular"
+              value={cod} onChange={(e) => setCod(e.target.value)} />
+            <p className="text-2xs text-slate-500 dark:text-slate-400 mt-1">
+              {order.suggestedCod > 0
+                ? `Suggested ${formatMoney(order.suggestedCod)} — the unpaid balance on this order.`
+                : "This order is on credit or already paid, so nothing is due at the door."}
+            </p>
+          </div>
+
           <div className="mb-5">
             <Label htmlFor="expected">Should reach by</Label>
             <div className="relative mt-1.5">
@@ -363,36 +466,35 @@ function DispatchSheet({
             </div>
           </div>
 
+          <div className="mb-5">
+            <Label htmlFor="notes">Note</Label>
+            <Input id="notes" className="mt-1.5" value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Anything the person delivering should know" />
+          </div>
+
           {/* What happens after this button */}
-          <div className="rounded-lg border border-info/25 bg-info/5 p-3">
-            <div className="flex items-start gap-2.5">
-              <Info className="size-4 text-info flex-shrink-0 mt-0.5" />
-              <div className="text-xs text-slate-600 dark:text-slate-300 space-y-1.5">
-                <p>
-                  <span className="font-semibold text-navy-900 dark:text-white">
-                    {channel.confirmedBy === "sales-rep"
-                      ? "The sales rep who took it confirms this one."
-                      : channel.confirmedBy === "cargo-handler"
-                        ? "The cargo desk confirms this one."
-                        : "This desk confirms this one."}
-                  </span>{" "}
-                  They can mark it delivered, still on the way, or came back.
-                </p>
-                <p>
-                  {channel.remindAfterDays === 0
-                    ? "Reminders start today"
-                    : `Reminders start ${channel.remindAfterDays} days after dispatch`}
-                  , then repeat every {channel.remindEveryHours} hours until somebody answers.
-                </p>
-                {!channel.autoConfirm && channel.key === "online" && (
-                  <p className="text-slate-500 dark:text-slate-400">
-                    The courier portal can mark these automatically once it is connected — the
-                    switch is already there, waiting on a backend.
+          {channel && (
+            <div className="rounded-lg border border-info/25 bg-info/5 p-3">
+              <div className="flex items-start gap-2.5">
+                <Info className="size-4 text-info flex-shrink-0 mt-0.5" />
+                <div className="text-xs text-slate-600 dark:text-slate-300 space-y-1.5">
+                  <p>
+                    <span className="font-semibold text-navy-900 dark:text-white">
+                      {channel.confirmedByRoleName} confirms this one.
+                    </span>{" "}
+                    They can mark it delivered, still on the way, or came back.
                   </p>
-                )}
+                  <p>
+                    {channel.remindAfterDays === 0
+                      ? "Reminders start today"
+                      : `Reminders start ${channel.remindAfterDays} days after dispatch`}
+                    , then repeat every {channel.remindEveryHours} hours until somebody answers.
+                  </p>
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
           {missingRef && (
             <div className="flex items-start gap-2.5 mt-3 p-3 rounded-lg bg-danger/5 border border-danger/25">
@@ -405,11 +507,11 @@ function DispatchSheet({
         </SheetBody>
 
         <SheetFooter>
-          <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
+          <Button type="button" variant="ghost" onClick={() => onOpenChange(false)} disabled={saving}>
             <X /> Cancel
           </Button>
-          <Button type="button" variant="accent" className="gap-1.5" onClick={dispatch}>
-            <Send /> Dispatch &amp; invoice
+          <Button type="button" variant="accent" className="gap-1.5" onClick={() => void dispatch()} disabled={saving || !channel}>
+            {saving ? <><Loader2 className="size-4 animate-spin" /> Dispatching…</> : <><Send /> Dispatch &amp; invoice</>}
           </Button>
         </SheetFooter>
       </SheetContent>

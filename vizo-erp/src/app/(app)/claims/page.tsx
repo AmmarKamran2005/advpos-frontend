@@ -18,7 +18,6 @@ import axios from "axios";
 import { AlertCircle } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
-import { claimPolicy } from "@/data/settings";
 
 /* GET /claims -> { openCount, openValue, totalValue, items }.
 
@@ -91,6 +90,28 @@ type Claim = {
   daysWithSupplier: number | null;
 };
 
+/* The "claim" group out of AppSetting, served by GET /claims/lookups. It used
+   to be a hard-coded object in src/data/settings; a Super Admin editing the
+   reminder periods at /admin/settings now actually changes what this screen
+   calls overdue. */
+type ClaimPolicy = {
+  windowDays: number;
+  remindSupplierAfterDays: number;
+  remindEveryHours: number;
+  remindUnsentAfterDays: number;
+  replaceUpfront: boolean;
+  writeOffAccount: string;
+};
+
+const POLICY_FALLBACK: ClaimPolicy = {
+  windowDays: 180,
+  remindSupplierAfterDays: 14,
+  remindEveryHours: 48,
+  remindUnsentAfterDays: 3,
+  replaceUpfront: true,
+  writeOffAccount: "Warranty & Claims",
+};
+
 type ClaimsResponse = {
   openCount: number;
   openValue: number;
@@ -153,6 +174,7 @@ function daysSince(iso: string) {
 export default function ClaimsPage() {
   const [claims, setClaims] = React.useState<Claim[]>([]);
   const [scorecard, setScorecard] = React.useState<SupplierCard[]>([]);
+  const [policy, setPolicy] = React.useState<ClaimPolicy>(POLICY_FALLBACK);
   const [worst, setWorst] = React.useState<WorstItem[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
@@ -164,18 +186,20 @@ export default function ClaimsPage() {
     try {
       /* Three independent reads, so fire them together rather than in
          sequence -- the scorecard does not depend on the list. */
-      const [list, cards, items] = await Promise.all([
+      const [list, cards, items, lookups] = await Promise.all([
         axios.get<ClaimsResponse>(`${API_BASE_URL}/claims`, { headers: authHeader() }),
         axios.get<SupplierCard[]>(`${API_BASE_URL}/claims/supplier-scorecard`, { headers: authHeader() }),
         axios.get<WorstItem[]>(`${API_BASE_URL}/claims/worst-items`, {
           params: { limit: 5 },
           headers: authHeader(),
         }),
+        axios.get<{ policy: ClaimPolicy }>(`${API_BASE_URL}/claims/lookups`, { headers: authHeader() }),
       ]);
       setClaims(list.data.items);
       setError(null);
       setScorecard(cards.data);
       setWorst(items.data);
+      setPolicy(lookups.data.policy);
     } catch (e) {
       setError(apiMessage(e, "Could not load the claims."));
     } finally {
@@ -399,20 +423,20 @@ export default function ClaimsPage() {
         </Card>
       ) : (
         <div className="space-y-2">
-          {rows.map((c) => <ClaimRow key={c.id} claim={c} />)}
+          {rows.map((c) => <ClaimRow key={c.id} claim={c} policy={policy} />)}
         </div>
       )}
 
-      <ClaimInDialog open={receiving} onOpenChange={setReceiving} />
+      <ClaimInDialog open={receiving} onOpenChange={setReceiving} onCreated={() => { void load(); }} />
     </>
   );
 }
 
-function ClaimRow({ claim }: { claim: Claim }) {
+function ClaimRow({ claim, policy }: { claim: Claim; policy: ClaimPolicy }) {
   const age = daysSince(claim.stage === "SENT" && claim.sentOn ? claim.sentOn : claim.receivedOn);
   const overdue =
-    (claim.stage === "RECEIVED" && age >= claimPolicy.remindUnsentAfterDays) ||
-    (claim.stage === "SENT" && age >= claimPolicy.remindSupplierAfterDays);
+    (claim.stage === "RECEIVED" && age >= policy.remindUnsentAfterDays) ||
+    (claim.stage === "SENT" && age >= policy.remindSupplierAfterDays);
 
   return (
     <Card className={cn("hover:border-brand-yellow/40 transition-colors", overdue && "border-warning/40")}>

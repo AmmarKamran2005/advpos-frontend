@@ -59,7 +59,7 @@ export function formatPercent(n: number, decimals = 1) {
 
 /** Format date as `DD-MMM-YYYY` (Pakistani convention) */
 export function formatDate(date: Date | string) {
-  const d = typeof date === "string" ? new Date(date) : date;
+  const d = parseApiDate(date);
   return d.toLocaleDateString("en-GB", {
     day: "2-digit",
     month: "short",
@@ -67,9 +67,29 @@ export function formatDate(date: Date | string) {
   });
 }
 
+/**
+ * Parses a timestamp the API sent.
+ *
+ * The API writes `DateTime.SpecifyKind(DateTime.UtcNow, Unspecified)` into
+ * `timestamp without time zone` columns, so what comes back over JSON is
+ * `2026-08-25T17:21:45.229865` -- a UTC instant carrying no marker saying so.
+ * `new Date()` reads a bare date-TIME form as LOCAL time, which in Pakistan
+ * (UTC+5) makes every timestamp read five hours early: a sign-in a minute ago
+ * showed as "5 hours ago".
+ *
+ * Date-ONLY strings are left alone. The spec already parses those as UTC, and
+ * appending a marker would make them invalid.
+ */
+export function parseApiDate(date: Date | string): Date {
+  if (typeof date !== "string") return date;
+  const hasTime = date.includes("T");
+  const hasZone = /[Zz]$|[+-]\d{2}:?\d{2}$/.test(date);
+  return new Date(hasTime && !hasZone ? `${date}Z` : date);
+}
+
 /** Format relative time — `2 min ago`, `3 hours ago` */
 export function formatRelative(date: Date | string) {
-  const d = typeof date === "string" ? new Date(date) : date;
+  const d = parseApiDate(date);
   const seconds = Math.floor((Date.now() - d.getTime()) / 1000);
 
   if (seconds < 60) return "just now";
