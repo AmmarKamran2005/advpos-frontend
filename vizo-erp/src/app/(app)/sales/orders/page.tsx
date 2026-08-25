@@ -35,11 +35,17 @@ type TabKey = (typeof TABS)[number]["key"];
 
 export default function OrdersPage() {
   const { can, user } = useSession();
+  /* The shell does not mount this until the session has resolved, so user
+     is set. An early `return null` here would sit above the hooks below
+     and change the hook count between renders. */
+  const me = user!;
+
+
   const isRep = !can("orders.approve");
 
   const scope = React.useMemo(
-    () => (isRep ? ordersForRep(user.fullName) : orders),
-    [isRep, user.fullName]
+    () => (isRep ? ordersForRep(me.fullName) : orders),
+    [isRep, me.fullName]
   );
 
   const [search, setSearch] = React.useState("");

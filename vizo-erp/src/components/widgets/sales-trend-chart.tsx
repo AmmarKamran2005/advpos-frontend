@@ -11,7 +11,6 @@ import {
   CartesianGrid,
 } from "recharts";
 import { useTheme } from "next-themes";
-import { salesTrendData } from "@/data/mock";
 import { formatCompact } from "@/lib/format";
 
 /* recharts measures the DOM, so it can't render correctly during SSR — gate on
@@ -26,7 +25,14 @@ function getServerSnapshot() {
   return false;
 }
 
-export function SalesTrendChart() {
+export type SalesTrendPoint = { date: string; revenue: number };
+
+/**
+ * Takes its series as a prop so the caller owns the fetch. It used to import a
+ * mock module directly, which meant every screen showing this chart shipped
+ * that data file to the browser and showed the same fixed line.
+ */
+export function SalesTrendChart({ data = [] }: { data?: SalesTrendPoint[] }) {
   const { resolvedTheme } = useTheme();
   const mounted = React.useSyncExternalStore(subscribe, getClientSnapshot, getServerSnapshot);
 
@@ -38,10 +44,18 @@ export function SalesTrendChart() {
     return <div className="h-64 w-full bg-slate-50 dark:bg-navy-800/40 rounded-md animate-pulse" />;
   }
 
+  if (data.length === 0) {
+    return (
+      <div className="h-64 w-full grid place-items-center text-sm text-slate-400 dark:text-slate-500">
+        No invoiced sales in this period.
+      </div>
+    );
+  }
+
   return (
     <div className="h-64 w-full">
       <ResponsiveContainer width="100%" height="100%">
-        <AreaChart data={salesTrendData} margin={{ top: 5, right: 0, left: -10, bottom: 0 }}>
+        <AreaChart data={data} margin={{ top: 5, right: 0, left: -10, bottom: 0 }}>
           <defs>
             <linearGradient id="salesGradient" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor="#EDC705" stopOpacity={0.3} />

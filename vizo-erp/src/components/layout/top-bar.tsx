@@ -24,7 +24,6 @@ import {
   Clock,
   Database,
   Send,
-  Eye,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,9 +38,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuShortcut,
 } from "@/components/ui/dropdown";
-import { notifications, quickCreate } from "@/data/mock";
-import { appRoles } from "@/data/settings";
-import { useSession } from "@/components/providers/session-provider";
+import { quickCreate } from "@/data/mock";
+import axios from "axios";
+import {
+  useSession,
+  API_BASE_URL,
+  authHeader,
+} from "@/components/providers/session-provider";
 import { cn } from "@/lib/utils";
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -59,24 +62,82 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   send: Send,
 };
 
-const ROLE_DOT: Record<string, string> = {
-  navy: "bg-navy-900 dark:bg-white",
-  info: "bg-info",
-  success: "bg-success",
-  yellow: "bg-brand-yellow",
-};
-
 const NOTIF_COLOR: Record<string, string> = {
   success: "text-success bg-success/10",
   warning: "text-warning bg-warning/10",
   danger: "text-danger bg-danger/10",
   info: "text-info bg-info/10",
+  muted: "text-slate-500 bg-slate-500/10",
 };
 
+type Notification = {
+  id: number;
+  severity: string;
+  icon: string;
+  title: string;
+  body: string;
+  createdAt: string;
+  isRead: boolean;
+};
+
+/** "2 minutes ago" from a timestamp, so the API can send a real one. */
+function ago(iso: string) {
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.round(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins} min ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+  const days = Math.round(hours / 24);
+  return days === 1 ? "yesterday" : `${days} days ago`;
+}
+
 export function TopBar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
-  const { role, user, can, switchRole } = useSession();
-  const activeRole = appRoles.find((r) => r.key === role);
-  const unreadCount = notifications.filter((n) => n.unread).length;
+  const { user, can, logout } = useSession();
+
+  const [notifications, setNotifications] = React.useState<Notification[]>([]);
+  const [unreadCount, setUnreadCount] = React.useState(0);
+
+  const loadNotifications = React.useCallback(async () => {
+    try {
+      const res = await axios.get<{ items: Notification[]; unread: number }>(
+        `${API_BASE_URL}/notification`,
+        { headers: authHeader() }
+      );
+      setNotifications(res.data.items);
+      setUnreadCount(res.data.unread);
+    } catch {
+      /* The bell is not worth an error banner across the whole app. */
+    }
+  }, []);
+
+  React.useEffect(() => {
+    if (!user) return;
+    void loadNotifications();
+  }, [user, loadNotifications]);
+
+  async function markAllRead() {
+    try {
+      await axios.post(`${API_BASE_URL}/notification/read-all`, {}, { headers: authHeader() });
+      await loadNotifications();
+    } catch {
+      /* ignored */
+    }
+  }
+
+  async function markRead(id: number) {
+    try {
+      await axios.post(`${API_BASE_URL}/notification/${id}/read`, {}, { headers: authHeader() });
+      await loadNotifications();
+    } catch {
+      /* ignored */
+    }
+  }
+
+  /* Every hook above this line: the shell resolves the session before mounting
+     this, so the guard is for the type checker, not for runtime. */
+  if (!user) return null;
+
   const visibleQuickCreate = quickCreate.filter((qc) => can(qc.perm));
 
   return (
@@ -85,57 +146,6 @@ export function TopBar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
       <Button variant="ghost" size="icon" onClick={onOpenSidebar} className="lg:hidden">
         <Menu />
       </Button>
-
-      {/* Role preview — demo affordance so each person's view can be reviewed */}
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <button
-            type="button"
-            className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-slate-50 dark:hover:bg-navy-800 transition-colors outline-none"
-          >
-            <Eye className="size-4 text-brand-yellow" />
-            <div className="text-left hidden sm:block">
-              <div className="text-2xs text-slate-500 dark:text-slate-400 leading-none">
-                Viewing as
-              </div>
-              <div className="text-sm font-semibold text-navy-900 dark:text-white leading-tight">
-                {activeRole?.name ?? "Select"}
-              </div>
-            </div>
-            <ChevronDown className="size-3 text-slate-400" />
-          </button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-72">
-          <DropdownMenuLabel>Switch role</DropdownMenuLabel>
-          {appRoles.map((r) => (
-            <DropdownMenuItem
-              key={r.key}
-              onClick={() => switchRole(r.key)}
-              className="flex-col items-start gap-0.5"
-            >
-              <div className="flex items-center gap-2 w-full">
-                <span className={cn("size-2 rounded-full flex-shrink-0", ROLE_DOT[r.color])} />
-                <span
-                  className={cn(
-                    "flex-1 truncate",
-                    r.key === role && "text-brand-yellow font-semibold"
-                  )}
-                >
-                  {r.name}
-                </span>
-                {r.key === role && <Check className="size-3.5 text-brand-yellow" />}
-              </div>
-              <span className="text-2xs text-slate-500 dark:text-slate-400 pl-4">
-                {r.description}
-              </span>
-            </DropdownMenuItem>
-          ))}
-          <DropdownMenuSeparator />
-          <div className="px-3 py-2 text-2xs text-slate-400 dark:text-slate-500">
-            Menus and buttons change to match the role.
-          </div>
-        </DropdownMenuContent>
-      </DropdownMenu>
 
       {/* Search */}
       <div className="hidden md:flex flex-1 max-w-md mx-3 relative">
@@ -205,25 +215,39 @@ export function TopBar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
               <div className="text-sm font-semibold text-navy-900 dark:text-white">
                 Notifications
               </div>
-              <button className="text-xs text-brand-yellow hover:underline font-medium">
+              <button
+                type="button"
+                onClick={() => { void markAllRead(); }}
+                disabled={unreadCount === 0}
+                className="text-xs text-brand-yellow hover:underline font-medium disabled:opacity-40 disabled:no-underline"
+              >
                 Mark all read
               </button>
             </div>
             <div className="max-h-96 overflow-y-auto scrollbar-thin">
+              {notifications.length === 0 && (
+                <div className="px-4 py-8 text-center text-sm text-slate-400 dark:text-slate-500">
+                  Nothing to catch up on.
+                </div>
+              )}
               {notifications.map((n) => {
                 const Icon = ICON_MAP[n.icon] ?? Bell;
                 return (
                   <div
                     key={n.id}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => { if (!n.isRead) void markRead(n.id); }}
+                    onKeyDown={(e) => { if (e.key === "Enter" && !n.isRead) void markRead(n.id); }}
                     className={cn(
                       "flex gap-3 p-3 hover:bg-slate-50 dark:hover:bg-navy-700 cursor-pointer transition-colors",
-                      n.unread && "bg-brand-yellow-50/50 dark:bg-brand-yellow/5"
+                      !n.isRead && "bg-brand-yellow-50/50 dark:bg-brand-yellow/5"
                     )}
                   >
                     <div
                       className={cn(
                         "size-8 rounded-full flex items-center justify-center flex-shrink-0",
-                        NOTIF_COLOR[n.type]
+                        NOTIF_COLOR[n.severity] ?? NOTIF_COLOR.info
                       )}
                     >
                       <Icon className="size-3.5" />
@@ -236,10 +260,10 @@ export function TopBar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
                         {n.body}
                       </div>
                       <div className="text-2xs text-slate-400 dark:text-slate-500 mt-0.5">
-                        {n.time}
+                        {ago(n.createdAt)}
                       </div>
                     </div>
-                    {n.unread && (
+                    {!n.isRead && (
                       <span className="size-2 rounded-full bg-brand-yellow flex-shrink-0 mt-2" />
                     )}
                   </div>
@@ -299,12 +323,10 @@ export function TopBar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
-              asChild
+              onClick={() => { void logout(); }}
               className="focus:bg-danger/10 focus:text-danger [&_svg]:text-danger"
             >
-              <Link href="/login">
-                <LogOut /> Sign out
-              </Link>
+              <LogOut /> Sign out
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

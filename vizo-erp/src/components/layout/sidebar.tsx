@@ -6,7 +6,7 @@ import Image from "next/image";
 import { usePathname } from "next/navigation";
 import * as Collapsible from "@radix-ui/react-collapsible";
 import { ChevronDown, PanelLeftClose, PanelLeft } from "lucide-react";
-import { navigationForRole, isActiveMatch, type NavNode } from "@/lib/nav-config";
+import { navigationFor, isActiveMatch, type NavNode } from "@/lib/nav-config";
 import { useSession } from "@/components/providers/session-provider";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -47,8 +47,14 @@ export function Sidebar({
   onCloseMobile: () => void;
 }) {
   const pathname = usePathname();
-  const { role, user } = useSession();
-  const navigation = React.useMemo(() => navigationForRole(role), [role]);
+  const { user, can } = useSession();
+  /* The shell does not mount this until the session has resolved, so user
+     is set. An early `return null` here would sit above the hooks below
+     and change the hook count between renders. */
+  const me = user!;
+
+
+  const navigation = React.useMemo(() => navigationFor(can), [can]);
   const activeMatch = resolveActiveMatch(navigation, pathname);
 
   return (
@@ -97,7 +103,7 @@ export function Sidebar({
                   AdvPOS
                 </div>
                 <div className="text-2xs text-slate-500 dark:text-slate-400 leading-tight truncate">
-                  {user.roleLabel}
+                  {me.roleLabel}
                 </div>
               </div>
             )}

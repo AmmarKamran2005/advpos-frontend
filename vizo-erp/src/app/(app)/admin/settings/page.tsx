@@ -1,22 +1,149 @@
 "use client";
 
 import * as React from "react";
-import { Save, Building, Hash, Receipt, Mail, Wifi, Globe, Loader2, CheckCircle2 } from "lucide-react";
+import Link from "next/link";
+import axios from "axios";
+import {
+  Save, Building, Globe, Loader2, CheckCircle2, Package, Receipt, Truck,
+  PackageX, SlidersHorizontal, AlertCircle, RefreshCw, Hash, ArrowRight,
+} from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardBody } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
+import { SelectNative } from "@/components/ui/select-native";
+import { EmptyState } from "@/components/ui/empty-state";
+import { PageSkeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { ConfirmDialog } from "@/components/dialogs/confirm-dialog";
 import { toast } from "@/components/ui/toaster";
-import { statusLabel } from "@/lib/labels";
+import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
+
+/* ─────────────────────────── shapes from the API ─────────────────────────── */
+
+type Company = {
+  id: number;
+  companyName: string;
+  legalName: string | null;
+  addressLine: string | null;
+  cityId: number | null;
+  city: string | null;
+  country: string | null;
+  phone: string | null;
+  email: string | null;
+  ntn: string | null;
+  strn: string | null;
+  fiscalYearStartMonth: number;
+  currencyCode: string;
+  currencySymbol: string;
+  foreignRate: number;
+};
+
+/** Exactly what `PUT /admin/company` accepts — id, city and foreignRate are read-only. */
+type CompanyForm = Omit<Company, "id" | "city" | "foreignRate">;
+
+type SettingRow = {
+  id: number;
+  group: string;
+  key: string;
+  value: string;
+  description: string;
+};
+
+type City = { id: number; name: string; province: string };
+
+type Lookups = { cities: City[] };
+
+const MONTHS = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+const GROUP_ICON: Record<string, typeof Package> = {
+  stock: Package,
+  sales: Receipt,
+  delivery: Truck,
+  claim: PackageX,
+};
+
+function apiMessage(e: unknown, fallback: string) {
+  if (axios.isAxiosError(e) && e.response) {
+    return (e.response.data as { message?: string })?.message ?? fallback;
+  }
+  return "Cannot reach the server.";
+}
+
+function toForm(c: Company): CompanyForm {
+  return {
+    companyName: c.companyName,
+    legalName: c.legalName,
+    addressLine: c.addressLine,
+    cityId: c.cityId,
+    country: c.country,
+    phone: c.phone,
+    email: c.email,
+    ntn: c.ntn,
+    strn: c.strn,
+    fiscalYearStartMonth: c.fiscalYearStartMonth,
+    currencyCode: c.currencyCode,
+    currencySymbol: c.currencySymbol,
+  };
+}
+
+const isBoolean = (v: string) => v === "true" || v === "false";
+const isNumeric = (v: string) => v.trim() !== "" && !Number.isNaN(Number(v));
 
 export default function SettingsPage() {
-  const [dirty, setDirty] = React.useState(false);
+  const [company, setCompany] = React.useState<CompanyForm | null>(null);
+  const [companyBase, setCompanyBase] = React.useState<CompanyForm | null>(null);
+  const [settings, setSettings] = React.useState<SettingRow[]>([]);
+  const [values, setValues] = React.useState<Record<string, string>>({});
+  const [cities, setCities] = React.useState<City[]>([]);
+
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
   const [saving, setSaving] = React.useState(false);
   const [savedAt, setSavedAt] = React.useState<string | null>(null);
-  const [testEmail, setTestEmail] = React.useState(false);
-  const [connectIntegration, setConnectIntegration] = React.useState<{ name: string; verb: string } | null>(null);
+
+  const load = React.useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [companyRes, settingsRes, lookupRes] = await Promise.all([
+        axios.get<Company>(`${API_BASE_URL}/admin/company`, { headers: authHeader() }),
+        axios.get<SettingRow[]>(`${API_BASE_URL}/admin/settings`, { headers: authHeader() }),
+        axios.get<Lookups>(`${API_BASE_URL}/admin/lookups`, { headers: authHeader() }),
+      ]);
+      const form = toForm(companyRes.data);
+      setCompany(form);
+      setCompanyBase(form);
+      setSettings(settingsRes.data);
+      setValues(Object.fromEntries(settingsRes.data.map((s) => [s.key, s.value])));
+      setCities(lookupRes.data.cities ?? []);
+    } catch (e) {
+      setError(apiMessage(e, "Could not load the settings."));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    void load();
+  }, [load]);
+
+  /* What actually changed — that is both the dirty flag and the PUT body. */
+  const changedSettings = React.useMemo(
+    () => settings.filter((s) => values[s.key] !== s.value).map((s) => ({ key: s.key, value: values[s.key] })),
+    [settings, values]
+  );
+
+  const companyDirty = React.useMemo(
+    () => (company && companyBase ? JSON.stringify(company) !== JSON.stringify(companyBase) : false),
+    [company, companyBase]
+  );
+
+  const dirty = companyDirty || changedSettings.length > 0;
 
   React.useEffect(() => {
     function handler(e: BeforeUnloadEvent) {
@@ -26,16 +153,43 @@ export default function SettingsPage() {
     return () => window.removeEventListener("beforeunload", handler);
   }, [dirty]);
 
-  function save() {
+  const groups = React.useMemo(() => {
+    const seen: string[] = [];
+    for (const s of settings) if (!seen.includes(s.group)) seen.push(s.group);
+    return seen;
+  }, [settings]);
+
+  function setField<K extends keyof CompanyForm>(key: K, value: CompanyForm[K]) {
+    setCompany((c) => (c ? { ...c, [key]: value } : c));
+  }
+
+  const save = React.useCallback(async () => {
+    if (!company) return;
     setSaving(true);
-    setTimeout(() => {
-      setSaving(false);
-      setDirty(false);
+    const messages: string[] = [];
+    try {
+      if (companyDirty) {
+        const res = await axios.put<{ message?: string }>(`${API_BASE_URL}/admin/company`, company, {
+          headers: authHeader(),
+        });
+        if (res.data?.message) messages.push(res.data.message);
+      }
+      if (changedSettings.length > 0) {
+        const res = await axios.put<{ message?: string }>(`${API_BASE_URL}/admin/settings`, changedSettings, {
+          headers: authHeader(),
+        });
+        if (res.data?.message) messages.push(res.data.message);
+      }
       const time = new Date().toLocaleTimeString();
       setSavedAt(time);
-      toast.success("Settings saved", { description: `All changes were applied at ${time}.` });
-    }, 800);
-  }
+      toast.success(messages.join(" ") || "Settings saved.", { description: `Applied at ${time}.` });
+      await load();
+    } catch (e) {
+      toast.error(apiMessage(e, "The settings could not be saved."));
+    } finally {
+      setSaving(false);
+    }
+  }, [company, companyDirty, changedSettings, load]);
 
   return (
     <>
@@ -47,7 +201,7 @@ export default function SettingsPage() {
           <div className="flex items-center gap-2">
             {dirty && <span className="text-xs text-warning font-medium">● Unsaved changes</span>}
             {!dirty && savedAt && <span className="text-xs text-success font-medium inline-flex items-center gap-1"><CheckCircle2 className="size-3.5" />Saved</span>}
-            <Button variant="accent" size="md" className="gap-1.5" onClick={save} disabled={!dirty || saving}>
+            <Button variant="accent" size="md" className="gap-1.5" onClick={() => void save()} disabled={!dirty || saving || loading}>
               {saving ? <Loader2 className="animate-spin" /> : <Save />}
               <span>{saving ? "Saving…" : "Save Changes"}</span>
             </Button>
@@ -55,189 +209,190 @@ export default function SettingsPage() {
         }
       />
 
-      <div onChange={() => setDirty(true)}>
-      <Tabs defaultValue="company" className="w-full">
-        <TabsList className="overflow-x-auto scrollbar-thin flex-nowrap">
-          <TabsTrigger value="company"><Building className="size-3.5 mr-1.5" /> Company</TabsTrigger>
-          <TabsTrigger value="numbering"><Hash className="size-3.5 mr-1.5" /> Numbering</TabsTrigger>
-          <TabsTrigger value="tax"><Receipt className="size-3.5 mr-1.5" /> Tax</TabsTrigger>
-          <TabsTrigger value="email"><Mail className="size-3.5 mr-1.5" /> Email</TabsTrigger>
-          <TabsTrigger value="integrations"><Wifi className="size-3.5 mr-1.5" /> Integrations</TabsTrigger>
-          <TabsTrigger value="locale"><Globe className="size-3.5 mr-1.5" /> Locale</TabsTrigger>
-        </TabsList>
+      {loading ? (
+        <PageSkeleton />
+      ) : error || !company ? (
+        <Card>
+          <CardBody>
+            <EmptyState
+              icon={AlertCircle}
+              title="Could not load the settings"
+              description={error ?? "The company record came back empty."}
+              action={
+                <Button variant="accent" onClick={() => void load()}>
+                  <RefreshCw />
+                  Try again
+                </Button>
+              }
+            />
+          </CardBody>
+        </Card>
+      ) : (
+        <Tabs defaultValue="company" className="w-full">
+          <TabsList className="overflow-x-auto scrollbar-thin flex-nowrap">
+            <TabsTrigger value="company"><Building className="size-3.5 mr-1.5" /> Company</TabsTrigger>
+            <TabsTrigger value="locale"><Globe className="size-3.5 mr-1.5" /> Locale</TabsTrigger>
+            {groups.map((g) => {
+              const Icon = GROUP_ICON[g] ?? SlidersHorizontal;
+              return (
+                <TabsTrigger key={g} value={`group-${g}`} className="capitalize">
+                  <Icon className="size-3.5 mr-1.5" /> {g}
+                </TabsTrigger>
+              );
+            })}
+          </TabsList>
 
-        <TabsContent value="company">
-          <Card>
-            <CardBody>
-              <h3 className="text-base font-semibold text-navy-900 dark:text-white mb-4">Company Information</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <Field label="Company Name"><Input defaultValue="VIZO Pakistan" /></Field>
-                <Field label="Legal Name"><Input defaultValue="VIZO Trading Company (Pvt.) Ltd." /></Field>
-                <Field label="NTN"><Input defaultValue="0123456-7" /></Field>
-                <Field label="STRN"><Input defaultValue="32-77-8901-234-56" /></Field>
-                <Field label="Email"><Input type="email" defaultValue="info@vizo.com.pk" /></Field>
-                <Field label="Phone"><Input defaultValue="0300 7287607" /></Field>
-                <Field label="Website"><Input defaultValue="https://www.vizo.com.pk" /></Field>
-                <Field label="Industry"><Input defaultValue="Mobile Accessories Distribution" /></Field>
-                <Field label="Head Office Address" className="sm:col-span-2">
-                  <textarea rows={3} className="input resize-none" defaultValue="Kohinoor Market, Saddar, Karachi, Sindh, Pakistan" />
-                </Field>
-              </div>
-            </CardBody>
-          </Card>
-        </TabsContent>
+          <TabsContent value="company">
+            <Card>
+              <CardBody>
+                <h3 className="text-base font-semibold text-navy-900 dark:text-white mb-4">Company Information</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <Field label="Company Name">
+                    <Input value={company.companyName ?? ""} onChange={(e) => setField("companyName", e.target.value)} />
+                  </Field>
+                  <Field label="Legal Name">
+                    <Input value={company.legalName ?? ""} onChange={(e) => setField("legalName", e.target.value)} />
+                  </Field>
+                  <Field label="NTN">
+                    <Input value={company.ntn ?? ""} onChange={(e) => setField("ntn", e.target.value)} />
+                  </Field>
+                  <Field label="STRN">
+                    <Input value={company.strn ?? ""} onChange={(e) => setField("strn", e.target.value)} />
+                  </Field>
+                  <Field label="Email">
+                    <Input type="email" value={company.email ?? ""} onChange={(e) => setField("email", e.target.value)} />
+                  </Field>
+                  <Field label="Phone">
+                    <Input value={company.phone ?? ""} onChange={(e) => setField("phone", e.target.value)} />
+                  </Field>
+                  <Field label="City">
+                    <SelectNative
+                      value={company.cityId ?? ""}
+                      onChange={(e) => setField("cityId", e.target.value ? Number(e.target.value) : null)}
+                    >
+                      <option value="">— Select a city —</option>
+                      {cities.map((c) => (
+                        <option key={c.id} value={c.id}>{c.name}{c.province ? ` (${c.province})` : ""}</option>
+                      ))}
+                    </SelectNative>
+                  </Field>
+                  <Field label="Country">
+                    <Input value={company.country ?? ""} onChange={(e) => setField("country", e.target.value)} />
+                  </Field>
+                  <Field label="Head Office Address" className="sm:col-span-2">
+                    <Textarea
+                      rows={3}
+                      value={company.addressLine ?? ""}
+                      onChange={(e) => setField("addressLine", e.target.value)}
+                    />
+                  </Field>
+                </div>
+              </CardBody>
+            </Card>
+          </TabsContent>
 
-        <TabsContent value="numbering">
-          <Card>
-            <CardBody>
-              <h3 className="text-base font-semibold text-navy-900 dark:text-white mb-4">Document Numbering</h3>
-              <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
-                Format: <code className="bg-slate-100 dark:bg-navy-700 px-2 py-0.5 rounded font-mono text-xs">{`{location}-{prefix}-{YY}-{seq}`}</code>
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <Field label="Sales Order"><Input defaultValue="ORD" /></Field>
-                <Field label="Sales Invoice"><Input defaultValue="INV" /></Field>
-                <Field label="Sales Return"><Input defaultValue="RET" /></Field>
-                <Field label="Purchase Order"><Input defaultValue="PO" /></Field>
-                <Field label="Goods Receipt"><Input defaultValue="GRN" /></Field>
-                <Field label="Purchase Invoice"><Input defaultValue="PI" /></Field>
-                <Field label="Voucher"><Input defaultValue="VCH" /></Field>
-                <Field label="Journal Entry"><Input defaultValue="JE" /></Field>
-                <Field label="Stock Transfer"><Input defaultValue="TRF" /></Field>
-              </div>
-            </CardBody>
-          </Card>
-        </TabsContent>
+          <TabsContent value="locale">
+            <Card>
+              <CardBody>
+                <h3 className="text-base font-semibold text-navy-900 dark:text-white mb-4">Currency &amp; Fiscal Year</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <Field label="Currency Code">
+                    <Input
+                      value={company.currencyCode ?? ""}
+                      onChange={(e) => setField("currencyCode", e.target.value.toUpperCase())}
+                      maxLength={3}
+                    />
+                  </Field>
+                  <Field label="Currency Symbol">
+                    <Input value={company.currencySymbol ?? ""} onChange={(e) => setField("currencySymbol", e.target.value)} />
+                  </Field>
+                  <Field label="Fiscal Year Starts">
+                    <SelectNative
+                      value={company.fiscalYearStartMonth}
+                      onChange={(e) => setField("fiscalYearStartMonth", Number(e.target.value))}
+                    >
+                      {MONTHS.map((m, i) => (
+                        <option key={m} value={i + 1}>{m}</option>
+                      ))}
+                    </SelectNative>
+                  </Field>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-4 leading-relaxed">
+                  Every ledger period, aging bucket and year-to-date figure is cut from the month chosen here — it
+                  comes straight off the company record, so nothing else in the app can disagree with it.
+                </p>
+              </CardBody>
+            </Card>
+          </TabsContent>
 
-        <TabsContent value="tax">
-          <Card>
-            <CardBody>
-              <h3 className="text-base font-semibold text-navy-900 dark:text-white mb-4">Tax Settings (Pakistan)</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <Field label="Default Sales Tax (%)"><Input type="number" defaultValue="18" /></Field>
-                <Field label="Default Withholding Tax (%)"><Input type="number" defaultValue="4.5" /></Field>
-                <Field label="Tax Inclusive Pricing">
-                  <select className="input bg-white dark:bg-navy-800 dark:border-navy-700 dark:text-white">
-                    <option>Exclusive (price + tax)</option>
-                    <option>Inclusive (price includes tax)</option>
-                  </select>
-                </Field>
-                <Field label="Rounding Method">
-                  <select className="input bg-white dark:bg-navy-800 dark:border-navy-700 dark:text-white">
-                    <option>Banker&apos;s rounding</option>
-                    <option>Round half up</option>
-                  </select>
-                </Field>
-              </div>
-            </CardBody>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="email">
-          <Card>
-            <CardBody>
-              <h3 className="text-base font-semibold text-navy-900 dark:text-white mb-4">Email (SMTP)</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <Field label="From Name"><Input defaultValue="AdvPOS" /></Field>
-                <Field label="From Address"><Input type="email" defaultValue="noreply@vizo.com.pk" /></Field>
-                <Field label="SMTP Host"><Input defaultValue="smtp.sendgrid.net" /></Field>
-                <Field label="SMTP Port"><Input type="number" defaultValue="587" /></Field>
-                <Field label="Username"><Input defaultValue="apikey" /></Field>
-                <Field label="Password"><Input type="password" placeholder="••••••••" /></Field>
-              </div>
-              <Button variant="secondary" size="md" className="mt-4" onClick={() => { setTestEmail(true); setTimeout(() => { setTestEmail(false); toast.success("Test email sent", { description: "Check noreply@vizo.com.pk inbox." }); }, 1000); }} disabled={testEmail}>
-                {testEmail ? <Loader2 className="animate-spin mr-1.5" /> : null}
-                {testEmail ? "Sending…" : "Send Test Email"}
-              </Button>
-            </CardBody>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="integrations">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {[
-              { name: "Easypaisa Business",  status: "Connected",    desc: "Mobile wallet receipts", color: "success" as const },
-              { name: "JazzCash Business",    status: "Connected",    desc: "Mobile wallet receipts", color: "success" as const },
-              { name: "Twilio (PK route)",    status: "Disconnected", desc: "International fallback", color: "muted"   as const },
-              { name: "FBR e-Invoice",        status: "Not configured", desc: "Tax authority integration", color: "muted" as const },
-            ].map((i) => (
-              <Card key={i.name}>
+          {groups.map((g) => (
+            <TabsContent key={g} value={`group-${g}`}>
+              <Card>
                 <CardBody>
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <h4 className="text-sm font-semibold text-navy-900 dark:text-white">{i.name}</h4>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{i.desc}</p>
-                    </div>
-                    <Button variant={i.color === "success" ? "secondary" : "accent"} size="sm" onClick={() => setConnectIntegration({ name: i.name, verb: i.color === "success" ? "Reconfigure" : "Connect" })}>
-                      {i.color === "success" ? "Configure" : "Connect"}
-                    </Button>
-                  </div>
-                  <div className="mt-3 inline-flex items-center gap-1.5 text-xs">
-                    <span className={`size-2 rounded-full ${i.color === "success" ? "bg-success" : "bg-slate-300"}`} />
-                    <span className={i.color === "success" ? "text-success" : "text-slate-500"}>{statusLabel(i.status)}</span>
+                  <h3 className="text-base font-semibold text-navy-900 dark:text-white mb-4 capitalize">{g} policy</h3>
+                  <div className="divide-y divide-slate-100 dark:divide-navy-700">
+                    {settings.filter((s) => s.group === g).map((s) => (
+                      <div key={s.id} className="py-4 first:pt-0 last:pb-0 flex items-start justify-between gap-6">
+                        <div className="min-w-0">
+                          <div className="text-sm font-medium text-navy-900 dark:text-white">{s.key}</div>
+                          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+                            {s.description}
+                          </p>
+                        </div>
+                        <div className="flex-shrink-0 w-40 flex justify-end">
+                          {isBoolean(s.value) ? (
+                            <Switch
+                              checked={values[s.key] === "true"}
+                              onCheckedChange={(on) =>
+                                setValues((v) => ({ ...v, [s.key]: on ? "true" : "false" }))
+                              }
+                              aria-label={s.key}
+                            />
+                          ) : (
+                            <Input
+                              type={isNumeric(s.value) ? "number" : "text"}
+                              value={values[s.key] ?? ""}
+                              onChange={(e) => setValues((v) => ({ ...v, [s.key]: e.target.value }))}
+                              aria-label={s.key}
+                            />
+                          )}
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </CardBody>
               </Card>
-            ))}
+            </TabsContent>
+          ))}
+        </Tabs>
+      )}
+
+      {/* What this screen deliberately does not own. */}
+      <Card className="mt-6">
+        <CardBody>
+          <h3 className="text-sm font-semibold text-navy-900 dark:text-white">Configured elsewhere</h3>
+          <div className="mt-3 space-y-3">
+            <div className="flex items-start gap-2.5">
+              <Hash className="size-4 text-slate-400 mt-0.5 flex-shrink-0" />
+              <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                Document prefixes, year suffixes and next numbers are edited in{" "}
+                <Link href="/admin/numbering" className="text-brand-yellow font-medium inline-flex items-center gap-0.5">
+                  Setup → Numbering <ArrowRight className="size-3" />
+                </Link>
+                , which is the single source of truth for every series.
+              </p>
+            </div>
+            <div className="flex items-start gap-2.5">
+              <SlidersHorizontal className="size-4 text-slate-400 mt-0.5 flex-shrink-0" />
+              <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                Mail (SMTP), Cloudinary and other third-party credentials live on the server in{" "}
+                <code className="bg-slate-100 dark:bg-navy-700 px-1.5 py-0.5 rounded font-mono text-2xs">appsettings.json</code>.
+                There is no table behind them, so they are not editable from the web app.
+              </p>
+            </div>
           </div>
-        </TabsContent>
-
-        <TabsContent value="locale">
-          <Card>
-            <CardBody>
-              <h3 className="text-base font-semibold text-navy-900 dark:text-white mb-4">Locale & Format</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <Field label="Time Zone">
-                  <select className="input bg-white dark:bg-navy-800 dark:border-navy-700 dark:text-white">
-                    <option>Asia/Karachi (PKT, UTC+5)</option>
-                  </select>
-                </Field>
-                <Field label="Currency">
-                  <select className="input bg-white dark:bg-navy-800 dark:border-navy-700 dark:text-white">
-                    <option>PKR — Pakistani Rupee</option>
-                  </select>
-                </Field>
-                <Field label="Date Format">
-                  <select className="input bg-white dark:bg-navy-800 dark:border-navy-700 dark:text-white">
-                    <option>DD-MMM-YYYY (01-May-2026)</option>
-                    <option>YYYY-MM-DD (2026-05-01)</option>
-                    <option>DD/MM/YYYY (01/05/2026)</option>
-                  </select>
-                </Field>
-                <Field label="Number Format">
-                  <select className="input bg-white dark:bg-navy-800 dark:border-navy-700 dark:text-white">
-                    <option>International (1,000,000)</option>
-                    <option>Pakistani lakhs/crores (10,00,000)</option>
-                  </select>
-                </Field>
-                <Field label="Week Start">
-                  <select className="input bg-white dark:bg-navy-800 dark:border-navy-700 dark:text-white">
-                    <option>Monday</option>
-                    <option>Sunday</option>
-                  </select>
-                </Field>
-                <Field label="Fiscal Year Starts">
-                  <select className="input bg-white dark:bg-navy-800 dark:border-navy-700 dark:text-white">
-                    <option>July (Pakistan standard)</option>
-                    <option>January</option>
-                  </select>
-                </Field>
-              </div>
-            </CardBody>
-          </Card>
-        </TabsContent>
-      </Tabs>
-      </div>
-
-      <ConfirmDialog
-        open={!!connectIntegration}
-        onOpenChange={(o) => !o && setConnectIntegration(null)}
-        title={connectIntegration ? `${connectIntegration.verb} ${connectIntegration.name}?` : ""}
-        description={connectIntegration ? `You'll be redirected to ${connectIntegration.name} to authorise the connection. After confirming, the integration will be available across the system.` : ""}
-        variant="info"
-        confirmLabel={connectIntegration?.verb ?? "Connect"}
-        onConfirm={() => { toast.success(`${connectIntegration?.name} ${connectIntegration?.verb.toLowerCase()}d`, { description: "Connection verified — credentials stored in vault." }); setConnectIntegration(null); }}
-      />
+        </CardBody>
+      </Card>
     </>
   );
 }

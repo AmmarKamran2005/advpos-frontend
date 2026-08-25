@@ -3,13 +3,14 @@
 import * as React from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { vizoResolver } from "@/lib/zod-resolver";
 import { z } from "zod";
+import axios from "axios";
 import {
   Mail, Lock, Eye, EyeOff, Loader2, AlertCircle, ArrowRight,
-  ShoppingCart, ClipboardList, Wallet, Shield, Copy, Check,
+  ShoppingCart, ClipboardList, Wallet, Shield, Check,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from "@/components/ui/form";
@@ -19,8 +20,11 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Toaster, toast } from "@/components/ui/toaster";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
-import { setActiveRole } from "@/components/providers/session-provider";
-import { demoAccounts, findDemoAccount, DEMO_PASSWORD, type DemoAccount } from "@/data/mock";
+import {
+  saveSession,
+  API_BASE_URL,
+  type SessionUser,
+} from "@/components/providers/session-provider";
 import type { RoleKey } from "@/data/settings";
 import { cn } from "@/lib/utils";
 
@@ -46,59 +50,82 @@ const PANEL_TONE: Record<RoleKey, { ring: string; chip: string }> = {
   "super-admin": { ring: "border-navy-900 dark:border-white bg-slate-100 dark:bg-navy-800", chip: "bg-slate-200 dark:bg-navy-700 text-navy-900 dark:text-white" },
 };
 
-export default function LoginPage() {
+/**
+ * Shortcut buttons that fill in the address for each panel. Emails only --
+ * a password baked into the bundle is a password everybody has, and these
+ * are real accounts now.
+ */
+type Panel = { role: RoleKey; label: string; person: string; email: string; blurb: string };
+
+const PANELS: Panel[] = [
+  { role: "sales", label: "Sales", person: "Zara Malik", email: "sales@advpos.pk",
+    blurb: "Takes customer orders and follows up on payments." },
+  { role: "order-dept", label: "Order Department", person: "Bilal Ahmed", email: "order@advpos.pk",
+    blurb: "Checks stock, packs orders, moves goods and books deliveries." },
+  { role: "accountant", label: "Accountant", person: "Hassan Raza", email: "accounts@advpos.pk",
+    blurb: "Records money in and out, keeps the ledgers and statements." },
+  { role: "super-admin", label: "Super Admin", person: "Umer Memon", email: "admin@advpos.pk",
+    blurb: "Sees everything, plus users, setup and backup." },
+];
+
+function LoginForm() {
   const router = useRouter();
   const { resolvedTheme } = useTheme();
 
+  const searchParams = useSearchParams();
   const [showPassword, setShowPassword] = React.useState(false);
   const [serverError, setServerError] = React.useState<string | null>(null);
   const [selected, setSelected] = React.useState<RoleKey>("sales");
-  const [copied, setCopied] = React.useState(false);
-
-  const initial = demoAccounts.find((a) => a.role === "sales")!;
 
   const form = useForm<LoginForm>({
     resolver: vizoResolver(LoginSchema),
-    defaultValues: { email: initial.email, password: initial.password, remember: true },
+    defaultValues: { email: "", password: "", remember: true },
   });
 
-  function choosePanel(account: DemoAccount) {
-    setSelected(account.role);
+  function choosePanel(panel: Panel) {
+    setSelected(panel.role);
     setServerError(null);
-    form.setValue("email", account.email);
-    form.setValue("password", account.password);
+    form.setValue("email", panel.email);
+    form.setFocus("password");
   }
 
   async function onSubmit(data: LoginForm) {
     setServerError(null);
-    await new Promise((r) => setTimeout(r, 600));
+    try {
+      const res = await axios.post<{ token: string; expiresAt: string; user: SessionUser }>(
+        `${API_BASE_URL}/auth/login`,
+        { email: data.email, password: data.password }
+      );
 
-    const account = findDemoAccount(data.email);
+      const { token, user } = res.data;
+      saveSession(token, user);
 
-    if (!account || data.password !== account.password) {
-      setServerError("That email and password don't match any account.");
-      toast.error("Sign-in failed", {
-        description: "Pick a panel below to fill in the demo details.",
-      });
-      return;
+      toast.success(`Signed in as ${user.fullName}`, { description: `${user.roleLabel} panel` });
+
+      /* middleware puts the path the user actually wanted on ?next= when it
+         bounced them here; otherwise use the landing page the role carries
+         in the database. */
+      const next = searchParams.get("next");
+      router.replace(next && next.startsWith("/") ? next : user.homePath || "/dashboard");
+    } catch (err) {
+      let message = "Something went wrong signing in. Try again.";
+      console.log("Login error", err);
+      if (axios.isAxiosError(err)) {
+        if (err.response) {
+          if (err.response.status === 423) {
+            router.push("/locked");
+            return;
+          }
+          message =
+            (err.response.data as { message?: string } | undefined)?.message ??
+            "That email and password do not match any account.";
+        } else {
+          message = "Cannot reach the server. Check that the API is running.";
+        }
+      }
+      setServerError(message);
+      toast.error("Sign-in failed", { description: message });
     }
-
-    setActiveRole(account.role);
-    toast.success(`Signed in as ${account.name}`, {
-      description: `${roleLabel(account.role)} panel`,
-    });
-    router.push(account.landing);
-  }
-
-  function copyPassword() {
-    navigator.clipboard.writeText(DEMO_PASSWORD).then(
-      () => {
-        setCopied(true);
-        toast.success("Password copied");
-        window.setTimeout(() => setCopied(false), 1500);
-      },
-      () => toast.error("Could not copy")
-    );
   }
 
   return (
@@ -128,13 +155,13 @@ export default function LoginPage() {
           <div className="mb-6">
             <h1 className="text-3xl font-bold tracking-tight">Choose your panel</h1>
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-2">
-              Each role sees a different app. Pick one to fill in its sign-in details.
+              Each role sees a different app. Pick one to fill in its address, then enter your password.
             </p>
           </div>
 
           {/* Role panels */}
           <div className="grid sm:grid-cols-2 gap-2.5 mb-6">
-            {demoAccounts.map((account) => {
+            {PANELS.map((account) => {
               const Icon = PANEL_ICON[account.role];
               const tone = PANEL_TONE[account.role];
               const active = selected === account.role;
@@ -156,9 +183,9 @@ export default function LoginPage() {
                       <Icon className="size-4" />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div className="text-sm font-semibold truncate">{roleLabel(account.role)}</div>
+                      <div className="text-sm font-semibold truncate">{account.label}</div>
                       <div className="text-2xs text-slate-500 dark:text-slate-400 truncate">
-                        {account.name}
+                        {account.person}
                       </div>
                     </div>
                     {active && <Check className="size-4 text-brand-yellow flex-shrink-0" />}
@@ -172,23 +199,6 @@ export default function LoginPage() {
                 </button>
               );
             })}
-          </div>
-
-          {/* Shared demo password */}
-          <div className="flex items-center gap-2 mb-6 px-3 py-2 rounded-lg bg-slate-50 dark:bg-navy-900 border border-slate-200 dark:border-navy-800">
-            <Lock className="size-3.5 text-slate-400 flex-shrink-0" />
-            <span className="text-xs text-slate-500 dark:text-slate-400">Password for every panel</span>
-            <code className="tabular text-xs font-semibold text-navy-900 dark:text-white ml-auto">
-              {DEMO_PASSWORD}
-            </code>
-            <button
-              type="button"
-              onClick={copyPassword}
-              className="p-1 rounded-md hover:bg-slate-200 dark:hover:bg-navy-800 text-slate-400"
-              aria-label="Copy demo password"
-            >
-              {copied ? <Check className="size-3.5 text-success" /> : <Copy className="size-3.5" />}
-            </button>
           </div>
 
           {serverError && (
@@ -344,5 +354,23 @@ function FlowStep({ n, title, body }: { n: number; title: string; body: string }
         <p className="text-sm text-slate-300 mt-0.5 leading-relaxed">{body}</p>
       </div>
     </li>
+  );
+}
+
+function AuthLoading() {
+  return (
+    <div className="min-h-screen bg-white dark:bg-navy-950 flex items-center justify-center">
+      <div className="size-8 border-2 border-slate-200 dark:border-navy-700 border-t-brand-yellow rounded-full animate-spin" />
+    </div>
+  );
+}
+
+export default function LoginPage() {
+  /* useSearchParams() bails out of prerendering unless it is under a
+     boundary, so the page shell is the boundary and the form is the child. */
+  return (
+    <React.Suspense fallback={<AuthLoading />}>
+      <LoginForm />
+    </React.Suspense>
   );
 }

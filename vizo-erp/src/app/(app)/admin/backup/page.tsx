@@ -1,68 +1,186 @@
 "use client";
 
-import { Database, Download, Play, Shield, CheckCircle2, Clock, HardDrive, RotateCcw } from "lucide-react";
+import * as React from "react";
+import axios from "axios";
+import {
+  Database, Download, Play, CheckCircle2, XCircle, HardDrive, Archive,
+  ShieldCheck, AlertCircle, RefreshCw, Loader2,
+} from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardBody } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Skeleton, TableSkeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/ui/empty-state";
 import { DataTable, type Column } from "@/components/ui/data-table";
-import { formatDate } from "@/lib/format";
+import { toast } from "@/components/ui/toaster";
+import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
+import { formatDate, formatRelative, formatNumber, formatPercent } from "@/lib/format";
+import { cn } from "@/lib/utils";
+
+/* ─────────────────────────── shapes from the API ─────────────────────────── */
 
 type Backup = {
   id: number;
-  date: string;
-  type: "Full" | "Incremental" | "Manual";
-  size: string;
-  status: "Success" | "Failed" | "Running";
-  destination: string;
-  duration: string;
-  hash: string;
+  startedAt: string;
+  type: string;
+  typeKey: string;
+  status: string;
+  statusKey: string;
+  sizeMb: number | null;
+  destination: string | null;
+  durationSeconds: number | null;
+  hash: string | null;
+  triggeredBy: string | null;
 };
 
-const BACKUPS: Backup[] = [
-  { id: 1, date: "2026-05-01 02:00 AM", type: "Full",        size: "1.24 GB", status: "Success", destination: "MinIO Primary",   duration: "3m 42s", hash: "sha256:a8f9..." },
-  { id: 2, date: "2026-04-30 02:00 AM", type: "Full",        size: "1.22 GB", status: "Success", destination: "MinIO Primary",   duration: "3m 38s", hash: "sha256:b3e7..." },
-  { id: 3, date: "2026-04-29 14:32 PM", type: "Manual",      size: "1.21 GB", status: "Success", destination: "Manual download", duration: "3m 51s", hash: "sha256:c1d2..." },
-  { id: 4, date: "2026-04-29 02:00 AM", type: "Full",        size: "1.20 GB", status: "Success", destination: "MinIO Primary",   duration: "3m 42s", hash: "sha256:d4a1..." },
-  { id: 5, date: "2026-04-28 02:00 AM", type: "Full",        size: "1.18 GB", status: "Success", destination: "MinIO Primary",   duration: "3m 28s", hash: "sha256:e7b3..." },
-];
+type BackupStats = {
+  lastBackupAt: string | null;
+  lastBackupStatus: string | null;
+  totalSizeMb: number;
+  retained: number;
+  successRate: number;
+};
+
+function apiMessage(e: unknown, fallback: string) {
+  if (axios.isAxiosError(e) && e.response) {
+    return (e.response.data as { message?: string })?.message ?? fallback;
+  }
+  return "Cannot reach the server.";
+}
+
+/** `sizeMb` arrives as a number now — turn it into something readable. */
+function formatSize(mb: number | null) {
+  if (mb === null || Number.isNaN(mb)) return "—";
+  if (mb >= 1024) return `${(mb / 1024).toFixed(2)} GB`;
+  return `${mb.toFixed(mb < 10 ? 1 : 0)} MB`;
+}
+
+/** `durationSeconds` arrives as a number now — `222` → `3m 42s`. */
+function formatDuration(seconds: number | null) {
+  if (seconds === null || Number.isNaN(seconds)) return "—";
+  const s = Math.max(0, Math.round(seconds));
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  const rest = s % 60;
+  if (m < 60) return `${m}m ${rest}s`;
+  return `${Math.floor(m / 60)}h ${m % 60}m`;
+}
+
+/* The status cell used to be a green tick no matter what the row said. It is
+   driven by statusKey now, so a failed run reads as failed. */
+const STATUS_META: Record<string, { icon: typeof CheckCircle2; className: string; spin?: boolean }> = {
+  SUCCESS: { icon: CheckCircle2, className: "text-success" },
+  FAILED: { icon: XCircle, className: "text-danger" },
+  RUNNING: { icon: Loader2, className: "text-info", spin: true },
+};
 
 export default function BackupPage() {
+  const [rows, setRows] = React.useState<Backup[]>([]);
+  const [stats, setStats] = React.useState<BackupStats | null>(null);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+  const [running, setRunning] = React.useState(false);
+
+  const load = React.useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [list, summary] = await Promise.all([
+        axios.get<Backup[]>(`${API_BASE_URL}/admin/backups`, { headers: authHeader() }),
+        axios.get<BackupStats>(`${API_BASE_URL}/admin/backups/stats`, { headers: authHeader() }),
+      ]);
+      setRows(list.data);
+      setStats(summary.data);
+    } catch (e) {
+      setError(apiMessage(e, "Could not load the backup history."));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    void load();
+  }, [load]);
+
+  const runBackup = React.useCallback(async () => {
+    setRunning(true);
+    try {
+      const res = await axios.post<{ message?: string }>(
+        `${API_BASE_URL}/admin/backups/run`,
+        { typeKey: "MANUAL", destination: "Manual download" },
+        { headers: authHeader() }
+      );
+      toast.success(res.data?.message ?? "Backup started.");
+      await load();
+    } catch (e) {
+      toast.error(apiMessage(e, "The backup could not be started."));
+    } finally {
+      setRunning(false);
+    }
+  }, [load]);
+
   const columns: Column<Backup>[] = [
-    { key: "date",        header: "Date",        cell: (b) => <span className="text-sm font-medium text-navy-900 dark:text-white">{b.date}</span> },
-    { key: "type",        header: "Type",        cell: (b) => <Badge variant={b.type === "Manual" ? "accent" : "info"}>{b.type}</Badge> },
-    { key: "size",        header: "Size",        align: "right", cell: (b) => <span className="tabular text-sm text-slate-600 dark:text-slate-300">{b.size}</span> },
-    { key: "duration",    header: "Duration",    cell: (b) => <span className="tabular text-xs text-slate-500 dark:text-slate-400">{b.duration}</span> },
-    { key: "destination", header: "Destination", cell: (b) => <span className="text-xs text-slate-600 dark:text-slate-300">{b.destination}</span> },
-    { key: "hash",        header: "Integrity",   cell: (b) => <span className="font-mono text-2xs text-slate-500 dark:text-slate-400 truncate max-w-[120px]">{b.hash}</span> },
-    { key: "status",      header: "Status",      cell: (b) => (
-        <span className="inline-flex items-center gap-1.5 text-xs font-medium text-success">
-          <CheckCircle2 className="size-3.5" />
-          {b.status}
-        </span>
-      )
+    {
+      key: "startedAt",
+      header: "Date",
+      cell: (b) => (
+        <div>
+          <div className="text-sm font-medium text-navy-900 dark:text-white">{formatDate(b.startedAt)}</div>
+          <div className="text-2xs text-slate-500 dark:text-slate-400">{formatRelative(b.startedAt)}</div>
+        </div>
+      ),
     },
-    { key: "actions",     header: "",            align: "right", cell: () => <Button variant="ghost" size="sm" className="gap-1"><Download className="size-3.5" />Download</Button> },
+    { key: "type", header: "Type", cell: (b) => <Badge variant={b.typeKey === "MANUAL" ? "accent" : "info"}>{b.type}</Badge> },
+    { key: "sizeMb", header: "Size", align: "right", cell: (b) => <span className="tabular text-sm text-slate-600 dark:text-slate-300">{formatSize(b.sizeMb)}</span> },
+    { key: "durationSeconds", header: "Duration", cell: (b) => <span className="tabular text-xs text-slate-500 dark:text-slate-400">{formatDuration(b.durationSeconds)}</span> },
+    { key: "destination", header: "Destination", cell: (b) => <span className="text-xs text-slate-600 dark:text-slate-300">{b.destination ?? "—"}</span> },
+    { key: "hash", header: "Integrity", cell: (b) => <span className="font-mono text-2xs text-slate-500 dark:text-slate-400 truncate max-w-[120px] block">{b.hash ?? "—"}</span> },
+    {
+      key: "status",
+      header: "Status",
+      cell: (b) => {
+        const meta = STATUS_META[b.statusKey] ?? { icon: AlertCircle, className: "text-slate-500" };
+        const Icon = meta.icon;
+        return (
+          <span className={cn("inline-flex items-center gap-1.5 text-xs font-medium", meta.className)}>
+            <Icon className={cn("size-3.5", meta.spin && "animate-spin")} />
+            {b.status}
+          </span>
+        );
+      },
+    },
+    {
+      key: "actions",
+      header: "",
+      align: "right",
+      /* No download endpoint exists and none is planned: the dump is written to
+         the backup destination by pg_dump, not served by the web app. Left
+         visible but disabled so nobody mistakes it for a working control. */
+      cell: () => (
+        <span title="Backups are pulled from the backup destination, not downloaded from the web app.">
+          <Button variant="ghost" size="sm" className="gap-1" disabled>
+            <Download className="size-3.5" />
+            Download
+          </Button>
+        </span>
+      ),
+    },
   ];
+
+  const lastOk = (stats?.lastBackupStatus ?? "").toLowerCase().startsWith("success");
 
   return (
     <>
       <PageHeader
         breadcrumbs={[{ label: "Administration" }, { label: "Backup & Restore" }]}
         title="Backup & Restore"
-        subtitle="Daily automated backups + on-demand exports"
+        subtitle="Every backup run the server has recorded"
         actions={
-          <>
-            <Button variant="secondary" size="md" className="gap-1.5">
-              <RotateCcw />
-              <span>Restore Drill</span>
-            </Button>
-            <Button variant="accent" size="md" className="gap-1.5">
-              <Play />
-              <span>Run Backup Now</span>
-            </Button>
-          </>
+          <Button variant="accent" size="md" className="gap-1.5" onClick={() => void runBackup()} disabled={running}>
+            {running ? <Loader2 className="animate-spin" /> : <Play />}
+            <span>{running ? "Starting…" : "Run Backup Now"}</span>
+          </Button>
         }
       />
 
@@ -71,130 +189,122 @@ export default function BackupPage() {
           <div className="flex items-center justify-between">
             <div>
               <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Last Backup</div>
-              <div className="text-base tabular font-bold text-navy-900 dark:text-white mt-1">2 hours ago</div>
-              <div className="text-xs text-success mt-1 inline-flex items-center gap-1">
-                <CheckCircle2 className="size-3" /> Successful
-              </div>
+              {stats === null ? (
+                <Skeleton className="h-6 w-24 mt-1.5" />
+              ) : (
+                <>
+                  <div className="text-base tabular font-bold text-navy-900 dark:text-white mt-1">
+                    {stats.lastBackupAt ? formatRelative(stats.lastBackupAt) : "Never"}
+                  </div>
+                  <div className={cn("text-xs mt-1 inline-flex items-center gap-1", lastOk ? "text-success" : "text-slate-500 dark:text-slate-400")}>
+                    {lastOk ? <CheckCircle2 className="size-3" /> : <AlertCircle className="size-3" />}
+                    {stats.lastBackupStatus ?? "No runs recorded"}
+                  </div>
+                </>
+              )}
             </div>
-            <Database className="size-5 text-success" />
+            <Database className={cn("size-5", lastOk ? "text-success" : "text-slate-400")} />
           </div>
         </Card>
+
         <Card className="p-4">
           <div className="flex items-center justify-between">
             <div>
               <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Storage Used</div>
-              <div className="text-base tabular font-bold text-navy-900 dark:text-white mt-1">36.2 GB</div>
-              <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">30 backups retained</div>
+              {stats === null ? (
+                <Skeleton className="h-6 w-24 mt-1.5" />
+              ) : (
+                <>
+                  <div className="text-base tabular font-bold text-navy-900 dark:text-white mt-1">{formatSize(stats.totalSizeMb)}</div>
+                  <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">across every retained run</div>
+                </>
+              )}
             </div>
             <HardDrive className="size-5 text-info" />
           </div>
         </Card>
+
         <Card className="p-4">
           <div className="flex items-center justify-between">
             <div>
-              <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Next Scheduled</div>
-              <div className="text-base tabular font-bold text-navy-900 dark:text-white mt-1">Tomorrow</div>
-              <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">02:00 AM PKT</div>
+              <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Backups Retained</div>
+              {stats === null ? (
+                <Skeleton className="h-6 w-16 mt-1.5" />
+              ) : (
+                <>
+                  <div className="text-base tabular font-bold text-navy-900 dark:text-white mt-1">{formatNumber(stats.retained)}</div>
+                  <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">runs on record</div>
+                </>
+              )}
             </div>
-            <Clock className="size-5 text-warning" />
+            <Archive className="size-5 text-warning" />
           </div>
         </Card>
+
         <Card className="p-4">
           <div className="flex items-center justify-between">
             <div>
-              <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Restore Drill</div>
-              <div className="text-base tabular font-bold text-navy-900 dark:text-white mt-1">7 days ago</div>
-              <div className="text-xs text-success mt-1 inline-flex items-center gap-1">
-                <CheckCircle2 className="size-3" /> Verified
-              </div>
+              <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Success Rate</div>
+              {stats === null ? (
+                <Skeleton className="h-6 w-16 mt-1.5" />
+              ) : (
+                <>
+                  <div className="text-base tabular font-bold text-navy-900 dark:text-white mt-1">{formatPercent(stats.successRate)}</div>
+                  <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">of all recorded runs</div>
+                </>
+              )}
             </div>
-            <Shield className="size-5 text-success" />
+            <ShieldCheck className={cn("size-5", (stats?.successRate ?? 100) >= 95 ? "text-success" : "text-warning")} />
           </div>
         </Card>
       </div>
 
-      <Tabs defaultValue="backups">
-        <TabsList>
-          <TabsTrigger value="backups">Backup History</TabsTrigger>
-          <TabsTrigger value="drills">Restore Drills</TabsTrigger>
-          <TabsTrigger value="schedule">Schedule</TabsTrigger>
-        </TabsList>
+      <div className="mb-3">
+        <h3 className="text-base font-semibold text-navy-900 dark:text-white">Backup History</h3>
+        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+          Recording a run here is not the same as taking the dump — that is a <code className="bg-slate-100 dark:bg-navy-700 px-1.5 py-0.5 rounded font-mono text-2xs">pg_dump</code> job on the server.
+        </p>
+      </div>
 
-        <TabsContent value="backups">
-          <Card className="p-0 overflow-hidden">
-            <DataTable columns={columns} data={BACKUPS} />
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="drills">
-          <Card>
-            <CardBody>
-              <h3 className="text-base font-semibold text-navy-900 dark:text-white mb-4">Monthly Restore Drills</h3>
-              <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
-                Automated pipeline restores yesterday&apos;s backup to a staging cluster and verifies row counts vs production.
-              </p>
-              <div className="space-y-3">
-                {[
-                  { date: "2026-04-24", result: "Success",  records: "2,148,420 rows", drift: "0%",     duration: "8m 42s" },
-                  { date: "2026-03-24", result: "Success",  records: "2,089,142 rows", drift: "0%",     duration: "7m 58s" },
-                  { date: "2026-02-24", result: "Success",  records: "1,968,820 rows", drift: "0%",     duration: "7m 12s" },
-                ].map((d, i) => (
-                  <div key={i} className="flex items-center justify-between p-3 bg-success/5 border border-success/20 rounded-lg">
-                    <div className="flex items-center gap-3">
-                      <CheckCircle2 className="size-5 text-success" />
-                      <div>
-                        <div className="text-sm font-semibold text-navy-900 dark:text-white">{formatDate(d.date)}</div>
-                        <div className="text-xs text-slate-500 dark:text-slate-400">{d.records} verified · drift {d.drift}</div>
-                      </div>
-                    </div>
-                    <div className="text-xs text-slate-500 dark:text-slate-400">{d.duration}</div>
-                  </div>
-                ))}
-              </div>
-            </CardBody>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="schedule">
-          <Card>
-            <CardBody>
-              <h3 className="text-base font-semibold text-navy-900 dark:text-white mb-4">Backup Schedule</h3>
-              <div className="space-y-4">
-                {[
-                  { label: "Full PostgreSQL Backup", schedule: "Daily at 02:00 AM PKT", retention: "30 days", destination: "MinIO Primary + S3 (offsite)" },
-                  { label: "WAL Continuous Archive", schedule: "Every 60 seconds",       retention: "7 days (PITR window)", destination: "MinIO Primary" },
-                  { label: "Logical pg_dump",        schedule: "Daily at 02:30 AM PKT", retention: "14 days", destination: "MinIO Primary" },
-                  { label: "MinIO Object Mirror",     schedule: "Daily at 03:00 AM PKT", retention: "30 days", destination: "Secondary MinIO" },
-                ].map((s, i) => (
-                  <div key={i} className="flex items-start gap-3 p-3 border border-slate-200 dark:border-navy-700 rounded-lg">
-                    <div className="size-9 rounded-lg bg-info/10 flex items-center justify-center text-info">
-                      <Clock className="size-4" />
-                    </div>
-                    <div className="flex-1">
-                      <div className="text-sm font-semibold text-navy-900 dark:text-white">{s.label}</div>
-                      <div className="grid grid-cols-3 gap-3 mt-2 text-xs">
-                        <div>
-                          <div className="text-2xs uppercase font-semibold text-slate-500 dark:text-slate-400">Schedule</div>
-                          <div className="text-slate-700 dark:text-slate-200 mt-0.5">{s.schedule}</div>
-                        </div>
-                        <div>
-                          <div className="text-2xs uppercase font-semibold text-slate-500 dark:text-slate-400">Retention</div>
-                          <div className="text-slate-700 dark:text-slate-200 mt-0.5">{s.retention}</div>
-                        </div>
-                        <div>
-                          <div className="text-2xs uppercase font-semibold text-slate-500 dark:text-slate-400">Destination</div>
-                          <div className="text-slate-700 dark:text-slate-200 mt-0.5">{s.destination}</div>
-                        </div>
-                      </div>
-                    </div>
-                    <Badge variant="success">Active</Badge>
-                  </div>
-                ))}
-              </div>
-            </CardBody>
-          </Card>
-        </TabsContent>
-      </Tabs>
+      {loading ? (
+        <TableSkeleton rows={6} cols={7} />
+      ) : error ? (
+        <Card>
+          <CardBody>
+            <EmptyState
+              icon={AlertCircle}
+              title="Could not load the backup history"
+              description={error}
+              action={
+                <Button variant="accent" onClick={() => void load()}>
+                  <RefreshCw />
+                  Try again
+                </Button>
+              }
+            />
+          </CardBody>
+        </Card>
+      ) : (
+        <Card className="p-0 overflow-hidden">
+          <DataTable
+            columns={columns}
+            data={rows}
+            emptyState={
+              <EmptyState
+                icon={Database}
+                title="No backups recorded yet"
+                description="Nothing has been logged against this database. Run one now to create the first entry."
+                action={
+                  <Button variant="accent" onClick={() => void runBackup()} disabled={running}>
+                    {running ? <Loader2 className="animate-spin" /> : <Play />}
+                    Run Backup Now
+                  </Button>
+                }
+              />
+            }
+          />
+        </Card>
+      )}
     </>
   );
 }

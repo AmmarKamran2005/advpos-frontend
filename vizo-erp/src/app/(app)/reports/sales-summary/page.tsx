@@ -6,6 +6,10 @@ import { PageHeader } from "@/components/ui/page-header";
 import { ReportToolbar } from "@/components/widgets/report-toolbar";
 import { Card, CardBody } from "@/components/ui/card";
 import { SalesTrendChart } from "@/components/widgets/sales-trend-chart";
+/* Still on mock data: this report is outside the Super Admin scope. The
+   chart takes its series as a prop now, so pass the same data it used to
+   import for itself and this page behaves exactly as before. */
+import { salesTrendData } from "@/data/mock";
 import { formatMoney, formatCompact } from "@/lib/format";
 
 export default function SalesSummaryPage() {
@@ -46,7 +50,7 @@ export default function SalesSummaryPage() {
       <Card>
         <CardBody>
           <h3 className="text-base font-semibold text-navy-900 dark:text-white mb-4">Sales Trend</h3>
-          <SalesTrendChart />
+          <SalesTrendChart data={salesTrendData} />
         </CardBody>
       </Card>
     </>
