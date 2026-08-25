@@ -9,13 +9,80 @@ import { Button } from "@/components/ui/button";
 import { Badge, StatusPill } from "@/components/ui/badge";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { FilterBar } from "@/components/ui/filter-bar";
-import { journalEntries, JE_STATUS_VARIANT, type JE } from "@/data/accounting";
+import axios from "axios";
+import { AlertCircle } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
+
+/* GET /accounting/journal-entries -> { total, page, pageSize, items }.
+   Real "PostingStatus".StatusKey values: DRAFT, POSTED, REVERSED,
+   REJECTED, CANCELLED, RECONCILED. */
+type JE = {
+  id: number;
+  entryNo: string;
+  entryDate: string;
+  entryType: string;
+  entryTypeName: string;
+  reference: string | null;
+  location: string;
+  narration: string;
+  status: string;
+  statusName: string;
+  createdBy: string;
+  postedBy: string | null;
+  totalDebit: number;
+  totalCredit: number;
+};
+
+type JePage = { total: number; page: number; pageSize: number; items: JE[] };
+
+const JE_STATUS_VARIANT: Record<string, "success" | "muted" | "danger" | "warning"> = {
+  DRAFT: "muted",
+  POSTED: "success",
+  REVERSED: "warning",
+  REJECTED: "danger",
+  CANCELLED: "muted",
+  RECONCILED: "success",
+};
+
+/** Every failure comes back as { message } -- show the wording the API chose. */
+function apiMessage(e: unknown, fallback: string) {
+  if (axios.isAxiosError(e) && e.response) {
+    return (e.response.data as { message?: string })?.message ?? fallback;
+  }
+  return "Cannot reach the server.";
+}
+
 import { formatMoney, formatDate } from "@/lib/format";
 import { statusLabel } from "@/lib/labels";
 
 export default function JournalEntriesPage() {
+  const [rows, setRows] = React.useState<JE[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+
+  const load = React.useCallback(async () => {
+    try {
+      const res = await axios.get<JePage>(`${API_BASE_URL}/accounting/journal-entries`, {
+        headers: authHeader(),
+      });
+      setRows(res.data.items);
+      setError(null);
+    } catch (e) {
+      setError(apiMessage(e, "Could not load the journal entries."));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    /* eslint-disable-next-line react-hooks/set-state-in-effect --
+       axios inside the page is the brief for this project. */
+    void load();
+  }, [load]);
+
   const [search, setSearch] = React.useState("");
-  const filtered = journalEntries.filter((j) =>
+  const filtered = rows.filter((j) =>
     !search || j.entryNo.toLowerCase().includes(search.toLowerCase()) || j.narration.toLowerCase().includes(search.toLowerCase())
   );
 
@@ -44,12 +111,23 @@ export default function JournalEntriesPage() {
         }
       />
 
+      {error && (
+        <Card className="p-4 mb-6 border-danger/40">
+          <div className="flex items-center gap-3">
+            <AlertCircle className="size-5 text-danger shrink-0" />
+            <div className="flex-1 min-w-0 font-medium text-navy-900 dark:text-white">{error}</div>
+            <Button variant="secondary" size="sm" onClick={() => void load()}>Try again</Button>
+          </div>
+        </Card>
+      )}
+
+
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <Card className="p-4">
           <div className="flex items-center justify-between">
             <div>
               <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Total Entries</div>
-              <div className="text-2xl tabular font-bold text-navy-900 dark:text-white mt-1">{journalEntries.length}</div>
+              <div className="text-2xl tabular font-bold text-navy-900 dark:text-white mt-1">{rows.length}</div>
             </div>
             <FileText className="size-5 text-info" />
           </div>
@@ -58,20 +136,20 @@ export default function JournalEntriesPage() {
           <div className="flex items-center justify-between">
             <div>
               <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Posted</div>
-              <div className="text-2xl tabular font-bold text-success mt-1">{journalEntries.filter((j) => j.status === "POSTED").length}</div>
+              <div className="text-2xl tabular font-bold text-success mt-1">{rows.filter((j) => j.status === "POSTED").length}</div>
             </div>
             <CheckCircle2 className="size-5 text-success" />
           </div>
         </Card>
         <Card className="p-4">
           <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Draft</div>
-          <div className="text-2xl tabular font-bold text-warning mt-1">{journalEntries.filter((j) => j.status === "DRAFT").length}</div>
+          <div className="text-2xl tabular font-bold text-warning mt-1">{rows.filter((j) => j.status === "DRAFT").length}</div>
         </Card>
         <Card className="p-4">
           <div className="flex items-center justify-between">
             <div>
               <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Reversed</div>
-              <div className="text-2xl tabular font-bold text-danger mt-1">{journalEntries.filter((j) => j.status === "REVERSED").length}</div>
+              <div className="text-2xl tabular font-bold text-danger mt-1">{rows.filter((j) => j.status === "REVERSED").length}</div>
             </div>
             <RotateCcw className="size-5 text-danger" />
           </div>

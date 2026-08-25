@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { vizoResolver } from "@/lib/zod-resolver";
 import { z } from "zod";
-import { Save, X, Loader2, Info, ArrowLeft } from "lucide-react";
+import { Save, X, Loader2, Info, ArrowLeft, AlertCircle } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardBody } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -16,8 +16,33 @@ import { SelectNative } from "@/components/ui/select-native";
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage, FormDescription } from "@/components/ui/form";
 import { toast } from "@/components/ui/toaster";
 import { useSession } from "@/components/providers/session-provider";
-import { activeLocations, nextAccountCode } from "@/data/settings";
+import axios from "axios";
+import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
 import { cn } from "@/lib/utils";
+
+/* GET /parties/lookups -- categories, cities, hold policies, locations and
+   sales reps, all from the database. The form used to carry these as hardcoded
+   enums and a free-text city box, which meant a typo produced a party the
+   ledger could not group and a city that did not exist. */
+type Lookups = {
+  categories: { id: number; key: string; name: string }[];
+  cities: { id: number; name: string; province: string }[];
+  holdPolicies: { id: number; key: string; name: string }[];
+  locations: { id: number; code: string; name: string }[];
+  salesPeople: { id: number; name: string }[];
+};
+
+const NO_LOOKUPS: Lookups = {
+  categories: [], cities: [], holdPolicies: [], locations: [], salesPeople: [],
+};
+
+/** Every failure comes back as { message } -- show the wording the API chose. */
+function apiMessage(e: unknown, fallback: string) {
+  if (axios.isAxiosError(e) && e.response) {
+    return (e.response.data as { message?: string })?.message ?? fallback;
+  }
+  return "Cannot reach the server.";
+}
 
 const Schema = z.object({
   type: z.enum(["CUSTOMER", "SUPPLIER", "BOTH"]),
@@ -33,8 +58,10 @@ const Schema = z.object({
   email: z.string().email("Invalid email").optional().or(z.literal("")),
 
   addressLine1: z.string().max(200).optional().or(z.literal("")),
-  city: z.string().min(2, "City required").max(100),
-  province: z.enum(["Sindh", "Punjab", "KPK", "Balochistan", "Islamabad Capital", "AJK", "Gilgit-Baltistan"]),
+  /* cityId, not a free-typed name: "City" is a real table and the party row
+     carries its foreign key. Province comes with the city, so it is shown
+     rather than asked for. */
+  cityId: z.coerce.number().min(1, "Pick a city"),
 
   ntn: z.string()
     .regex(/^\d{7}-\d$|^$/, "Format: 1234567-8")
@@ -49,7 +76,7 @@ const Schema = z.object({
   holdPolicy:  z.enum(["NONE", "WARN", "BLOCK"]).default("WARN"),
 
   defaultLocationId: z.coerce.number(),
-  salesPerson: z.string().optional().or(z.literal("")),
+  salesPersonUserId: z.coerce.number().optional().or(z.literal("")),
   notes: z.string().max(500, "Max 500 characters").optional().or(z.literal("")),
 });
 
@@ -69,8 +96,7 @@ export default function NewPartyPage() {
       altPhone: "",
       email: "",
       addressLine1: "",
-      city: "",
-      province: "Sindh",
+      cityId: 0,
       ntn: "",
       strn: "",
       cnic: "",
@@ -78,12 +104,33 @@ export default function NewPartyPage() {
       creditDays: 0,
       holdPolicy: "WARN",
       defaultLocationId: 1,
-      salesPerson: "",
+      salesPersonUserId: "",
       notes: "",
     },
   });
 
   const { can, user } = useSession();
+
+  const [lookups, setLookups] = React.useState<Lookups>(NO_LOOKUPS);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
+
+  const loadLookups = React.useCallback(async () => {
+    try {
+      const res = await axios.get<Lookups>(`${API_BASE_URL}/parties/lookups`, {
+        headers: authHeader(),
+      });
+      setLookups(res.data);
+      setLoadError(null);
+    } catch (e) {
+      setLoadError(apiMessage(e, "Could not load the dropdown options."));
+    }
+  }, []);
+
+  React.useEffect(() => {
+    /* eslint-disable-next-line react-hooks/set-state-in-effect --
+       axios inside the page is the brief for this project. */
+    void loadLookups();
+  }, [loadLookups]);
 
   /* A rep only ever opens customer accounts, so the type choice is not shown
      to them and the record is forced to CUSTOMER. */
@@ -91,15 +138,57 @@ export default function NewPartyPage() {
   const canFillTax = can("customers.tax");
   const canSetLimits = can("limits.manage");
 
-  const salesReps = ["Zara Malik", "Imran Iqbal", "Sara Khan", "Asad Ali"];
+  const chosenCity = lookups.cities.find((c) => c.id === Number(form.watch("cityId")));
 
   const partyType = canChooseType ? form.watch("type") : "CUSTOMER";
   const isCustomer = partyType === "CUSTOMER" || partyType === "BOTH";
 
-  async function onSubmit(_d: Form) {
-    await new Promise((r) => setTimeout(r, 800));
-    toast.success("Customer added", { description: `${_d.legalName} saved as ACR01512.` });
-    router.push(canChooseType ? "/parties" : "/parties/customers");
+  /* The real thing. POST /parties writes the User row and the Party row inside
+     one transaction, allocates the next VZ-C-#### code, and returns it. */
+  async function onSubmit(d: Form) {
+    try {
+      const category = lookups.categories.find((c) => c.key === d.category);
+      const policy = lookups.holdPolicies.find((h) => h.key === d.holdPolicy);
+
+      if (!category) { toast.error("Pick a valid category."); return; }
+      if (!policy) { toast.error("Pick a valid credit-hold policy."); return; }
+
+      const res = await axios.post<{ id: number; partyCode: string; message: string }>(
+        `${API_BASE_URL}/parties`,
+        {
+          partyCode: null,               // the API allocates it
+          legalName: d.legalName,
+          displayName: d.displayName || null,
+          type: canChooseType ? d.type : "CUSTOMER",
+          email: d.email || null,
+          phone: d.phone,
+          altPhone: d.altPhone || null,
+          addressLine: d.addressLine1 || null,
+          categoryId: category.id,
+          cityId: Number(d.cityId),
+          industry: d.industry || null,
+          ntn: d.ntn || null,
+          strn: d.strn || null,
+          cnic: d.cnic || null,
+          creditLimit: d.creditLimit,
+          creditDays: d.creditDays,
+          holdPolicyId: policy.id,
+          openingBalance: 0,
+          salesPersonUserId: d.salesPersonUserId === "" ? null : Number(d.salesPersonUserId),
+          defaultLocationId: Number(d.defaultLocationId),
+          rating: "C",
+          notes: d.notes || null,
+          isActive: true,
+        },
+        { headers: authHeader() }
+      );
+
+      toast.success(res.data.message);
+      router.push(`/parties/${res.data.id}`);
+    } catch (e) {
+      /* Stay on the form so nothing typed is lost. */
+      toast.error(apiMessage(e, "Could not save the party."));
+    }
   }
 
   return (
@@ -117,13 +206,22 @@ export default function NewPartyPage() {
             <Button variant="ghost" asChild>
               <Link href={canChooseType ? "/parties" : "/parties/customers"}><ArrowLeft /> Back</Link>
             </Button>
-            <Button variant="secondary" onClick={() => toast.info("Saved as draft")}>Save as Draft</Button>
             <Button variant="accent" onClick={form.handleSubmit(onSubmit)} disabled={form.formState.isSubmitting}>
               {form.formState.isSubmitting ? <><Loader2 className="size-4 animate-spin" /> Saving…</> : <><Save /> {canChooseType ? "Save Party" : "Save Customer"}</>}
             </Button>
           </>
         }
       />
+
+      {loadError && (
+        <Card className="p-4 mb-6 border-danger/40">
+          <div className="flex items-center gap-3">
+            <AlertCircle className="size-5 text-danger shrink-0" />
+            <div className="flex-1 min-w-0 font-medium text-navy-900 dark:text-white">{loadError}</div>
+            <Button variant="secondary" size="sm" onClick={() => void loadLookups()}>Try again</Button>
+          </div>
+        </Card>
+      )}
 
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} noValidate>
@@ -191,11 +289,9 @@ export default function NewPartyPage() {
                         <FormLabel required>Category</FormLabel>
                         <FormControl>
                           <SelectNative {...field}>
-                            <option value="RETAILER">Retailer</option>
-                            <option value="WHOLESALER">Wholesaler</option>
-                            <option value="DISTRIBUTOR">Distributor</option>
-                            <option value="MANUFACTURER">Manufacturer</option>
-                            <option value="AGENT">Agent</option>
+                            {lookups.categories.map((c) => (
+                              <option key={c.id} value={c.key}>{c.name}</option>
+                            ))}
                           </SelectNative>
                         </FormControl>
                         <FormMessage />
@@ -254,30 +350,28 @@ export default function NewPartyPage() {
                         <FormMessage />
                       </FormItem>
                     )} />
-                    <FormField control={form.control} name="city" render={({ field }) => (
+                    <FormField control={form.control} name="cityId" render={({ field }) => (
                       <FormItem>
                         <FormLabel required>City</FormLabel>
-                        <FormControl><Input placeholder="Lahore" {...field} /></FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )} />
-                    <FormField control={form.control} name="province" render={({ field }) => (
-                      <FormItem>
-                        <FormLabel required>Province</FormLabel>
                         <FormControl>
                           <SelectNative {...field}>
-                            <option>Punjab</option>
-                            <option>Sindh</option>
-                            <option>KPK</option>
-                            <option>Balochistan</option>
-                            <option>Islamabad Capital</option>
-                            <option>AJK</option>
-                            <option>Gilgit-Baltistan</option>
+                            <option value={0}>— Select a city —</option>
+                            {lookups.cities.map((c) => (
+                              <option key={c.id} value={c.id}>{c.name}</option>
+                            ))}
                           </SelectNative>
                         </FormControl>
                         <FormMessage />
                       </FormItem>
                     )} />
+                    <FormItem>
+                      <FormLabel>Province</FormLabel>
+                      <FormControl>
+                        {/* Comes with the city -- asking twice invites the two
+                            to disagree. */}
+                        <Input value={chosenCity?.province ?? ""} readOnly disabled placeholder="Set by the city" />
+                      </FormControl>
+                    </FormItem>
                   </div>
                 </CardBody>
               </Card>
@@ -381,7 +475,7 @@ export default function NewPartyPage() {
                           <FormLabel>Default Location</FormLabel>
                           <FormControl>
                             <SelectNative {...field}>
-                              {activeLocations().map((l) => (
+                              {lookups.locations.map((l) => (
                                 <option key={l.id} value={l.id}>{l.name}</option>
                               ))}
                             </SelectNative>
@@ -390,13 +484,15 @@ export default function NewPartyPage() {
                         </FormItem>
                       )} />
                       {isCustomer && (
-                        <FormField control={form.control} name="salesPerson" render={({ field }) => (
+                        <FormField control={form.control} name="salesPersonUserId" render={({ field }) => (
                           <FormItem>
                             <FormLabel>Sales Rep</FormLabel>
                             <FormControl>
                               <SelectNative {...field}>
                                 <option value="">— None —</option>
-                                {salesReps.map((r) => <option key={r}>{r}</option>)}
+                                {lookups.salesPeople.map((r) => (
+                                  <option key={r.id} value={r.id}>{r.name}</option>
+                                ))}
                               </SelectNative>
                             </FormControl>
                             <FormMessage />
@@ -428,7 +524,9 @@ export default function NewPartyPage() {
                     <div>
                       <h3 className="text-sm font-semibold text-info-dark dark:text-info-light">Account code is automatic</h3>
                       <p className="text-xs text-info-dark/80 dark:text-info-light/80 mt-1">
-                        This customer will be saved as <code className="bg-white dark:bg-navy-900 px-1.5 py-0.5 rounded font-mono text-2xs">{nextAccountCode(5, 1511)}</code>, following on from the last one.
+                        The next code in the series is allocated by the server when
+                        you save, so two people opening an account at the same moment
+                        cannot take the same number. It is shown in the confirmation.
                       </p>
                     </div>
                   </div>

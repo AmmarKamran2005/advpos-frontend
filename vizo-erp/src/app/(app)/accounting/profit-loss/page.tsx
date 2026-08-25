@@ -1,36 +1,85 @@
 "use client";
 
 import * as React from "react";
+import axios from "axios";
+import { AlertCircle, TrendingUp, TrendingDown } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
-import { Card, CardBody } from "@/components/ui/card";
 import { ReportToolbar } from "@/components/widgets/report-toolbar";
-import { accounts } from "@/data/accounting";
-import { formatMoney, formatPercent, formatDate } from "@/lib/format";
-import { getLocation } from "@/data/settings";
+import { Card, CardBody } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
+import { formatMoney, formatCompact } from "@/lib/format";
+import { cn } from "@/lib/utils";
+
+/* GET /accounting/profit-loss?from=&to=
+
+   Income and expense accounts over the range, POSTED entries only.
+
+   The API keys on the real "AccountGroup".GroupName values -- Revenue and
+   Expenses. They are plural and they are not the words you would guess; an
+   earlier version filtered on "Income"/"Expense" and this page rendered a
+   confident 0 / 0 because nothing matched. */
+type PlLine = { id: number; code: string; name: string; type: string; amount: number };
+
+type PlResponse = {
+  from: string;
+  to: string;
+  income: PlLine[];
+  expense: PlLine[];
+  totalIncome: number;
+  totalExpense: number;
+  netProfit: number;
+};
+
+const EMPTY: PlResponse = {
+  from: "", to: "", income: [], expense: [], totalIncome: 0, totalExpense: 0, netProfit: 0,
+};
+
+function apiMessage(e: unknown, fallback: string) {
+  if (axios.isAxiosError(e) && e.response) {
+    return (e.response.data as { message?: string })?.message ?? fallback;
+  }
+  return "Cannot reach the server.";
+}
 
 export default function ProfitLossPage() {
-  const today = new Date().toISOString().slice(0, 10);
-  const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10);
-  const [from, setFrom] = React.useState(monthStart);
-  const [to,   setTo]   = React.useState(today);
+  const [from, setFrom] = React.useState(() => `${new Date().getFullYear()}-01-01`);
+  const [to, setTo] = React.useState(() => new Date().toISOString().slice(0, 10));
   const [locationId, setLocationId] = React.useState<number | null>(null);
+  const [data, setData] = React.useState<PlResponse>(EMPTY);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
 
-  const revenue = accounts.filter((a) => a.type === "REVENUE" && !a.isGroup);
-  const cogs = accounts.find((a) => a.code === "5001");
-  const opex = accounts.filter((a) => a.type === "EXPENSE" && !a.isGroup && a.code !== "5001");
+  const load = React.useCallback(async () => {
+    try {
+      const res = await axios.get<PlResponse>(`${API_BASE_URL}/accounting/profit-loss`, {
+        params: { from, to },
+        headers: authHeader(),
+      });
+      setData(res.data);
+      setError(null);
+    } catch (e) {
+      setError(apiMessage(e, "Could not build the profit and loss statement."));
+    } finally {
+      setLoading(false);
+    }
+  }, [from, to]);
 
-  const totalRevenue = revenue.reduce((s, a) => s + a.balance, 0);
-  const cogsValue = cogs?.balance ?? 0;
-  const grossProfit = totalRevenue - cogsValue;
-  const totalOpex = opex.reduce((s, a) => s + a.balance, 0);
-  const netProfit = grossProfit - totalOpex;
+  React.useEffect(() => {
+    /* eslint-disable-next-line react-hooks/set-state-in-effect --
+       axios inside the page is the brief for this project. */
+    void load();
+  }, [load]);
+
+  const margin = data.totalIncome === 0 ? 0 : Math.round((data.netProfit / data.totalIncome) * 1000) / 10;
 
   return (
     <>
       <PageHeader
-        breadcrumbs={[{ label: "Accounting" }, { label: "Profit & Loss" }]}
-        title="Profit & Loss Statement"
-        subtitle={`${formatDate(from)} → ${formatDate(to)} · ${locationId ? getLocation(locationId)?.name : "All Locations"}`}
+        breadcrumbs={[{ label: "Money", href: "/accounting/coa" }, { label: "Profit & Loss" }]}
+        title="Profit & Loss"
+        subtitle={`Posted income and expenses — ${from} to ${to}`}
         actions={
           <ReportToolbar
             mode="range"
@@ -44,51 +93,73 @@ export default function ProfitLossPage() {
         }
       />
 
-      <Card className="max-w-4xl mx-auto">
+      {error && (
+        <Card className="p-4 mb-6 border-danger/40">
+          <div className="flex items-center gap-3">
+            <AlertCircle className="size-5 text-danger shrink-0" />
+            <div className="flex-1 min-w-0 font-medium text-navy-900 dark:text-white">{error}</div>
+            <Button variant="secondary" size="sm" onClick={() => void load()}>Try again</Button>
+          </div>
+        </Card>
+      )}
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+        <Card className="p-4">
+          <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Revenue</div>
+          {loading ? <Skeleton className="h-8 w-28 mt-1" />
+                   : <div className="text-2xl tabular font-bold text-success mt-1">{formatCompact(data.totalIncome)}</div>}
+        </Card>
+        <Card className="p-4">
+          <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Expenses</div>
+          {loading ? <Skeleton className="h-8 w-28 mt-1" />
+                   : <div className="text-2xl tabular font-bold text-danger mt-1">{formatCompact(data.totalExpense)}</div>}
+        </Card>
+        <Card className={cn("p-4", !loading && (data.netProfit >= 0 ? "border-success/40" : "border-danger/40"))}>
+          <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Net Profit</div>
+          {loading ? <Skeleton className="h-8 w-28 mt-1" /> : (
+            <div className="flex items-baseline gap-2 mt-1">
+              <span className={cn("text-2xl tabular font-bold", data.netProfit >= 0 ? "text-success" : "text-danger")}>
+                {formatCompact(data.netProfit)}
+              </span>
+              <span className="inline-flex items-center gap-0.5 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                {data.netProfit >= 0 ? <TrendingUp className="size-3" /> : <TrendingDown className="size-3" />}
+                {margin}%
+              </span>
+            </div>
+          )}
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Section
+          title="Revenue"
+          lines={data.income}
+          total={data.totalIncome}
+          tone="text-success"
+          loading={loading}
+          empty="No income posted in this range."
+        />
+        <Section
+          title="Expenses"
+          lines={data.expense}
+          total={data.totalExpense}
+          tone="text-danger"
+          loading={loading}
+          empty="No expenses posted in this range."
+        />
+      </div>
+
+      <Card className="mt-6">
         <CardBody>
-          <div className="text-center mb-6 pb-4 border-b-2 border-navy-900 dark:border-brand-yellow">
-            <h2 className="text-xl font-bold text-navy-900 dark:text-white">VIZO Trading Company (Pvt.) Ltd.</h2>
-            <h3 className="text-lg font-semibold text-navy-900 dark:text-white mt-1">Profit & Loss Statement</h3>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">For the period: {formatDate(from)} to {formatDate(to)}</p>
-          </div>
-
-          <Section title="Revenue">
-            {revenue.map((a) => <Row key={a.id} label={a.name} value={a.balance} accountId={a.id} />)}
-            <Total label="Total Revenue" value={totalRevenue} />
-          </Section>
-
-          <Section title="Cost of Goods Sold">
-            <Row label={cogs?.name ?? "COGS"} value={cogsValue} accountId={cogs?.id} />
-            <Total label="Total COGS" value={cogsValue} />
-          </Section>
-
-          <div className="bg-info/5 border-2 border-info/20 rounded-lg my-4 p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-xs uppercase font-bold tracking-wider text-info-dark dark:text-info-light">Gross Profit</div>
-                <div className="text-2xs text-info-dark/60 mt-0.5">Margin: {totalRevenue > 0 ? formatPercent((grossProfit / totalRevenue) * 100) : "—"}</div>
-              </div>
-              <div className="text-2xl tabular font-bold text-info-dark dark:text-info-light">{formatMoney(grossProfit)}</div>
-            </div>
-          </div>
-
-          <Section title="Operating Expenses">
-            {opex.map((a) => <Row key={a.id} label={a.name} value={a.balance} accountId={a.id} />)}
-            <Total label="Total Operating Expenses" value={totalOpex} />
-          </Section>
-
-          <div className="bg-success/5 border-2 border-success/30 rounded-lg my-4 p-5">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-sm uppercase font-bold tracking-wider text-success-dark dark:text-success-light">Net Profit</div>
-                <div className="text-xs text-success-dark/60 mt-1">Net Margin: {totalRevenue > 0 ? formatPercent((netProfit / totalRevenue) * 100) : "—"}</div>
-              </div>
-              <div className="text-3xl tabular font-bold text-success-dark dark:text-success-light">{formatMoney(netProfit)}</div>
-            </div>
-          </div>
-
-          <div className="mt-4 text-xs text-slate-500 dark:text-slate-400 text-center">
-            💡 Click any line item to drill into the General Ledger
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
+              Net {data.netProfit >= 0 ? "Profit" : "Loss"}
+            </span>
+            {loading ? <Skeleton className="h-7 w-32" /> : (
+              <span className={cn("tabular text-xl font-bold", data.netProfit >= 0 ? "text-success" : "text-danger")}>
+                {formatMoney(Math.abs(data.netProfit))}
+              </span>
+            )}
           </div>
         </CardBody>
       </Card>
@@ -96,33 +167,40 @@ export default function ProfitLossPage() {
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ title, lines, total, tone, loading, empty }: {
+  title: string; lines: PlLine[]; total: number; tone: string; loading: boolean; empty: string;
+}) {
   return (
-    <div className="mb-4">
-      <div className="text-xs uppercase font-bold tracking-wider text-slate-500 dark:text-slate-400 mb-2 pb-2 border-b border-slate-200 dark:border-navy-700">{title}</div>
-      <div className="space-y-1">{children}</div>
-    </div>
-  );
-}
-
-function Row({ label, value, accountId }: { label: string; value: number; accountId?: number }) {
-  const inner = (
-    <div className="flex items-center justify-between py-1.5 px-2 rounded-md group hover:bg-slate-50 dark:hover:bg-navy-700">
-      <span className="text-sm text-slate-700 dark:text-slate-300 group-hover:text-navy-900 dark:group-hover:text-white">{label}</span>
-      <span className="tabular text-sm text-navy-900 dark:text-white">{formatMoney(value)}</span>
-    </div>
-  );
-  if (accountId) {
-    return <a href={`/accounting/ledger?accountId=${accountId}`} className="block">{inner}</a>;
-  }
-  return inner;
-}
-
-function Total({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="flex items-center justify-between py-2 mt-1 border-t border-slate-200 dark:border-navy-700">
-      <span className="text-sm font-bold text-navy-900 dark:text-white">{label}</span>
-      <span className="tabular text-sm font-bold text-navy-900 dark:text-white">{formatMoney(value)}</span>
-    </div>
+    <Card className="p-0 overflow-hidden">
+      <div className="px-4 py-3 border-b border-slate-200 dark:border-navy-700 bg-slate-50 dark:bg-navy-700/50">
+        <h3 className="text-sm font-semibold text-navy-900 dark:text-white">{title}</h3>
+      </div>
+      {loading ? (
+        <div className="p-4 space-y-2">
+          {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}
+        </div>
+      ) : lines.length === 0 ? (
+        <div className="p-8 text-center text-sm text-slate-500 dark:text-slate-400">{empty}</div>
+      ) : (
+        <>
+          <div className="divide-y divide-slate-100 dark:divide-navy-700">
+            {lines.map((l) => (
+              <div key={l.id} className="flex items-center gap-3 px-4 py-2.5">
+                <span className="tabular text-2xs text-slate-500 dark:text-slate-400 w-12 shrink-0">{l.code}</span>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm text-navy-900 dark:text-white truncate">{l.name}</div>
+                  <div className="text-2xs text-slate-500 dark:text-slate-400">{l.type}</div>
+                </div>
+                <span className="tabular text-sm font-medium text-navy-900 dark:text-white">{formatMoney(l.amount)}</span>
+              </div>
+            ))}
+          </div>
+          <div className="flex items-center justify-between px-4 py-3 border-t border-slate-200 dark:border-navy-700 bg-slate-50 dark:bg-navy-700/40">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">Total {title}</span>
+            <span className={cn("tabular text-base font-bold", tone)}>{formatMoney(total)}</span>
+          </div>
+        </>
+      )}
+    </Card>
   );
 }

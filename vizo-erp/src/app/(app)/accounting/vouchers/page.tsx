@@ -9,7 +9,45 @@ import { Button } from "@/components/ui/button";
 import { Badge, StatusPill } from "@/components/ui/badge";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { FilterBar } from "@/components/ui/filter-bar";
-import { vouchers, type Voucher, type VoucherType } from "@/data/accounting";
+import axios from "axios";
+import { AlertCircle } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
+
+/* GET /accounting/rows. `type` is "VoucherType".TypeCode; isReceipt
+   says which direction the money went, so the page does not have to keep a
+   list of which codes are receipts. */
+type VoucherType = string;
+
+type Voucher = {
+  id: number;
+  voucherNo: string;
+  type: VoucherType;
+  typeName: string;
+  isReceipt: boolean;
+  date: string;
+  location: string;
+  partyId: number | null;
+  partyName: string | null;
+  cashBankAccount: string | null;
+  amount: number;
+  paymentMethod: string;
+  paymentProvider: string | null;
+  reference: string | null;
+  narration: string;
+  status: string;
+  statusName: string;
+  createdBy: string;
+};
+
+/** Every failure comes back as { message } -- show the wording the API chose. */
+function apiMessage(e: unknown, fallback: string) {
+  if (axios.isAxiosError(e) && e.response) {
+    return (e.response.data as { message?: string })?.message ?? fallback;
+  }
+  return "Cannot reach the server.";
+}
+
 import { formatMoney, formatDate, formatCompact } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -34,13 +72,37 @@ const TYPE_COLOR: Record<VoucherType, string> = {
 };
 
 export default function VouchersPage() {
+  const [rows, setRows] = React.useState<Voucher[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+
+  const load = React.useCallback(async () => {
+    try {
+      const res = await axios.get<Voucher[]>(`${API_BASE_URL}/accounting/rows`, {
+        headers: authHeader(),
+      });
+      setRows(res.data);
+      setError(null);
+    } catch (e) {
+      setError(apiMessage(e, "Could not load the rows."));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    /* eslint-disable-next-line react-hooks/set-state-in-effect --
+       axios inside the page is the brief for this project. */
+    void load();
+  }, [load]);
+
   const [search, setSearch] = React.useState("");
   const [typeFilter, setTypeFilter] = React.useState<VoucherType | "ALL">("ALL");
 
   const filtered = React.useMemo(() => {
-    return vouchers.filter((v) => {
+    return rows.filter((v) => {
       if (typeFilter !== "ALL" && v.type !== typeFilter) return false;
-      if (search && !v.voucherNo.toLowerCase().includes(search.toLowerCase()) && !v.partyName.toLowerCase().includes(search.toLowerCase())) return false;
+      if (search && !v.voucherNo.toLowerCase().includes(search.toLowerCase()) && !(v.partyName ?? "").toLowerCase().includes(search.toLowerCase())) return false;
       return true;
     });
   }, [search, typeFilter]);
@@ -61,8 +123,8 @@ export default function VouchersPage() {
     { key: "date",         header: "Date",          cell: (v) => <span className="text-xs text-slate-500 dark:text-slate-400">{formatDate(v.date)}</span> },
     { key: "partyName",    header: "Party",         cell: (v) => (
         <div>
-          <div className="text-sm font-medium text-navy-900 dark:text-white">{v.partyName}</div>
-          <div className="text-2xs text-slate-500 dark:text-slate-400">{v.partyType}</div>
+          <div className="text-sm font-medium text-navy-900 dark:text-white">{v.partyName ?? v.cashBankAccount ?? "—"}</div>
+          <div className="text-2xs text-slate-500 dark:text-slate-400">{v.typeName}</div>
         </div>
       )
     },
@@ -107,13 +169,24 @@ export default function VouchersPage() {
       <PageHeader
         breadcrumbs={[{ label: "Accounting" }, { label: "Vouchers" }]}
         title="Vouchers"
-        subtitle="Cash, bank, mobile wallet & journal vouchers"
+        subtitle="Cash, bank, mobile wallet & journal rows"
         actions={
           <Button variant="accent" size="md" className="gap-1.5" asChild>
             <Link href="/accounting/vouchers/new"><Plus /><span>New Voucher</span></Link>
           </Button>
         }
       />
+
+      {error && (
+        <Card className="p-4 mb-6 border-danger/40">
+          <div className="flex items-center gap-3">
+            <AlertCircle className="size-5 text-danger shrink-0" />
+            <div className="flex-1 min-w-0 font-medium text-navy-900 dark:text-white">{error}</div>
+            <Button variant="secondary" size="sm" onClick={() => void load()}>Try again</Button>
+          </div>
+        </Card>
+      )}
+
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <Card className="p-4">
@@ -168,7 +241,7 @@ export default function VouchersPage() {
         ))}
       </div>
 
-      <FilterBar searchPlaceholder="Search vouchers…" searchValue={search} onSearchChange={setSearch} />
+      <FilterBar searchPlaceholder="Search rows…" searchValue={search} onSearchChange={setSearch} />
 
       <Card className="p-0 overflow-hidden">
         <DataTable columns={columns} data={filtered} />

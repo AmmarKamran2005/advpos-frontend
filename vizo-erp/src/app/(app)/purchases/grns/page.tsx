@@ -10,13 +10,65 @@ import { Avatar } from "@/components/ui/avatar";
 import { Badge, StatusPill } from "@/components/ui/badge";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { FilterBar } from "@/components/ui/filter-bar";
-import { grns, GRN_STATUS_VARIANT, type GRN } from "@/data/purchases";
+import axios from "axios";
+import { AlertCircle } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
+
+/* GET /purchases/rows. STOCK RISES AT THE GRN, not at the invoice.
+   Status is a "PostingStatus" here, not an InvoiceStatus. */
+type GRN = {
+  id: number; grnNo: string; poId: number | null; poNo: string | null;
+  supplierId: number; supplierName: string; supplierInitials: string;
+  location: string; receiptDate: string; deliveryNoteNo: string;
+  vehicleNo: string | null; totalValue: number; status: string; statusName: string;
+  receivedBy: string; itemCount: number; unitsReceived: number;
+  unitsDamaged: number; unitsAccepted: number;
+};
+
+const GRN_STATUS_VARIANT: Record<string, "success" | "muted" | "danger" | "warning" | "info"> = {
+  DRAFT: "muted", POSTED: "success", REVERSED: "warning",
+  REJECTED: "danger", CANCELLED: "muted", RECONCILED: "success",
+};
+
+/** Every failure comes back as { message } -- show the wording the API chose. */
+function apiMessage(e: unknown, fallback: string) {
+  if (axios.isAxiosError(e) && e.response) {
+    return (e.response.data as { message?: string })?.message ?? fallback;
+  }
+  return "Cannot reach the server.";
+}
+
 import { formatMoney, formatDate } from "@/lib/format";
 import { statusLabel } from "@/lib/labels";
 
 export default function GRNsPage() {
+  const [rows, setRows] = React.useState<GRN[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+
+  const load = React.useCallback(async () => {
+    try {
+      const res = await axios.get<GRN[]>(`${API_BASE_URL}/purchases/rows`, {
+        headers: authHeader(),
+      });
+      setRows(res.data);
+      setError(null);
+    } catch (e) {
+      setError(apiMessage(e, "Could not load the goods receipts."));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    /* eslint-disable-next-line react-hooks/set-state-in-effect --
+       axios inside the page is the brief for this project. */
+    void load();
+  }, [load]);
+
   const [search, setSearch] = React.useState("");
-  const filtered = grns.filter((g) =>
+  const filtered = rows.filter((g) =>
     !search || g.grnNo.toLowerCase().includes(search.toLowerCase()) || g.supplierName.toLowerCase().includes(search.toLowerCase())
   );
 
@@ -60,10 +112,21 @@ export default function GRNsPage() {
         subtitle="Record stock arrivals from suppliers"
         actions={
           <Button variant="accent" size="md" className="gap-1.5" asChild>
-            <Link href="/purchases/grns/new"><Plus /><span>New GRN</span></Link>
+            <Link href="/purchases/rows/new"><Plus /><span>New GRN</span></Link>
           </Button>
         }
       />
+
+      {error && (
+        <Card className="p-4 mb-6 border-danger/40">
+          <div className="flex items-center gap-3">
+            <AlertCircle className="size-5 text-danger shrink-0" />
+            <div className="flex-1 min-w-0 font-medium text-navy-900 dark:text-white">{error}</div>
+            <Button variant="secondary" size="sm" onClick={() => void load()}>Try again</Button>
+          </div>
+        </Card>
+      )}
+
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <Card className="p-4">

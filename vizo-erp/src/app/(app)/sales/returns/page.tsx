@@ -10,13 +10,64 @@ import { Avatar } from "@/components/ui/avatar";
 import { Badge, StatusPill } from "@/components/ui/badge";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { FilterBar } from "@/components/ui/filter-bar";
-import { salesReturns, RETURN_STATUS_VARIANT, type Return } from "@/data/sales";
+import axios from "axios";
+import { AlertCircle } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
+
+/* GET /sales/returns. resalableQty / damagedQty come from the line
+   ReturnCondition -- only resalable stock goes back on the shelf. */
+type Return = {
+  id: number; returnNo: string; invoiceId: number; invoiceNo: string;
+  customerId: number; customerName: string; customerInitials: string;
+  location: string; returnDate: string; reason: string; refundMethod: string;
+  status: string; statusName: string; itemCount: number; totalAmount: number;
+  resalableQty: number; damagedQty: number;
+};
+
+/* Real "ReturnStatus".StatusKey values. */
+const RETURN_STATUS_VARIANT: Record<string, "success" | "warning" | "danger" | "info" | "muted"> = {
+  DRAFT: "muted", APPROVED: "info", POSTED: "success", REJECTED: "danger",
+};
+
+/** Every failure comes back as { message } -- show the wording the API chose. */
+function apiMessage(e: unknown, fallback: string) {
+  if (axios.isAxiosError(e) && e.response) {
+    return (e.response.data as { message?: string })?.message ?? fallback;
+  }
+  return "Cannot reach the server.";
+}
+
 import { formatMoney, formatDate } from "@/lib/format";
 import { statusLabel } from "@/lib/labels";
 
 export default function SalesReturnsPage() {
+  const [rows, setRows] = React.useState<Return[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+
+  const load = React.useCallback(async () => {
+    try {
+      const res = await axios.get<Return[]>(`${API_BASE_URL}/sales/returns`, {
+        headers: authHeader(),
+      });
+      setRows(res.data);
+      setError(null);
+    } catch (e) {
+      setError(apiMessage(e, "Could not load the sales returns."));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    /* eslint-disable-next-line react-hooks/set-state-in-effect --
+       axios inside the page is the brief for this project. */
+    void load();
+  }, [load]);
+
   const [search, setSearch] = React.useState("");
-  const filtered = salesReturns.filter((r) =>
+  const filtered = rows.filter((r) =>
     !search ||
     r.returnNo.toLowerCase().includes(search.toLowerCase()) ||
     r.customerName.toLowerCase().includes(search.toLowerCase())
@@ -71,22 +122,33 @@ export default function SalesReturnsPage() {
         }
       />
 
+      {error && (
+        <Card className="p-4 mb-6 border-danger/40">
+          <div className="flex items-center gap-3">
+            <AlertCircle className="size-5 text-danger shrink-0" />
+            <div className="flex-1 min-w-0 font-medium text-navy-900 dark:text-white">{error}</div>
+            <Button variant="secondary" size="sm" onClick={() => void load()}>Try again</Button>
+          </div>
+        </Card>
+      )}
+
+
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <Card className="p-4">
           <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Total Returns</div>
-          <div className="text-2xl tabular font-bold text-navy-900 dark:text-white mt-1">{salesReturns.length}</div>
+          <div className="text-2xl tabular font-bold text-navy-900 dark:text-white mt-1">{rows.length}</div>
         </Card>
         <Card className="p-4">
           <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Total Value</div>
-          <div className="text-2xl tabular font-bold text-warning mt-1">{formatMoney(salesReturns.reduce((s, r) => s + r.totalAmount, 0))}</div>
+          <div className="text-2xl tabular font-bold text-warning mt-1">{formatMoney(rows.reduce((s, r) => s + r.totalAmount, 0))}</div>
         </Card>
         <Card className="p-4">
           <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Resalable Items</div>
-          <div className="text-2xl tabular font-bold text-success mt-1">{salesReturns.reduce((s, r) => s + r.resalableQty, 0)}</div>
+          <div className="text-2xl tabular font-bold text-success mt-1">{rows.reduce((s, r) => s + r.resalableQty, 0)}</div>
         </Card>
         <Card className="p-4">
           <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Damaged Items</div>
-          <div className="text-2xl tabular font-bold text-danger mt-1">{salesReturns.reduce((s, r) => s + r.damagedQty, 0)}</div>
+          <div className="text-2xl tabular font-bold text-danger mt-1">{rows.reduce((s, r) => s + r.damagedQty, 0)}</div>
         </Card>
       </div>
 

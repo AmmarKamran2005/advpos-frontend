@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import axios from "axios";
 import Link from "next/link";
 import { Plus, ArrowRight, Truck, Package, CheckCircle, AlertCircle, Clock } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
@@ -8,19 +9,37 @@ import { Card, CardBody } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { formatDate } from "@/lib/format";
+import { Skeleton } from "@/components/ui/skeleton";
+import { toast } from "@/components/ui/toaster";
+import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
 import { cn } from "@/lib/utils";
 
+/* GET /inventory/transfers. These are the real "TransferStatus".StatusKey
+   values. The page used to render six hardcoded rows. */
 type Transfer = {
   id: number;
   transferNo: string;
-  date: string;
-  fromWh: string;
-  toWh: string;
+  fromLocationId: number;
+  fromLocation: string;
+  toLocationId: number;
+  toLocation: string;
+  transferDate: string;
+  receivedOn: string | null;
+  status: "DRAFT" | "PENDING_APPROVAL" | "APPROVED" | "IN_TRANSIT" | "RECEIVED" | "REJECTED";
+  statusName: string;
+  initiatedBy: string;
+  approvedBy: string | null;
+  notes: string | null;
   itemCount: number;
   totalUnits: number;
-  status: "DRAFT" | "PENDING_APPROVAL" | "APPROVED" | "IN_TRANSIT" | "RECEIVED" | "REJECTED";
-  initiatedBy: string;
 };
+
+function apiMessage(e: unknown, fallback: string) {
+  if (axios.isAxiosError(e) && e.response) {
+    return (e.response.data as { message?: string })?.message ?? fallback;
+  }
+  return "Cannot reach the server.";
+}
 
 const STATUS_META: Record<Transfer["status"], { label: string; color: string; icon: typeof Clock }> = {
   DRAFT:            { label: "Draft",            color: "bg-slate-100 text-slate-700 border-slate-200 dark:bg-navy-700 dark:text-slate-300 dark:border-navy-600", icon: Clock },
@@ -31,17 +50,49 @@ const STATUS_META: Record<Transfer["status"], { label: string; color: string; ic
   REJECTED:         { label: "Rejected",         color: "bg-danger-light text-danger-dark border-danger/30 dark:bg-danger/10 dark:text-danger-light",                icon: AlertCircle },
 };
 
-const TRANSFERS: Transfer[] = [
-  { id: 1, transferNo: "TRF-26-0014", date: "2026-04-30", fromWh: "Karachi Main",       toWh: "Lahore Distribution", itemCount: 8, totalUnits: 240, status: "IN_TRANSIT",       initiatedBy: "Hassan Raza" },
-  { id: 2, transferNo: "TRF-26-0013", date: "2026-04-29", fromWh: "Karachi Main",       toWh: "Islamabad Hub",       itemCount: 5, totalUnits: 150, status: "RECEIVED",         initiatedBy: "Bilal Ahmed" },
-  { id: 3, transferNo: "TRF-26-0012", date: "2026-04-29", fromWh: "Karachi Main",       toWh: "Lahore Distribution", itemCount: 4, totalUnits: 100, status: "RECEIVED",         initiatedBy: "Hassan Raza" },
-  { id: 4, transferNo: "TRF-26-0008", date: "2026-04-28", fromWh: "Lahore Distribution", toWh: "Islamabad Hub",       itemCount: 3, totalUnits: 60,  status: "APPROVED",         initiatedBy: "Sara Khan" },
-  { id: 5, transferNo: "TRF-26-0011", date: "2026-04-25", fromWh: "Karachi Main",       toWh: "Lahore Distribution", itemCount: 6, totalUnits: 180, status: "PENDING_APPROVAL", initiatedBy: "Hassan Raza" },
-  { id: 6, transferNo: "TRF-26-0010", date: "2026-04-24", fromWh: "Karachi Main",       toWh: "Islamabad Hub",       itemCount: 2, totalUnits: 50,  status: "REJECTED",         initiatedBy: "Hassan Raza" },
-];
 
 export default function TransfersPage() {
   const [view, setView] = React.useState<"kanban" | "list">("kanban");
+  const [TRANSFERS, setTransfers] = React.useState<Transfer[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+  const [receiving, setReceiving] = React.useState<number | null>(null);
+
+  const load = React.useCallback(async () => {
+    try {
+      const res = await axios.get<Transfer[]>(`${API_BASE_URL}/inventory/transfers`, {
+        headers: authHeader(),
+      });
+      setTransfers(res.data);
+      setError(null);
+    } catch (e) {
+      setError(apiMessage(e, "Could not load the stock transfers."));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    /* eslint-disable-next-line react-hooks/set-state-in-effect --
+       axios inside the page is the brief for this project. */
+    void load();
+  }, [load]);
+
+  /* Receiving is the moment stock lands on the destination shelf -- the server
+     writes a TRANSFER_IN movement per line, so reload rather than patch. */
+  const receive = React.useCallback(async (id: number) => {
+    setReceiving(id);
+    try {
+      const res = await axios.post<{ message: string }>(
+        `${API_BASE_URL}/inventory/transfers/${id}/receive`, {}, { headers: authHeader() });
+      toast.success(res.data.message);
+      await load();
+    } catch (e) {
+      toast.error(apiMessage(e, "Could not receive the transfer."));
+    } finally {
+      setReceiving(null);
+    }
+  }, [load]);
 
   const STATUSES: Transfer["status"][] = ["DRAFT", "PENDING_APPROVAL", "APPROVED", "IN_TRANSIT", "RECEIVED"];
 
@@ -85,7 +136,27 @@ export default function TransfersPage() {
         }
       />
 
-      {view === "kanban" ? (
+      {error && (
+        <Card className="p-4 mb-6 border-danger/40">
+          <div className="flex items-center gap-3">
+            <AlertCircle className="size-5 text-danger shrink-0" />
+            <div className="flex-1 min-w-0 font-medium text-navy-900 dark:text-white">{error}</div>
+            <Button variant="secondary" size="sm" onClick={() => void load()}>Try again</Button>
+          </div>
+        </Card>
+      )}
+
+      {loading ? (
+        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="space-y-3">
+              <Skeleton className="h-5 w-28" />
+              <Skeleton className="h-24 w-full" />
+              <Skeleton className="h-24 w-full" />
+            </div>
+          ))}
+        </div>
+      ) : view === "kanban" ? (
         <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
           {STATUSES.map((status) => {
             const meta = STATUS_META[status];
@@ -112,17 +183,30 @@ export default function TransfersPage() {
                           <CardBody className="p-3">
                             <div className="flex items-center justify-between mb-2">
                               <span className="tabular text-xs font-bold text-navy-900 dark:text-white">{t.transferNo}</span>
-                              <span className="text-2xs text-slate-500 dark:text-slate-400">{formatDate(t.date)}</span>
+                              <span className="text-2xs text-slate-500 dark:text-slate-400">{formatDate(t.transferDate)}</span>
                             </div>
                             <div className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300 mb-2">
-                              <span className="truncate flex-1">{t.fromWh}</span>
+                              <span className="truncate flex-1">{t.fromLocation}</span>
                               <ArrowRight className="size-3 text-brand-yellow flex-shrink-0" />
-                              <span className="truncate flex-1">{t.toWh}</span>
+                              <span className="truncate flex-1">{t.toLocation}</span>
                             </div>
                             <div className="flex items-center justify-between text-2xs text-slate-500 dark:text-slate-400">
                               <span className="tabular">{t.itemCount} items · {t.totalUnits} units</span>
                               <span>{t.initiatedBy.split(" ")[0]}</span>
                             </div>
+                            {t.status === "IN_TRANSIT" && (
+                              /* Stock left the source shelf when the transfer
+                                 was sent; it only lands here. */
+                              <Button
+                                variant="accent"
+                                size="sm"
+                                className="w-full mt-2"
+                                disabled={receiving === t.id}
+                                onClick={(e) => { e.preventDefault(); e.stopPropagation(); void receive(t.id); }}
+                              >
+                                {receiving === t.id ? "Receiving…" : "Receive"}
+                              </Button>
+                            )}
                           </CardBody>
                         </Card>
                       </Link>
@@ -153,12 +237,12 @@ export default function TransfersPage() {
                 return (
                   <tr key={t.id} className="hover:bg-slate-50 dark:hover:bg-navy-800 cursor-pointer" onClick={() => { window.location.href = `/inventory/transfers/${t.id}`; }}>
                     <td className="px-4 py-3 tabular text-sm font-medium text-navy-900 dark:text-white">{t.transferNo}</td>
-                    <td className="px-4 py-3 text-xs text-slate-500 dark:text-slate-400">{formatDate(t.date)}</td>
+                    <td className="px-4 py-3 text-xs text-slate-500 dark:text-slate-400">{formatDate(t.transferDate)}</td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1.5 text-sm text-slate-700 dark:text-slate-200">
-                        <span>{t.fromWh}</span>
+                        <span>{t.fromLocation}</span>
                         <ArrowRight className="size-3 text-brand-yellow" />
-                        <span>{t.toWh}</span>
+                        <span>{t.toLocation}</span>
                       </div>
                     </td>
                     <td className="px-4 py-3 text-right tabular text-sm text-slate-600 dark:text-slate-300">{t.itemCount} ({t.totalUnits} units)</td>
