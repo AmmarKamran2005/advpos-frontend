@@ -1,56 +1,129 @@
 "use client";
 
 import * as React from "react";
-import { Archive, Package } from "lucide-react";
+import axios from "axios";
+import { Archive, Package, AlertCircle } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { ReportToolbar } from "@/components/widgets/report-toolbar";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { DataTable, type Column } from "@/components/ui/data-table";
-import { ConfirmDialog } from "@/components/dialogs/confirm-dialog";
-import { products, brands } from "@/data/products";
+import { Skeleton } from "@/components/ui/skeleton";
+import { SelectNative } from "@/components/ui/select-native";
+import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
 import { formatMoney, formatCompact } from "@/lib/format";
 import { toast } from "@/components/ui/toaster";
 
-const DEAD = products
-  .filter((p) => p.totalStock > 0 && (p.status === "low" || p.totalStock < 50))
-  .map((p, i) => ({
-    ...p,
-    daysSinceLastMovement: 180 + i * 20,
-    tiedUpValue: p.totalStock * p.costPrice,
-  }))
-  .slice(0, 12);
+/* GET /reports/dead-stock?days=90
+
+   "Dead" means NOTHING went out in the window -- the API looks at outbound
+   StockMovement rows, not at a guessed date on the product. Items with zero
+   stock are excluded: there is nothing to clear. */
+type DeadRow = {
+  id: number;
+  sku: string;
+  name: string;
+  category: string;
+  brand: string;
+  costPrice: number;
+  salePrice: number;
+  onHand: number;
+  lastOut: string | null;
+  daysSinceLastOut: number | null;
+  tiedUpValue: number;
+};
+
+type DeadResponse = {
+  windowDays: number;
+  count: number;
+  tiedUpValue: number;
+  items: DeadRow[];
+};
+
+function apiMessage(e: unknown, fallback: string) {
+  if (axios.isAxiosError(e) && e.response) {
+    return (e.response.data as { message?: string })?.message ?? fallback;
+  }
+  return "Cannot reach the server.";
+}
 
 export default function DeadStockPage() {
-  const totalTied = DEAD.reduce((s, p) => s + p.tiedUpValue, 0);
-  const today = new Date().toISOString().slice(0, 10);
-  const [asOf, setAsOf] = React.useState(today);
+  const [days, setDays] = React.useState(90);
   const [locationId, setLocationId] = React.useState<number | null>(null);
-  const [writeOff, setWriteOff] = React.useState<typeof DEAD[number] | null>(null);
-  const [liquidate, setLiquidate] = React.useState<typeof DEAD[number] | null>(null);
+  const [data, setData] = React.useState<DeadResponse>({ windowDays: 90, count: 0, tiedUpValue: 0, items: [] });
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
 
-  const columns: Column<typeof DEAD[number]>[] = [
-    { key: "name", header: "Product", cell: (p) => (
-        <div className="flex items-center gap-2.5">
-          <div className="size-9 rounded-lg bg-slate-100 dark:bg-navy-700 flex items-center justify-center"><Package className="size-4 text-slate-400" /></div>
-          <div>
-            <div className="text-sm font-medium text-navy-900 dark:text-white">{p.name}</div>
-            <div className="text-2xs tabular text-slate-500 dark:text-slate-400">{p.sku} · {brands.find((b) => b.id === p.brandId)?.name}</div>
-          </div>
-        </div>
-      )
+  const load = React.useCallback(async () => {
+    try {
+      const res = await axios.get<DeadResponse>(`${API_BASE_URL}/reports/dead-stock`, {
+        params: { days },
+        headers: authHeader(),
+      });
+      setData(res.data);
+      setError(null);
+    } catch (e) {
+      setError(apiMessage(e, "Could not build the dead-stock report."));
+    } finally {
+      setLoading(false);
+    }
+  }, [days]);
+
+  React.useEffect(() => {
+    /* eslint-disable-next-line react-hooks/set-state-in-effect --
+       axios inside the page is the brief for this project. */
+    void load();
+  }, [load]);
+
+  const columns: Column<DeadRow>[] = [
+    {
+      key: "sku",
+      header: "SKU",
+      sortable: true,
+      cell: (p) => <span className="tabular text-xs font-medium text-slate-600 dark:text-slate-400">{p.sku}</span>,
     },
-    { key: "totalStock",             header: "Stuck Stock", align: "right", cell: (p) => <span className="tabular text-sm font-bold text-warning">{p.totalStock}</span> },
-    { key: "daysSinceLastMovement",  header: "Last Movement", align: "right", cell: (p) => <span className="tabular text-xs text-danger font-semibold">{p.daysSinceLastMovement} days ago</span> },
-    { key: "costPrice",              header: "Cost",        align: "right", cell: (p) => <span className="tabular text-sm text-slate-600 dark:text-slate-300">{formatMoney(p.costPrice)}</span> },
-    { key: "tiedUpValue",            header: "Tied Value",  align: "right", cell: (p) => <span className="tabular text-sm font-bold text-danger">{formatMoney(p.tiedUpValue)}</span> },
-    { key: "action",                 header: "",            cell: (p) => (
-        <div className="flex items-center gap-1">
-          <Button variant="secondary" size="sm" onClick={(e) => { e.stopPropagation(); setLiquidate(p); }}>Liquidate</Button>
-          <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); setWriteOff(p); }}>Write-off</Button>
+    {
+      key: "name",
+      header: "Product",
+      sortable: true,
+      cell: (p) => (
+        <div className="min-w-0">
+          <div className="text-sm font-medium text-navy-900 dark:text-white truncate">{p.name}</div>
+          <div className="text-2xs text-slate-500 dark:text-slate-400">{p.category} · {p.brand}</div>
         </div>
-      )
+      ),
+    },
+    {
+      key: "onHand",
+      header: "On Hand",
+      sortable: true,
+      align: "right",
+      cell: (p) => <span className="tabular text-sm font-semibold text-navy-900 dark:text-white">{p.onHand}</span>,
+    },
+    {
+      key: "daysSinceLastOut",
+      header: "Last Sold",
+      sortable: true,
+      align: "right",
+      cell: (p) => (
+        <Badge variant={p.daysSinceLastOut === null ? "danger" : p.daysSinceLastOut > 180 ? "danger" : "warning"}>
+          {p.daysSinceLastOut === null ? "never" : `${p.daysSinceLastOut}d ago`}
+        </Badge>
+      ),
+    },
+    {
+      key: "costPrice",
+      header: "Cost",
+      align: "right",
+      cell: (p) => <span className="tabular text-sm text-slate-600 dark:text-slate-300">{formatMoney(p.costPrice)}</span>,
+    },
+    {
+      key: "tiedUpValue",
+      header: "Tied Up",
+      sortable: true,
+      align: "right",
+      cell: (p) => <span className="tabular text-sm font-bold text-danger">{formatMoney(p.tiedUpValue)}</span>,
     },
   ];
 
@@ -58,60 +131,83 @@ export default function DeadStockPage() {
     <>
       <PageHeader
         breadcrumbs={[{ label: "Reports", href: "/reports" }, { label: "Dead Stock" }]}
-        title="Dead Stock Report"
-        subtitle="No movement in 180+ days — capital tied up"
+        title="Dead Stock"
+        subtitle={`Nothing sold in ${days} days — capital sitting on a shelf`}
         actions={
-          <ReportToolbar mode="asOf" reportName="Dead Stock" asOfDate={asOf} onAsOfChange={setAsOf} locationId={locationId} onLocationChange={setLocationId} />
+          <>
+            <SelectNative
+              value={String(days)}
+              onChange={(e) => setDays(Number(e.target.value))}
+              className="w-36"
+            >
+              <option value="30">Last 30 days</option>
+              <option value="60">Last 60 days</option>
+              <option value="90">Last 90 days</option>
+              <option value="180">Last 180 days</option>
+              <option value="365">Last year</option>
+            </SelectNative>
+            <Button
+              variant="secondary"
+              size="md"
+              className="gap-1.5"
+              disabled={data.items.length === 0}
+              onClick={() =>
+                toast.info("Clearance is not wired up yet", {
+                  description: `${data.count} lines worth ${formatCompact(data.tiedUpValue)} would need a price change or a write-off.`,
+                })
+              }
+            >
+              <Archive />
+              <span className="hidden sm:inline">Plan Clearance</span>
+            </Button>
+            <ReportToolbar mode="asOf" reportName="Dead Stock" locationId={locationId} onLocationChange={setLocationId} />
+          </>
         }
       />
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <Card className="p-4 bg-danger/5 border-danger/20">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-2xs uppercase font-semibold tracking-wider text-danger-dark dark:text-danger-light">Dead SKUs</div>
-              <div className="text-2xl tabular font-bold text-danger mt-1">{DEAD.length}</div>
-            </div>
-            <Archive className="size-5 text-danger" />
+      {error && (
+        <Card className="p-4 mb-6 border-danger/40">
+          <div className="flex items-center gap-3">
+            <AlertCircle className="size-5 text-danger shrink-0" />
+            <div className="flex-1 min-w-0 font-medium text-navy-900 dark:text-white">{error}</div>
+            <Button variant="secondary" size="sm" onClick={() => void load()}>Try again</Button>
           </div>
         </Card>
+      )}
+
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
         <Card className="p-4">
-          <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Total Tied-up</div>
-          <div className="text-2xl tabular font-bold text-danger mt-1">{formatCompact(totalTied)}</div>
+          <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Dead Lines</div>
+          {loading ? <Skeleton className="h-8 w-16 mt-1" />
+                   : <div className="text-2xl tabular font-bold text-danger mt-1">{data.count}</div>}
         </Card>
         <Card className="p-4">
-          <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Total Units</div>
-          <div className="text-2xl tabular font-bold text-warning mt-1">{DEAD.reduce((s, p) => s + p.totalStock, 0)}</div>
+          <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Capital Tied Up</div>
+          {loading ? <Skeleton className="h-8 w-24 mt-1" />
+                   : <div className="text-2xl tabular font-bold text-navy-900 dark:text-white mt-1">{formatCompact(data.tiedUpValue)}</div>}
         </Card>
         <Card className="p-4">
-          <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Recommendation</div>
-          <Badge variant="danger" className="mt-1">Liquidate or write-off</Badge>
+          <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Window</div>
+          <div className="text-2xl tabular font-bold text-slate-600 dark:text-slate-300 mt-1">{days} days</div>
         </Card>
       </div>
 
       <Card className="p-0 overflow-hidden">
-        <DataTable columns={columns} data={DEAD} pageSize={15} />
+        {loading ? (
+          <div className="p-4 space-y-3">
+            {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-11 w-full" />)}
+          </div>
+        ) : data.items.length === 0 ? (
+          <div className="p-10 text-center">
+            <Package className="size-8 mx-auto text-slate-300 dark:text-slate-600 mb-2" />
+            <div className="text-sm text-slate-500 dark:text-slate-400">
+              Nothing dead in the last {days} days. Every line with stock has moved.
+            </div>
+          </div>
+        ) : (
+          <DataTable columns={columns} data={data.items} rowHref={(p) => `/inventory/products/${p.id}`} pageSize={15} />
+        )}
       </Card>
-
-      <ConfirmDialog
-        open={!!liquidate}
-        onOpenChange={(o) => !o && setLiquidate(null)}
-        title={liquidate ? `Liquidate ${liquidate.name}?` : "Liquidate"}
-        description={liquidate ? `Mark ${liquidate.totalStock} units for clearance sale at 50% off cost. Tied-up capital: ${formatMoney(liquidate.tiedUpValue)}.` : ""}
-        variant="info"
-        confirmLabel="Move to Clearance"
-        onConfirm={() => { toast.success("Moved to clearance pricing", { description: `${liquidate?.name} now appears in promo pricelist.` }); setLiquidate(null); }}
-      />
-      <ConfirmDialog
-        open={!!writeOff}
-        onOpenChange={(o) => !o && setWriteOff(null)}
-        title={writeOff ? `Write off ${writeOff.name}?` : "Write off"}
-        description={writeOff ? `${writeOff.totalStock} units of ${writeOff.name} will be removed from inventory and ${formatMoney(writeOff.tiedUpValue)} will be charged to Inventory Loss expense. This requires Finance Manager approval.` : ""}
-        variant="danger"
-        confirmLabel="Submit Write-off"
-        requireReason
-        onConfirm={(reason) => { toast.success("Write-off submitted for approval", { description: `Reason: ${reason}` }); setWriteOff(null); }}
-      />
     </>
   );
 }

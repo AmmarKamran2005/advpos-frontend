@@ -1,5 +1,7 @@
 "use client";
 
+import * as React from "react";
+
 import Link from "next/link";
 import { AlertTriangle, ShieldCheck, X, Eye } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
@@ -7,11 +9,57 @@ import { Card, CardBody } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { orders } from "@/data/sales";
+import axios from "axios";
+import { AlertCircle } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
+
+/* GET /sales/credit-holds -- the queue of orders parked over their limit.
+   Accountant and owner only; a sales rep must not see, let alone clear,
+   this list. `outstanding` is the customer ledger balance from POSTED
+   entries. */
+type Hold = {
+  id: number; orderNo: string; customerId: number; customerName: string;
+  customerInitials: string; creditLimit: number; creditDays: number;
+  holdPolicy: string; orderDate: string; total: number;
+  reason: string | null; salesPerson: string | null; outstanding: number;
+};
+
+/** Every failure comes back as { message } -- show the wording the API chose. */
+function apiMessage(e: unknown, fallback: string) {
+  if (axios.isAxiosError(e) && e.response) {
+    return (e.response.data as { message?: string })?.message ?? fallback;
+  }
+  return "Cannot reach the server.";
+}
+
 import { formatMoney, formatDate } from "@/lib/format";
 
 export default function CreditHoldsPage() {
-  const holds = orders.filter((o) => o.status === "CREDIT_HOLD");
+  const [holds, setHolds] = React.useState<Hold[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+
+  const load = React.useCallback(async () => {
+    try {
+      const res = await axios.get<Hold[]>(`${API_BASE_URL}/sales/credit-holds`, {
+        headers: authHeader(),
+      });
+      setHolds(res.data);
+      setError(null);
+    } catch (e) {
+      setError(apiMessage(e, "Could not load the credit-hold queue."));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    /* eslint-disable-next-line react-hooks/set-state-in-effect --
+       axios inside the page is the brief for this project. */
+    void load();
+  }, [load]);
+
 
   return (
     <>
@@ -20,6 +68,17 @@ export default function CreditHoldsPage() {
         title="Credit Holds Queue"
         subtitle={`${holds.length} order${holds.length === 1 ? "" : "s"} awaiting credit decision`}
       />
+
+      {error && (
+        <Card className="p-4 mb-6 border-danger/40">
+          <div className="flex items-center gap-3">
+            <AlertCircle className="size-5 text-danger shrink-0" />
+            <div className="flex-1 min-w-0 font-medium text-navy-900 dark:text-white">{error}</div>
+            <Button variant="secondary" size="sm" onClick={() => void load()}>Try again</Button>
+          </div>
+        </Card>
+      )}
+
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
         <Card className="p-4 bg-warning/5 border-warning/20">
@@ -68,12 +127,12 @@ export default function CreditHoldsPage() {
                       </div>
                       <div className="text-sm text-slate-700 dark:text-slate-200 mt-0.5">{o.customerName}</div>
                       <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                        {o.customerType} · {o.location} · {o.salesPerson} · {formatDate(o.orderDate)}
+                        {o.holdPolicy} · NET {o.creditDays} · {o.salesPerson ?? "no rep"} · {formatDate(o.orderDate)}
                       </div>
-                      {o.creditHoldReason && (
+                      {o.reason && (
                         <div className="mt-2 inline-flex items-center gap-1.5 text-xs text-warning-dark dark:text-warning-light bg-warning/10 px-2.5 py-1 rounded">
                           <AlertTriangle className="size-3" />
-                          {o.creditHoldReason}
+                          {o.reason}
                         </div>
                       )}
                     </div>

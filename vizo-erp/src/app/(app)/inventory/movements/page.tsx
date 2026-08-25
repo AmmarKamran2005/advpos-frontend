@@ -1,31 +1,50 @@
 "use client";
 
 import * as React from "react";
-import { ArrowUpRight, ArrowDownRight } from "lucide-react";
+import axios from "axios";
+import { ArrowUpRight, ArrowDownRight, AlertCircle } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { ReportToolbar } from "@/components/widgets/report-toolbar";
 import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { FilterBar } from "@/components/ui/filter-bar";
+import { Skeleton } from "@/components/ui/skeleton";
+import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
 import { formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
+/* GET /inventory/movements -> { total, page, pageSize, items }.
+
+   This page used to render a hardcoded array of eight invented movements. Every
+   row now comes from the "StockMovement" table, which is written by the packing
+   bench, goods receipts, transfers, adjustments and returns.
+
+   These are the real "MovementType".TypeKey values. */
+type MovementType =
+  | "PURCHASE" | "SALE" | "TRANSFER_OUT" | "TRANSFER_IN"
+  | "ADJUSTMENT" | "SALE_RETURN" | "PURCHASE_RETURN";
+
 type Movement = {
   id: number;
-  date: string;
-  time: string;
-  product: string;
+  productId: number;
   sku: string;
-  type: "PURCHASE" | "SALE" | "TRANSFER_OUT" | "TRANSFER_IN" | "ADJUSTMENT" | "SALE_RETURN" | "PURCHASE_RETURN";
-  reference: string;
-  location: string;
+  name: string;
+  locationId: number;
+  locationName: string;
+  movementType: MovementType;
+  movementTypeName: string;
+  movedAt: string;
+  referenceNo: string;
   qty: number;
-  balance: number;
+  balanceAfter: number;
   user: string;
 };
 
-const TYPE_VARIANT: Record<Movement["type"], "success" | "danger" | "info" | "warning" | "muted"> = {
+type MovementPage = { total: number; page: number; pageSize: number; items: Movement[] };
+
+const TYPE_VARIANT: Record<MovementType, "success" | "danger" | "info" | "warning" | "muted"> = {
   PURCHASE:        "success",
   SALE:            "danger",
   TRANSFER_OUT:    "warning",
@@ -35,80 +54,174 @@ const TYPE_VARIANT: Record<Movement["type"], "success" | "danger" | "info" | "wa
   PURCHASE_RETURN: "warning",
 };
 
-const MOVEMENTS: Movement[] = [
-  { id: 1,  date: "2026-04-30", time: "11:42 AM", product: "VIZO Titan T9 Wireless Earbuds — Black", sku: "VZ-TIT-T9-BLK",  type: "SALE",         reference: "ORD-26-0142", location: "LOC-01", qty: -12, balance: 1240, user: "Sara Khan" },
-  { id: 2,  date: "2026-04-30", time: "10:15 AM", product: "VIZO PowerX 20000mAh Power Bank",         sku: "VZ-PWX-20K-BLK", type: "SALE",         reference: "ORD-26-0089", location: "LOC-03", qty: -5,  balance: 340,  user: "Sara Khan" },
-  { id: 3,  date: "2026-04-29", time: "04:20 PM", product: "VIZO VOLT 65W GaN Charger",               sku: "VZ-VLT-65W-PD",  type: "PURCHASE",     reference: "GRN-26-0089", location: "LOC-01", qty: 240, balance: 410,  user: "Bilal Ahmed" },
-  { id: 4,  date: "2026-04-29", time: "02:00 PM", product: "VIZO VR Type-C Cable 1.5m",               sku: "VZ-VR-TC-1.5M",  type: "TRANSFER_OUT", reference: "TRF-26-0012", location: "LOC-01", qty: -100,balance: 1840, user: "Bilal Ahmed" },
-  { id: 5,  date: "2026-04-29", time: "02:00 PM", product: "VIZO VR Type-C Cable 1.5m",               sku: "VZ-VR-TC-1.5M",  type: "TRANSFER_IN",  reference: "TRF-26-0012", location: "LOC-03", qty: 100, balance: 1940, user: "Bilal Ahmed" },
-  { id: 6,  date: "2026-04-28", time: "05:30 PM", product: "VIZO VSP Bluetooth Speaker Mini — Red",   sku: "VZ-VSP-MINI-RED", type: "ADJUSTMENT",   reference: "ADJ-26-0034", location: "LOC-01", qty: -3,  balance: 840,  user: "Hassan Raza" },
-  { id: 7,  date: "2026-04-28", time: "11:00 AM", product: "VIZO Titan T15 Pro ANC Earbuds",          sku: "VZ-TIT-T15-PRO", type: "SALE",         reference: "ORD-26-0034", location: "LOC-02", qty: -8,  balance: 340,  user: "Bilal Ahmed" },
-  { id: 8,  date: "2026-04-27", time: "03:15 PM", product: "VIZO PowerX MagSafe 5000mAh",             sku: "VZ-PWX-MAGSAFE", type: "SALE_RETURN",  reference: "SR-26-0008", location: "LOC-01", qty: 2,   balance: 120,  user: "Hassan Raza" },
-];
+function apiMessage(e: unknown, fallback: string) {
+  if (axios.isAxiosError(e) && e.response) {
+    return (e.response.data as { message?: string })?.message ?? fallback;
+  }
+  return "Cannot reach the server.";
+}
 
 export default function MovementsPage() {
+  const [rows, setRows] = React.useState<Movement[]>([]);
+  const [total, setTotal] = React.useState(0);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
   const [search, setSearch] = React.useState("");
-  const [from, setFrom] = React.useState(() => new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10));
-  const [to, setTo] = React.useState(() => new Date().toISOString().slice(0, 10));
   const [locationId, setLocationId] = React.useState<number | null>(null);
 
-  const filtered = MOVEMENTS.filter((m) =>
-    !search ||
-    m.product.toLowerCase().includes(search.toLowerCase()) ||
-    m.sku.toLowerCase().includes(search.toLowerCase()) ||
-    m.reference.toLowerCase().includes(search.toLowerCase())
-  );
+  const load = React.useCallback(async () => {
+    try {
+      const res = await axios.get<MovementPage>(`${API_BASE_URL}/inventory/movements`, {
+        params: { pageSize: 200, locationId: locationId ?? undefined },
+        headers: authHeader(),
+      });
+      setRows(res.data.items);
+      setTotal(res.data.total);
+      setError(null);
+    } catch (e) {
+      setError(apiMessage(e, "Could not load the stock movements."));
+    } finally {
+      setLoading(false);
+    }
+  }, [locationId]);
+
+  React.useEffect(() => {
+    /* eslint-disable-next-line react-hooks/set-state-in-effect --
+       axios inside the page is the brief for this project. */
+    void load();
+  }, [load]);
+
+  const filtered = React.useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter(
+      (m) =>
+        m.name.toLowerCase().includes(q) ||
+        m.sku.toLowerCase().includes(q) ||
+        m.referenceNo.toLowerCase().includes(q)
+    );
+  }, [rows, search]);
 
   const columns: Column<Movement>[] = [
-    { key: "date", header: "Date / Time", cell: (m) => (
-        <div>
-          <div className="text-xs font-medium text-navy-900 dark:text-white">{formatDate(m.date)}</div>
-          <div className="text-2xs text-slate-500 dark:text-slate-400">{m.time}</div>
-        </div>
-      )
+    {
+      key: "movedAt",
+      header: "When",
+      sortable: true,
+      cell: (m) => {
+        const d = new Date(m.movedAt);
+        return (
+          <div>
+            <div className="text-xs font-medium text-navy-900 dark:text-white">{formatDate(m.movedAt)}</div>
+            <div className="text-2xs text-slate-500 dark:text-slate-400">
+              {d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}
+            </div>
+          </div>
+        );
+      },
     },
-    { key: "product", header: "Product", cell: (m) => (
-        <div>
-          <div className="text-sm font-medium text-navy-900 dark:text-white">{m.product}</div>
+    {
+      key: "name",
+      header: "Product",
+      sortable: true,
+      cell: (m) => (
+        <div className="min-w-0">
+          <div className="text-sm font-medium text-navy-900 dark:text-white truncate">{m.name}</div>
           <div className="text-2xs tabular text-slate-500 dark:text-slate-400">{m.sku}</div>
         </div>
-      )
+      ),
     },
-    { key: "type", header: "Type", cell: (m) => <Badge variant={TYPE_VARIANT[m.type]}>{m.type.replace("_", " ")}</Badge> },
-    { key: "reference", header: "Reference", cell: (m) => <span className="tabular text-xs font-medium text-navy-900 dark:text-white">{m.reference}</span> },
-    { key: "location", header: "Location", cell: (m) => <span className="text-xs text-slate-600 dark:text-slate-300">{m.location}</span> },
-    { key: "qty", header: "Qty", align: "right", cell: (m) => (
-        <span className={cn("inline-flex items-center gap-1 tabular text-sm font-bold",
-          m.qty > 0 ? "text-success" : "text-danger"
-        )}>
-          {m.qty > 0 ? <ArrowUpRight className="size-3" /> : <ArrowDownRight className="size-3" />}
-          {Math.abs(m.qty)}
+    {
+      key: "movementType",
+      header: "Type",
+      sortable: true,
+      cell: (m) => <Badge variant={TYPE_VARIANT[m.movementType] ?? "muted"}>{m.movementTypeName}</Badge>,
+    },
+    {
+      key: "referenceNo",
+      header: "Reference",
+      cell: (m) => <span className="tabular text-xs text-slate-600 dark:text-slate-300">{m.referenceNo}</span>,
+    },
+    {
+      key: "locationName",
+      header: "Location",
+      cell: (m) => <span className="text-xs text-slate-600 dark:text-slate-300">{m.locationName}</span>,
+    },
+    {
+      key: "qty",
+      header: "Qty",
+      sortable: true,
+      align: "right",
+      cell: (m) => (
+        <span
+          className={cn(
+            "inline-flex items-center gap-1 tabular text-sm font-semibold",
+            m.qty >= 0 ? "text-success" : "text-danger"
+          )}
+        >
+          {m.qty >= 0 ? <ArrowUpRight className="size-3" /> : <ArrowDownRight className="size-3" />}
+          {m.qty > 0 ? `+${m.qty}` : m.qty}
         </span>
-      )
+      ),
     },
-    { key: "balance", header: "Balance", align: "right", cell: (m) => <span className="tabular text-sm font-medium text-navy-900 dark:text-white">{m.balance}</span> },
-    { key: "user", header: "By", cell: (m) => <span className="text-xs text-slate-600 dark:text-slate-300">{m.user}</span> },
+    {
+      key: "balanceAfter",
+      header: "Balance",
+      align: "right",
+      cell: (m) => <span className="tabular text-sm text-navy-900 dark:text-white">{m.balanceAfter}</span>,
+    },
+    {
+      key: "user",
+      header: "By",
+      cell: (m) => <span className="text-xs text-slate-600 dark:text-slate-300">{m.user}</span>,
+    },
   ];
 
   return (
     <>
       <PageHeader
-        breadcrumbs={[{ label: "Inventory" }, { label: "Stock Movements" }]}
+        breadcrumbs={[{ label: "Inventory" }, { label: "Movements" }]}
         title="Stock Movements"
-        subtitle="Append-only ledger of all inventory changes"
+        subtitle={loading ? "Every in and out, with the running balance" : `${total} movements recorded`}
         actions={
-          <ReportToolbar mode="range" reportName="Stock Movements" fromDate={from} toDate={to} onRangeChange={(f, t) => { setFrom(f); setTo(t); }} locationId={locationId} onLocationChange={setLocationId} />
+          <ReportToolbar
+            mode="asOf"
+            reportName="Stock Movements"
+            locationId={locationId}
+            onLocationChange={setLocationId}
+          />
         }
       />
 
+      {error && (
+        <Card className="p-4 mb-6 border-danger/40">
+          <div className="flex items-center gap-3">
+            <AlertCircle className="size-5 text-danger shrink-0" />
+            <div className="flex-1 min-w-0 font-medium text-navy-900 dark:text-white">{error}</div>
+            <Button variant="secondary" size="sm" onClick={() => void load()}>Try again</Button>
+          </div>
+        </Card>
+      )}
+
       <FilterBar
-        searchPlaceholder="Search by product, SKU, reference…"
+        searchPlaceholder="Product, SKU or reference…"
         searchValue={search}
         onSearchChange={setSearch}
+        chips={[]}
+        onClearAll={() => setSearch("")}
       />
 
       <Card className="p-0 overflow-hidden">
-        <DataTable columns={columns} data={filtered} pageSize={15} />
+        {loading ? (
+          <div className="p-4 space-y-3">
+            {Array.from({ length: 10 }).map((_, i) => <Skeleton key={i} className="h-11 w-full" />)}
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="p-10 text-center text-sm text-slate-500 dark:text-slate-400">
+            {rows.length === 0 ? "No stock has moved yet." : "Nothing matches that search."}
+          </div>
+        ) : (
+          <DataTable columns={columns} data={filtered} pageSize={15} />
+        )}
       </Card>
     </>
   );
