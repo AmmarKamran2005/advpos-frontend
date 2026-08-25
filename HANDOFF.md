@@ -2,9 +2,13 @@
 
 Last updated: 2026-08-25 (second session)
 
-This is the **whole-project** handoff. `vizo-erp/handoff.md` predates the
-backend and only covers the frontend mockup — read this one first, then that
-one for portal-by-portal UI detail.
+This is the **whole-project** handoff: architecture, traps, credentials, how to
+run. For *where the work stopped and what to do next*, read
+**`CONTINUE-HERE.md`** — it carries the page-by-page endpoint map for the 35
+screens still to convert, the collaboration rules for Talha's repo, and the
+decisions that are already settled.
+
+`vizo-erp/handoff.md` predates the backend and only covers the frontend mockup.
 
 | File | What it holds |
 |---|---|
@@ -189,7 +193,7 @@ rejects *any* setState reachable from an effect, not just a synchronous one, so
 the requested "axios inside the page, driven by useState/useEffect" pattern can
 never satisfy it. Each site carries an inline comment saying so. `AGENTS.md`
 asks for the opposite architecture (fetch on the server, pass as props).
-**Worth settling before converting the remaining ~65 screens** — that decision
+**Worth settling before converting the remaining 35 screens** — that decision
 is cheap now and expensive later.
 
 **Trial balance does not balance, and that is the data.** Posted movement
@@ -205,7 +209,8 @@ take the same number. The real fix is a database sequence per series.
 
 ## Explicitly not done
 
-- ~65 screens still on `src/data/*` (see the table at the top)
+- 30 screens still on `src/data/*`, plus 5 static (see the table at the top,
+  and `CONTINUE-HERE.md` for the page-by-page endpoint map)
 - Dispatch booking form and the packing short-pack path are not wired to
   their endpoints (`POST /packing/{id}/pack` is all-or-nothing by design)
 - Server-side `can()` enforcement for non-admin screens beyond role policies
