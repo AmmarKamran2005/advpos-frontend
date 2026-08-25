@@ -2,9 +2,10 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "advpos-dev",
+      "name": "advpos-web",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--prefix", "vizo-erp"],
+      "runtimeArgs": ["run", "dev"],
+      "cwd": "vizo-erp",
       "port": 3000
     }
   ]

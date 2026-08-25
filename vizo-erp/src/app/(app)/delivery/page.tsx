@@ -18,7 +18,6 @@ import axios from "axios";
 import { AlertCircle } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
-import { couriers, getCourier } from "@/data/settings";
 
 /* GET /delivery -> { inFlight, overdue, pendingCodTotal, items }.
 
@@ -83,6 +82,17 @@ type Delivery = {
   needsReminder: boolean;
 };
 
+/* GET /delivery/lookups -> couriers. Only the fields this screen renders. */
+type Courier = {
+  id: number;
+  name: string;
+  shortName: string;
+  codSettlementDays: number;
+  bookingCharge: number;
+  codFeePercent: number;
+  trackingUrlTemplate: string | null;
+};
+
 type DeliveryResponse = {
   inFlight: number;
   overdue: number;
@@ -117,16 +127,23 @@ export default function DeliveryPage() {
   const [summary, setSummary] = React.useState({ inFlight: 0, overdue: 0, pendingCodTotal: 0 });
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
+  const [couriers, setCouriers] = React.useState<Courier[]>([]);
   const [query, setQuery] = React.useState("");
   const [status, setStatus] = React.useState<DeliveryStatus | "all">("all");
   const [courierId, setCourierId] = React.useState<number | "all">("all");
 
   const load = React.useCallback(async () => {
     try {
-      const res = await axios.get<DeliveryResponse>(`${API_BASE_URL}/delivery`, {
-        headers: authHeader(),
-      });
+      /* The courier list is a lookup, not part of the delivery page payload,
+         so both reads go out together. It used to come from a hard-coded array
+         in src/data/settings, which meant a courier added at /admin/couriers
+         never appeared in this filter. */
+      const [res, lookups] = await Promise.all([
+        axios.get<DeliveryResponse>(`${API_BASE_URL}/delivery`, { headers: authHeader() }),
+        axios.get<{ couriers: Courier[] }>(`${API_BASE_URL}/delivery/lookups`, { headers: authHeader() }),
+      ]);
       setDeliveries(res.data.items);
+      setCouriers(lookups.data.couriers);
       setError(null);
       setSummary({
         inFlight: res.data.inFlight,
@@ -216,7 +233,7 @@ export default function DeliveryPage() {
       key: "courierId",
       header: "Courier",
       cell: (d) => {
-        const c = d.courierId === null ? null : getCourier(d.courierId);
+        const c = d.courierId === null ? null : couriers.find((x) => x.id === d.courierId);
         return (
           <div>
             <div className="text-sm text-navy-900 dark:text-white">{c?.shortName ?? "—"}</div>
@@ -414,7 +431,13 @@ export default function DeliveryPage() {
       </Card>
 
       <Card>
-        <DataTable columns={columns} data={rows} pageSize={12} />
+        {loading ? (
+          <div className="p-4 space-y-2">
+            {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-12" />)}
+          </div>
+        ) : (
+          <DataTable columns={columns} data={rows} pageSize={12} />
+        )}
       </Card>
     </>
   );

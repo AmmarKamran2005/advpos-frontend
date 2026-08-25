@@ -2,18 +2,21 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { User, Lock, Settings, Smartphone } from "lucide-react";
+import { User, Lock, Settings } from "lucide-react";
 import { Card, CardBody } from "@/components/ui/card";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { useSession } from "@/components/providers/session-provider";
 import { cn } from "@/lib/utils";
 
+/* "Active Sessions" used to sit here pointing at /profile/sessions, which has
+   no page and returned a 404. There is nothing to list as an active session
+   anyway -- the API issues a stateless JWT it does not track -- so the sign-in
+   history it was reaching for now lives on the Security page instead. */
 const ITEMS = [
-  { href: "/profile",             label: "Profile",           icon: User },
-  { href: "/profile/security",    label: "Security",           icon: Lock },
-  { href: "/profile/preferences", label: "Preferences",        icon: Settings },
-  { href: "/profile/sessions",    label: "Active Sessions",    icon: Smartphone },
+  { href: "/profile",             label: "Profile",     icon: User },
+  { href: "/profile/security",    label: "Security",    icon: Lock },
+  { href: "/profile/preferences", label: "Preferences", icon: Settings },
 ];
 
 export function ProfileSidebar() {
