@@ -52,3 +52,10 @@ desktop.ini
 # ────────────── Local secret seeds ──────────────
 **/secrets.json
 **/credentials.json
+
+# Backend secrets. appsettings.json carries the JWT signing key, both
+# Cloudinary API secrets and a Gmail app password. The rest of backend/ is
+# committable; this one file must never be staged by an absent-minded
+# `git add -A`. Ship a redacted appsettings.Example.json instead.
+backend/vizo-backend/appsettings.json
+backend/vizo-backend/appsettings.Development.json
