@@ -1,10 +1,14 @@
 # AdvPOS — Session Handoff (frontend + backend)
 
-Last updated: 2026-08-25
+Last updated: 2026-08-25 (second session)
 
-This is the **whole-project** handoff. `vizo-erp/handoff.md` predates the
-backend and only covers the frontend mockup — read this one first, then that
-one for portal-by-portal UI detail.
+This is the **whole-project** handoff: architecture, traps, credentials, how to
+run. For *where the work stopped and what to do next*, read
+**`CONTINUE-HERE.md`** — it carries the page-by-page endpoint map for the 35
+screens still to convert, the collaboration rules for Talha's repo, and the
+decisions that are already settled.
+
+`vizo-erp/handoff.md` predates the backend and only covers the frontend mockup.
 
 | File | What it holds |
 |---|---|
@@ -20,30 +24,29 @@ one for portal-by-portal UI detail.
 Three real parts: the **Neon PostgreSQL database**, an **ASP.NET Core 8 API**
 on `https://localhost:7177`, and the **Next.js 16 frontend** on `:3000`.
 
-**The API is complete.** 149 endpoints across ten modules, every one of them
-answering from Neon, every one wrapped in try/catch.
+**The API is complete.** 162 actions across eleven modules, every one answering
+from Neon, every one wrapped in try/catch. Swagger: 129 paths / 164 operations.
 
-**The frontend is part-converted.** 24 screens read live data; the rest still
-import `src/data/*`. See the table below — it is the single most important
-thing on this page.
+**The frontend is part-converted.** 50 screens read live data; 30 still import
+`src/data/*`. See the table below — it is the single most important thing on
+this page.
+
+**Every one of the 30 already has a working endpoint.** What is left is frontend
+wiring, not API work: 16 detail (`[id]`) pages and 14 create (`new`) forms.
 
 ### Screens on live data
 
 | Area | Live | Still mock |
 |---|---|---|
 | `/admin/**` | all 12 | — |
-| `/parties` | list, customers, suppliers | `[id]`, `[id]/statement`, `new`, `visits` |
-| `/sales` | orders | invoices, returns, credit-holds, direct, all `new`/`[id]` |
-| `/inventory` | products | categories, brands, stock-levels, movements, adjustments, transfers |
-| `/purchases` | orders | grns, invoices, returns, all `new`/`[id]` |
-| `/accounting` | coa, collections | 17 others |
-| `/claims` | list + scorecard | `[id]` |
-| `/delivery` | list | — |
-| `/packing` | bench (real pack) | — |
-| `/dispatch` | queue | booking form not wired |
-| `/reports` | — | all 7 (API exists for all of them) |
+| `/reports` | **all 7** | — |
+| `/claims` `/delivery` `/packing` `/dispatch` | **all 4** | `claims/[id]` |
+| `/accounting` | coa, collections, trial balance, profit & loss, balance sheet, cash flow, journal entries, vouchers, expenses | ledger, ledgers, period-close, reconciliation, 3 `[id]`, 3 `new` |
+| `/inventory` | products, categories, brands, stock levels, movements, adjustments, transfers | products `[id]`/`new`, adjustments `[id]`/`new`, transfers `[id]`/`new` |
+| `/sales` | orders, invoices, returns, credit holds | 3 `[id]`, 3 `new`, direct |
+| `/purchases` | orders, grns, invoices, returns | 4 `[id]`, 4 `new` |
+| `/parties` | list, customers, suppliers, **new** | `[id]`, statement, visits |
 
-**Every one of those "still mock" screens has a working API endpoint already.**
 Converting one is mechanical: delete the `@/data/*` import, declare the response
 type locally, add the `load` callback, swap the array name. Copy
 `src/app/(app)/parties/page.tsx` — it is the reference.
@@ -131,6 +134,14 @@ database, including `UPDATE "User" SET "PasswordHash" = …`.
 
 ## Traps that cost real time
 
+**0. Identity sequences. THE ONE THAT STOPPED EVERYTHING.** The seed loaded
+every table with explicit primary keys, so 77 of 78 identity sequences were
+still at 1 while the tables held rows up to 106. The first insert the API tried
+collided with seeded row 1 and threw `23505 duplicate key`. **No record of any
+kind could be created anywhere in the application.** Fixed by
+`database/07_neon_sequence_reset.sql` — idempotent, re-run it any time data is
+imported with explicit keys.
+
 **1. PascalCase.** A context scaffolded from a snake_case database maps
 `.HasColumnName("user_id")` and every query fails on Neon. There should be zero
 `HasColumnName` calls in `AppDbContext.cs`. If you re-scaffold, delete
@@ -182,7 +193,7 @@ rejects *any* setState reachable from an effect, not just a synchronous one, so
 the requested "axios inside the page, driven by useState/useEffect" pattern can
 never satisfy it. Each site carries an inline comment saying so. `AGENTS.md`
 asks for the opposite architecture (fetch on the server, pass as props).
-**Worth settling before converting the remaining ~65 screens** — that decision
+**Worth settling before converting the remaining 35 screens** — that decision
 is cheap now and expensive later.
 
 **Trial balance does not balance, and that is the data.** Posted movement
@@ -198,7 +209,8 @@ take the same number. The real fix is a database sequence per series.
 
 ## Explicitly not done
 
-- ~65 screens still on `src/data/*` (see the table at the top)
+- 30 screens still on `src/data/*`, plus 5 static (see the table at the top,
+  and `CONTINUE-HERE.md` for the page-by-page endpoint map)
 - Dispatch booking form and the packing short-pack path are not wired to
   their endpoints (`POST /packing/{id}/pack` is all-or-nothing by design)
 - Server-side `can()` enforcement for non-admin screens beyond role policies
@@ -211,7 +223,21 @@ take the same number. The real fix is a database sequence per series.
 
 ## Git
 
-Frontend → `AmmarKamran2005/advpos-frontend` (remote `new`).
+Frontend → `AmmarKamran2005/advpos-frontend` (remote `new`), branch `main`.
 Backend → `muhammadtalhabinsuhail/vizo-backend` (public), branch `master`.
-The backend lives only in that repo; `backend/` here is a working copy and is
-not tracked by the frontend repo.
+
+The backend lives in Talha's repo. `backend/` here is a working copy and is
+deliberately NOT tracked by the frontend repo, with two exceptions that are
+committed for convenience: `backend/database/db_code_changes.txt` and
+`07_neon_sequence_reset.sql`. Those two also exist in Talha's repo, which is
+the authoritative copy — if they ever disagree, his wins.
+
+**Talha owns five files. Do not overwrite them without checking:**
+`global.json`, `vizo-backend.csproj`, `Program.cs`, `Models/AppDbContext.cs`,
+`Controllers/AuthController.cs`. He pushed changes to all five on 2026-08-25
+(commits `e05928e`, `8cabedf`), including restoring the `ValueGeneratedNever()`
+hand-edit on `Role` that a stale local copy had lost.
+
+⚠️ His `global.json` pins **SDK 9.0.317**. If that SDK is not installed,
+`dotnet` fails outright in `backend/`. Install .NET 9, or relax the pin — do not
+silently change the file.
