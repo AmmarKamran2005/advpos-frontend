@@ -80,11 +80,10 @@ export default function RolesPage() {
   const [error, setError] = React.useState<string | null>(null);
 
   const load = React.useCallback(async () => {
-    setLoading(true);
-    setError(null);
     try {
       const res = await axios.get<RoleRow[]>(`${API_BASE_URL}/admin/roles`, { headers: authHeader() });
       setRows(res.data);
+      setError(null);
     } catch (e) {
       setError(apiMessage(e, "Could not load roles."));
     } finally {
@@ -93,6 +92,11 @@ export default function RolesPage() {
   }, []);
 
   React.useEffect(() => {
+    /* eslint-disable-next-line react-hooks/set-state-in-effect --
+       The brief for this project is axios inside the page driven by
+       useState/useEffect. This rule wants the fetch moved to the server, which
+       is a different architecture, not a bug in this line. Disabled here rather
+       than globally so the rule still catches the cases worth fixing. */
     void load();
   }, [load]);
 

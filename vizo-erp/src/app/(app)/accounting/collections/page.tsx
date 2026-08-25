@@ -14,19 +14,89 @@ import { StatusPill, Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ConfirmDialog } from "@/components/dialogs";
 import { toast } from "@/components/ui/toaster";
-import {
-  collections, COLLECTION_STATUS_VARIANT, COLLECTION_METHOD_LABEL,
-  totalOf, type Collection, type CollectionStatus,
-} from "@/data/collections";
+import axios from "axios";
+import { AlertCircle } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
+
+/* GET /accounting/collections -> { awaitingCount, awaitingTotal, items }.
+
+   These are the real "CollectionStatus".StatusKey and
+   "PaymentMethod".MethodKey values. The database carries eight payment
+   methods, three more than the mock knew about. */
+type CollectionStatus = "AWAITING" | "CONFIRMED" | "BOUNCED";
+
+type CollectionMethod =
+  | "CASH" | "BANK" | "JAZZCASH" | "EASYPAISA"
+  | "CREDIT" | "CHEQUE" | "CREDIT_NOTE" | "PETTY_CASH";
+
+const COLLECTION_STATUS_VARIANT: Record<CollectionStatus, "success" | "warning" | "danger"> = {
+  AWAITING: "warning",
+  CONFIRMED: "success",
+  BOUNCED: "danger",
+};
+
+const COLLECTION_METHOD_LABEL: Record<CollectionMethod, string> = {
+  CASH: "Cash",
+  BANK: "Bank transfer",
+  JAZZCASH: "JazzCash",
+  EASYPAISA: "Easypaisa",
+  CREDIT: "On credit",
+  CHEQUE: "Cheque",
+  CREDIT_NOTE: "Credit note",
+  PETTY_CASH: "Petty cash",
+};
+
+type Collection = {
+  id: number;
+  receiptNo: string;
+  customerId: number;
+  customerName: string;
+  customerInitials: string;
+  collectedBy: string;
+  collectedOn: string;
+  amount: number;
+  method: CollectionMethod;
+  methodName: string;
+  reference: string | null;
+  bank: string | null;
+  chequeDate: string | null;
+  status: CollectionStatus;
+  statusName: string;
+  confirmedOn: string | null;
+  confirmedBy: string | null;
+  note: string | null;
+  against: string[];
+};
+
+type CollectionsResponse = {
+  awaitingCount: number;
+  awaitingTotal: number;
+  items: Collection[];
+};
+
+const totalOf = (list: Collection[]) => list.reduce((sum, c) => sum + c.amount, 0);
+
+/** Every failure comes back as { message } -- show the wording the API chose. */
+function apiMessage(e: unknown, fallback: string) {
+  if (axios.isAxiosError(e) && e.response) {
+    return (e.response.data as { message?: string })?.message ?? fallback;
+  }
+  return "Cannot reach the server.";
+}
+
 import { formatMoney, formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-const METHOD_ICON: Record<Collection["method"], typeof Banknote> = {
+const METHOD_ICON: Record<CollectionMethod, typeof Banknote> = {
   CASH: Banknote,
   CHEQUE: FileText,
   BANK: Landmark,
   JAZZCASH: Smartphone,
   EASYPAISA: Smartphone,
+  CREDIT: FileText,
+  CREDIT_NOTE: FileText,
+  PETTY_CASH: Banknote,
 };
 
 const TABS: { key: CollectionStatus | "ALL"; label: string }[] = [
@@ -43,10 +113,53 @@ const TABS: { key: CollectionStatus | "ALL"; label: string }[] = [
  * of this screen.
  */
 export default function ConfirmCollectionsPage() {
+  const [collections, setCollections] = React.useState<Collection[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
   const [tab, setTab] = React.useState<CollectionStatus | "ALL">("AWAITING");
   const [search, setSearch] = React.useState("");
   const [confirming, setConfirming] = React.useState<Collection | null>(null);
   const [bouncing, setBouncing] = React.useState<Collection | null>(null);
+
+  const load = React.useCallback(async () => {
+    try {
+      const res = await axios.get<CollectionsResponse>(`${API_BASE_URL}/accounting/collections`, {
+        headers: authHeader(),
+      });
+      setCollections(res.data.items);
+      setError(null);
+    } catch (e) {
+      setError(apiMessage(e, "Could not load the collections."));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    /* eslint-disable-next-line react-hooks/set-state-in-effect --
+       The brief for this project is axios inside the page driven by
+       useState/useEffect. This rule wants the fetch moved to the server, which
+       is a different architecture, not a bug in this line. Disabled here rather
+       than globally so the rule still catches the cases worth fixing. */
+    void load();
+  }, [load]);
+
+  /* Confirming is the moment the money becomes real to the books, so the
+     list is reloaded from the API afterwards rather than patched locally --
+     the server decides what the new state is. */
+  const confirmCollection = React.useCallback(async (c: Collection) => {
+    try {
+      const res = await axios.post<{ message: string }>(
+        `${API_BASE_URL}/accounting/collections/${c.id}/confirm`,
+        {},
+        { headers: authHeader() }
+      );
+      toast.success(res.data.message);
+      await load();
+    } catch (e) {
+      toast.error(apiMessage(e, "Could not confirm the collection."));
+    }
+  }, [load]);
 
   const rows = React.useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -59,7 +172,7 @@ export default function ConfirmCollectionsPage() {
         c.collectedBy.toLowerCase().includes(q)
       );
     });
-  }, [tab, search]);
+  }, [collections, tab, search]);
 
   const awaiting = collections.filter((c) => c.status === "AWAITING");
 
@@ -70,6 +183,17 @@ export default function ConfirmCollectionsPage() {
         title="Confirm Collections"
         subtitle="Money the sales team collected in the field, waiting on your word."
       />
+
+      {error && (
+        <Card className="p-4 mb-6 border-danger/40">
+          <div className="flex items-center gap-3">
+            <AlertCircle className="size-5 text-danger shrink-0" />
+            <div className="flex-1 min-w-0 font-medium text-navy-900 dark:text-white">{error}</div>
+            <Button variant="secondary" size="sm" onClick={() => void load()}>Try again</Button>
+          </div>
+        </Card>
+      )}
+
 
       {awaiting.length > 0 && (
         <Card className="mb-4 border-warning/40 bg-warning/5">

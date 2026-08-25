@@ -9,7 +9,49 @@ import { Card } from "@/components/ui/card";
 import { Badge, StatusPill } from "@/components/ui/badge";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { FilterBar } from "@/components/ui/filter-bar";
-import { products, brands, categories, type Product } from "@/data/products";
+import axios from "axios";
+import { AlertCircle } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
+
+/* GET /inventory/products -> { total, page, pageSize, items }.
+   status and totalStock are computed by the API from StockBalance across
+   every location -- stock is never stored on the product row. */
+type Product = {
+  id: number;
+  sku: string;
+  name: string;
+  description: string | null;
+  categoryId: number;
+  categoryName: string;
+  brandId: number;
+  brandName: string;
+  packing: number;
+  minQty: number;
+  maxQty: number;
+  openingCost: number;
+  costPrice: number;
+  salePrice: number;
+  taxRatePercent: number;
+  hideStock: boolean;
+  isActive: boolean;
+  imageUrl: string | null;
+  createdAt: string;
+  totalStock: number;
+  barcodes: string[];
+  status: "active" | "low" | "out" | "inactive";
+};
+
+type ProductPage = { total: number; page: number; pageSize: number; items: Product[] };
+
+/** Every failure comes back as { message } -- show the wording the API chose. */
+function apiMessage(e: unknown, fallback: string) {
+  if (axios.isAxiosError(e) && e.response) {
+    return (e.response.data as { message?: string })?.message ?? fallback;
+  }
+  return "Cannot reach the server.";
+}
+
 import { formatMoney, formatCompact } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -21,29 +63,56 @@ const STATUS_PILL: Record<Product["status"], { label: string; variant: "success"
 };
 
 export default function ProductsPage() {
+  const [rows, setRows] = React.useState<Product[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
   const [search, setSearch] = React.useState("");
   const [view, setView] = React.useState<"table" | "grid">("table");
 
+  const load = React.useCallback(async () => {
+    try {
+      const res = await axios.get<ProductPage>(`${API_BASE_URL}/inventory/products`, {
+        params: { pageSize: 200 },
+        headers: authHeader(),
+      });
+      setRows(res.data.items);
+      setError(null);
+    } catch (e) {
+      setError(apiMessage(e, "Could not load the product list."));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    /* eslint-disable-next-line react-hooks/set-state-in-effect --
+       The brief for this project is axios inside the page driven by
+       useState/useEffect. This rule wants the fetch moved to the server, which
+       is a different architecture, not a bug in this line. Disabled here rather
+       than globally so the rule still catches the cases worth fixing. */
+    void load();
+  }, [load]);
+
   const filtered = React.useMemo(() => {
-    if (!search) return products;
+    if (!search) return rows;
     const q = search.toLowerCase();
-    return products.filter(
+    return rows.filter(
       (p) =>
         p.name.toLowerCase().includes(q) ||
         p.sku.toLowerCase().includes(q) ||
         p.barcodes.some((b) => b.includes(q))
     );
-  }, [search]);
+  }, [rows, search]);
 
   const stats = React.useMemo(
     () => ({
-      total: products.length,
-      active: products.filter((p) => p.status === "active").length,
-      low: products.filter((p) => p.status === "low").length,
-      out: products.filter((p) => p.status === "out").length,
-      totalValue: products.reduce((s, p) => s + p.totalStock * p.costPrice, 0),
+      total: rows.length,
+      active: rows.filter((p) => p.status === "active").length,
+      low: rows.filter((p) => p.status === "low").length,
+      out: rows.filter((p) => p.status === "out").length,
+      totalValue: rows.reduce((s, p) => s + p.totalStock * p.costPrice, 0),
     }),
-    []
+    [rows]
   );
 
   const columns: Column<Product>[] = [
@@ -78,12 +147,12 @@ export default function ProductsPage() {
       key: "category",
       header: "Category",
       cell: (p) => {
-        const cat = categories.find((c) => c.id === p.categoryId);
-        const brand = brands.find((b) => b.id === p.brandId);
+        /* categoryName / brandName arrive denormalised on each row, so there
+           is no lookup table to import and nothing to join in the browser. */
         return (
           <div>
-            <div className="text-xs font-medium text-navy-900 dark:text-white">{cat?.name}</div>
-            <div className="text-2xs text-slate-500 dark:text-slate-400">{brand?.name}</div>
+            <div className="text-xs font-medium text-navy-900 dark:text-white">{p.categoryName}</div>
+            <div className="text-2xs text-slate-500 dark:text-slate-400">{p.brandName}</div>
           </div>
         );
       },
@@ -135,7 +204,7 @@ export default function ProductsPage() {
       <PageHeader
         breadcrumbs={[{ label: "Inventory" }, { label: "Products" }]}
         title="Products"
-        subtitle={`${products.length} products in catalog · VIZO mobile accessories`}
+        subtitle={`${rows.length} products in catalog · VIZO mobile accessories`}
         actions={
           <>
             <Button variant="secondary" size="md" className="gap-1.5">
@@ -155,6 +224,17 @@ export default function ProductsPage() {
           </>
         }
       />
+
+      {error && (
+        <Card className="p-4 mb-6 border-danger/40">
+          <div className="flex items-center gap-3">
+            <AlertCircle className="size-5 text-danger shrink-0" />
+            <div className="flex-1 min-w-0 font-medium text-navy-900 dark:text-white">{error}</div>
+            <Button variant="secondary" size="sm" onClick={() => void load()}>Try again</Button>
+          </div>
+        </Card>
+      )}
+
 
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
@@ -226,7 +306,7 @@ export default function ProductsPage() {
                 </div>
                 <div className="p-3">
                   <Badge variant="muted" className="text-2xs mb-1.5">
-                    {brands.find((b) => b.id === p.brandId)?.name}
+                    {p.brandName}
                   </Badge>
                   <div className="text-sm font-medium text-navy-900 dark:text-white line-clamp-2 leading-snug">{p.name}</div>
                   <div className="text-2xs text-slate-500 dark:text-slate-400 mt-1 tabular">{p.sku}</div>

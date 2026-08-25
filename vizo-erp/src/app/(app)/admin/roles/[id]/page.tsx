@@ -64,8 +64,6 @@ export default function RoleEditPage() {
   /* The catalogue is the only source of permission keys — there is no inline
      list any more. An existing role additionally seeds the ticked boxes. */
   const load = React.useCallback(async () => {
-    setLoading(true);
-    setError(null);
     setNotFound(false);
     try {
       const catalogue = await axios.get<PermissionGroup[]>(`${API_BASE_URL}/admin/permissions`, {
@@ -101,6 +99,11 @@ export default function RoleEditPage() {
   }, [id, isNew]);
 
   React.useEffect(() => {
+    /* eslint-disable-next-line react-hooks/set-state-in-effect --
+       The brief for this project is axios inside the page driven by
+       useState/useEffect. This rule wants the fetch moved to the server, which
+       is a different architecture, not a bug in this line. Disabled here rather
+       than globally so the rule still catches the cases worth fixing. */
     void load();
   }, [load]);
 

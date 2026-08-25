@@ -10,25 +10,97 @@ import { Avatar } from "@/components/ui/avatar";
 import { StatusPill } from "@/components/ui/badge";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { FilterBar } from "@/components/ui/filter-bar";
-import { parties, type Party } from "@/data/parties";
+import axios from "axios";
+import { AlertCircle, RefreshCw } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
+
+/* GET /parties?type=supplier -> { total, page, pageSize, items }.
+   Declared here rather than in a shared module: the brief is that each page
+   owns the call it makes, so the shape it depends on lives beside it. */
+type Party = {
+  id: number;
+  partyCode: string;
+  type: "CUSTOMER" | "SUPPLIER" | "BOTH";
+  legalName: string;
+  displayName: string;
+  initials: string;
+  phone: string | null;
+  email: string | null;
+  city: string;
+  province: string;
+  category: string;
+  categoryName: string;
+  ntn: string | null;
+  creditLimit: number;
+  creditDays: number;
+  creditHoldPolicy: string;
+  salesPerson: string | null;
+  isActive: boolean;
+  createdAt: string;
+  rating: string;
+  currentBalance: number;
+  payableBalance: number;
+  lastPurchaseAt: string | null;
+  lastSupplyAt: string | null;
+  lastPaymentAt: string | null;
+};
+
+type PartyPage = { total: number; page: number; pageSize: number; items: Party[] };
+
+/** Every failure comes back as { message } -- show the wording the API chose. */
+function apiMessage(e: unknown, fallback: string) {
+  if (axios.isAxiosError(e) && e.response) {
+    return (e.response.data as { message?: string })?.message ?? fallback;
+  }
+  return "Cannot reach the server.";
+}
+
 import { formatCompact, formatDate } from "@/lib/format";
 
 export default function SuppliersPage() {
   const [search, setSearch] = React.useState("");
-  const suppliers = parties.filter((p) => p.type === "SUPPLIER" || p.type === "BOTH");
+  const [rows, setRows] = React.useState<Party[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+
+  const load = React.useCallback(async () => {
+    try {
+      const res = await axios.get<PartyPage>(`${API_BASE_URL}/parties`, {
+        params: { type: "supplier", pageSize: 200 },
+        headers: authHeader(),
+      });
+      setRows(res.data.items);
+      setError(null);
+    } catch (e) {
+      setError(apiMessage(e, "Could not load the supplier list."));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    /* eslint-disable-next-line react-hooks/set-state-in-effect --
+       The brief for this project is axios inside the page driven by
+       useState/useEffect. This rule wants the fetch moved to the server, which
+       is a different architecture, not a bug in this line. Disabled here rather
+       than globally so the rule still catches the cases worth fixing. */
+    void load();
+  }, [load]);
+
 
   const filtered = React.useMemo(() => {
-    if (!search) return suppliers;
+    if (!search) return rows;
     const q = search.toLowerCase();
-    return suppliers.filter(
+    return rows.filter(
       (p) =>
         p.legalName.toLowerCase().includes(q) ||
         p.partyCode.toLowerCase().includes(q) ||
-        p.phone.includes(q)
+        (p.phone ?? "").includes(q)
     );
-  }, [suppliers, search]);
+  }, [rows, search]);
 
-  const totalAP = suppliers.reduce((s, p) => s + p.payableBalance, 0);
+  const totalAP = rows.reduce((s, p) => s + p.payableBalance, 0);
 
   const columns: Column<Party>[] = [
     {
@@ -54,7 +126,7 @@ export default function SuppliersPage() {
         <div className="text-xs text-slate-600 dark:text-slate-300 space-y-1">
           <div className="inline-flex items-center gap-1.5">
             <Phone className="size-3 text-slate-400" />
-            {p.phone}
+            {p.phone ?? "--"}
           </div>
           {p.email && (
             <div className="inline-flex items-center gap-1.5 truncate max-w-[200px]">
@@ -113,7 +185,7 @@ export default function SuppliersPage() {
       <PageHeader
         breadcrumbs={[{ label: "Parties", href: "/parties" }, { label: "Suppliers" }]}
         title="Suppliers"
-        subtitle={`${suppliers.length} suppliers — track POs, GRNs and payables`}
+        subtitle={`${rows.length} suppliers — track POs, GRNs and payables`}
         actions={
           <Button variant="accent" size="md" className="gap-1.5" asChild>
             <Link href="/parties/new?type=supplier">
@@ -124,13 +196,26 @@ export default function SuppliersPage() {
         }
       />
 
+      {error && (
+        <Card className="p-4 mb-6 border-danger/40">
+          <div className="flex items-center gap-3">
+            <AlertCircle className="size-5 text-danger shrink-0" />
+            <div className="flex-1 min-w-0 font-medium text-navy-900 dark:text-white">{error}</div>
+            <Button variant="secondary" size="sm" onClick={() => void load()}>
+              Try again
+            </Button>
+          </div>
+        </Card>
+      )}
+
+
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <Card className="p-4">
           <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">
             Active Suppliers
           </div>
           <div className="text-2xl tabular font-bold text-navy-900 dark:text-white mt-1">
-            {suppliers.filter((p) => p.isActive).length}
+            {rows.filter((p) => p.isActive).length}
           </div>
         </Card>
         <Card className="p-4">
@@ -162,7 +247,15 @@ export default function SuppliersPage() {
       />
 
       <Card className="p-0 overflow-hidden">
-        <DataTable columns={columns} data={filtered} rowHref={(p) => `/parties/${p.id}`} />
+        {loading ? (
+          <div className="p-4 space-y-3">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <Skeleton key={i} className="h-12 w-full" />
+            ))}
+          </div>
+        ) : (
+          <DataTable columns={columns} data={filtered} rowHref={(p) => `/parties/${p.id}`} />
+        )}
       </Card>
     </>
   );

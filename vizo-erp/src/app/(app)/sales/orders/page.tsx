@@ -12,10 +12,105 @@ import { StatusPill } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { toast } from "@/components/ui/toaster";
 import { useSession } from "@/components/providers/session-provider";
-import {
-  orders, ordersForRep, getStatusVariant, DELIVERY_STATE_VARIANT, type Order,
-} from "@/data/sales";
-import { getChannel } from "@/data/settings";
+import axios from "axios";
+import { AlertCircle } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
+import { getChannel, type ChannelKey } from "@/data/settings";
+
+/* GET /sales/orders -> { total, page, pageSize, items }.
+
+   The status and delivery-state maps used to live in @/data/sales. Importing
+   that module from a client component shipped the whole 300-line mock order
+   array into the bundle for the sake of two lookup tables, so they are inlined
+   here -- see AGENTS.md rule 5.
+
+   The delivery keys are the REAL "DeliveryStatus".StatusKey values from the
+   database, which are not the ones the mock used: there is no ON_THE_WAY, and
+   there are three separate in-flight states plus two failure states. */
+type OrderStatus =
+  | "DRAFT" | "SUBMITTED" | "CREDIT_HOLD" | "CONFIRMED" | "PROCESSING"
+  | "PACKED" | "DISPATCHED" | "INVOICED" | "DELIVERED" | "CANCELLED" | "RETURNED";
+
+type DeliveryState =
+  | "NOT_DISPATCHED" | "BOOKED" | "AWAITING" | "IN_TRANSIT"
+  | "OUT_FOR_DELIVERY" | "DELIVERED" | "FAILED" | "RETURNED_TO_SENDER";
+
+type Variant = "success" | "warning" | "danger" | "info" | "muted";
+
+const STATUS_VARIANT: Record<OrderStatus, Variant> = {
+  DRAFT:       "muted",
+  SUBMITTED:   "info",
+  CREDIT_HOLD: "danger",
+  CONFIRMED:   "info",
+  PROCESSING:  "warning",
+  PACKED:      "warning",
+  DISPATCHED:  "info",
+  INVOICED:    "info",
+  DELIVERED:   "success",
+  CANCELLED:   "muted",
+  RETURNED:    "danger",
+};
+
+const DELIVERY_STATE_VARIANT: Record<DeliveryState, Variant> = {
+  NOT_DISPATCHED:     "muted",
+  BOOKED:             "warning",
+  AWAITING:           "warning",
+  IN_TRANSIT:         "info",
+  OUT_FOR_DELIVERY:   "info",
+  DELIVERED:          "success",
+  FAILED:             "danger",
+  RETURNED_TO_SENDER: "danger",
+};
+
+function getStatusVariant(s: OrderStatus): Variant {
+  return STATUS_VARIANT[s] ?? "muted";
+}
+
+type Order = {
+  id: number;
+  orderNo: string;
+  customerId: number;
+  customerName: string;
+  customerInitials: string;
+  customerType: string;
+  city: string;
+  location: string;
+  locationCode: string;
+  salesPerson: string | null;
+  orderDate: string;
+  deliveryDate: string | null;
+  status: OrderStatus;
+  statusName: string;
+  itemCount: number;
+  subtotal: number;
+  discount: number;
+  tax: number;
+  total: number;
+  paymentMethod: string;
+  paidAmount: number;
+  paymentStatus: "UNPAID" | "PARTIAL" | "PAID";
+  creditHoldReason: string | null;
+  notes: string | null;
+  invoiceId: number | null;
+  invoiceNo: string | null;
+  channel: ChannelKey | null;
+  carrier: string | null;
+  trackingNo: string | null;
+  deliveryState: DeliveryState | null;
+  dispatchedOn: string | null;
+  deliveredOn: string | null;
+};
+
+type OrderPage = { total: number; page: number; pageSize: number; items: Order[] };
+
+/** Every failure comes back as { message } -- show the wording the API chose. */
+function apiMessage(e: unknown, fallback: string) {
+  if (axios.isAxiosError(e) && e.response) {
+    return (e.response.data as { message?: string })?.message ?? fallback;
+  }
+  return "Cannot reach the server.";
+}
 import { formatMoney, formatDate } from "@/lib/format";
 import { statusLabel } from "@/lib/labels";
 import { cn } from "@/lib/utils";
@@ -26,7 +121,8 @@ const TABS = [
   { key: "DRAFT",     label: "Draft",      match: (o: Order) => o.status === "DRAFT" },
   { key: "SENT",      label: "Sent",       match: (o: Order) => ["SUBMITTED", "CREDIT_HOLD"].includes(o.status) },
   { key: "PREPARING", label: "Preparing",  match: (o: Order) => ["CONFIRMED", "PROCESSING", "PACKED"].includes(o.status) },
-  { key: "OUT",       label: "On the way", match: (o: Order) => o.deliveryState === "AWAITING" || o.deliveryState === "ON_THE_WAY" },
+  { key: "OUT",       label: "On the way", match: (o: Order) =>
+      ["BOOKED", "AWAITING", "IN_TRANSIT", "OUT_FOR_DELIVERY"].includes(o.deliveryState ?? "") },
   { key: "DELIVERED", label: "Delivered",  match: (o: Order) => o.deliveryState === "DELIVERED" },
   { key: "CLOSED",    label: "Closed",     match: (o: Order) => ["CANCELLED", "RETURNED"].includes(o.status) },
 ] as const;
@@ -43,9 +139,39 @@ export default function OrdersPage() {
 
   const isRep = !can("orders.approve");
 
+  const [all, setAll] = React.useState<Order[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+
+  const load = React.useCallback(async () => {
+    try {
+      const res = await axios.get<OrderPage>(`${API_BASE_URL}/sales/orders`, {
+        params: { pageSize: 200 },
+        headers: authHeader(),
+      });
+      setAll(res.data.items);
+      setError(null);
+    } catch (e) {
+      setError(apiMessage(e, "Could not load the order list."));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    /* eslint-disable-next-line react-hooks/set-state-in-effect --
+       The brief for this project is axios inside the page driven by
+       useState/useEffect. This rule wants the fetch moved to the server, which
+       is a different architecture, not a bug in this line. Disabled here rather
+       than globally so the rule still catches the cases worth fixing. */
+    void load();
+  }, [load]);
+
+  /* A rep sees only their own orders. This is a convenience filter, not a
+     security boundary -- the API is the boundary. */
   const scope = React.useMemo(
-    () => (isRep ? ordersForRep(me.fullName) : orders),
-    [isRep, me.fullName]
+    () => (isRep ? all.filter((o) => o.salesPerson === me.fullName) : all),
+    [all, isRep, me.fullName]
   );
 
   const [search, setSearch] = React.useState("");
@@ -60,7 +186,7 @@ export default function OrdersPage() {
       return (
         o.orderNo.toLowerCase().includes(q) ||
         o.customerName.toLowerCase().includes(q) ||
-        o.trackingNo.toLowerCase().includes(q)
+        (o.trackingNo ?? "").toLowerCase().includes(q)
       );
     });
   }, [scope, search, tab]);
@@ -121,7 +247,23 @@ export default function OrdersPage() {
         </CardBody>
       </Card>
 
-      {rows.length === 0 ? (
+      {error && (
+        <Card className="p-4 mb-4 border-danger/40">
+          <div className="flex items-center gap-3">
+            <AlertCircle className="size-5 text-danger shrink-0" />
+            <div className="flex-1 min-w-0 font-medium text-navy-900 dark:text-white">{error}</div>
+            <Button variant="secondary" size="sm" onClick={() => void load()}>Try again</Button>
+          </div>
+        </Card>
+      )}
+
+      {loading ? (
+        <div className="space-y-2">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Skeleton key={i} className="h-24 w-full" />
+          ))}
+        </div>
+      ) : rows.length === 0 ? (
         <Card>
           <EmptyState
             icon={Search}
@@ -144,7 +286,7 @@ export default function OrdersPage() {
 }
 
 function OrderCard({ order }: { order: Order }) {
-  const channel = getChannel(order.channel);
+  const channel = order.channel ? getChannel(order.channel) : null;
   const balance = order.total - order.paidAmount;
   const paidPct = order.total > 0 ? Math.round((order.paidAmount / order.total) * 100) : 0;
 
@@ -170,12 +312,12 @@ function OrderCard({ order }: { order: Order }) {
             <StatusPill variant={getStatusVariant(order.status)}>
               {statusLabel(order.status)}
             </StatusPill>
-            {order.deliveryState !== "NOT_DISPATCHED" && (
+            {order.deliveryState && order.deliveryState !== "NOT_DISPATCHED" && (
               <StatusPill variant={DELIVERY_STATE_VARIANT[order.deliveryState]}>
                 {statusLabel(order.deliveryState)}
               </StatusPill>
             )}
-            {channel && order.deliveryState !== "NOT_DISPATCHED" && (
+            {channel && order.deliveryState && order.deliveryState !== "NOT_DISPATCHED" && (
               <span className="text-2xs text-slate-500 dark:text-slate-400">
                 {order.carrier}
                 {order.trackingNo !== "—" && <span className="tabular"> · {order.trackingNo}</span>}
@@ -225,7 +367,13 @@ function QuickAction({ order }: { order: Order }) {
     );
   }
 
-  if (order.channel === "local" && (order.deliveryState === "AWAITING" || order.deliveryState === "ON_THE_WAY")) {
+  /* The mock had one ON_THE_WAY state; the database splits it into BOOKED /
+     AWAITING / IN_TRANSIT / OUT_FOR_DELIVERY, so "still out there" is a set. */
+  const inFlight =
+    order.deliveryState !== null &&
+    ["BOOKED", "AWAITING", "IN_TRANSIT", "OUT_FOR_DELIVERY"].includes(order.deliveryState);
+
+  if (order.channel === "local" && inFlight) {
     return (
       <Button variant="accent" size="sm" className="gap-1 flex-shrink-0"
         onClick={() => toast.success("Marked delivered", { description: order.orderNo })}>
@@ -234,7 +382,7 @@ function QuickAction({ order }: { order: Order }) {
     );
   }
 
-  if (order.deliveryState === "AWAITING" || order.deliveryState === "ON_THE_WAY") {
+  if (inFlight) {
     return (
       <Button variant="secondary" size="sm" className="gap-1 flex-shrink-0" asChild>
         <Link href={`/sales/orders/${order.id}`}><Truck /> Track</Link>

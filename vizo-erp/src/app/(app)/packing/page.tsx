@@ -15,15 +15,83 @@ import { StatusPill, Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ConfirmDialog } from "@/components/dialogs";
 import { toast } from "@/components/ui/toaster";
-import { orders, orderLines, getStatusVariant, type Order } from "@/data/sales";
-import { stockAt, stockSpread, toPackets } from "@/data/products";
-import { getLocationByCode, defaultLocation } from "@/data/settings";
+import axios from "axios";
+import { AlertCircle } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
+
+/* GET /packing -> { waiting, late, blocked, items }.
+
+   The API returns each order WITH its lines and, on every line, the
+   quantity on hand AT THAT ORDER'S OWN LOCATION. The mock read stock from a
+   hardcoded "LOC-02", which was wrong the moment an order belonged to a
+   different warehouse -- the bench would show stock it did not have.
+
+   POST /packing/{id}/pack does the real work: it re-checks every line
+   server-side, refuses the whole order if any line is short, takes the
+   stock off the shelf and writes a StockMovement row for each one. */
+type PackLine = {
+  productId: number;
+  sku: string;
+  name: string;
+  packing: number;
+  qty: number;
+  onHand: number;
+};
+
+type ShortLine = { sku: string; name: string; qty: number; onHand: number; short_: number };
+
+type PackOrder = {
+  id: number;
+  orderNo: string;
+  customerId: number;
+  customerName: string;
+  customerInitials: string;
+  city: string;
+  locationId: number;
+  location: string;
+  orderDate: string;
+  deliveryDate: string | null;
+  status: "CONFIRMED" | "PROCESSING";
+  statusName: string;
+  total: number;
+  itemCount: number;
+  totalUnits: number;
+  salesPerson: string | null;
+  lines: PackLine[];
+  waitingDays: number;
+  isLate: boolean;
+  canPack: boolean;
+  shortLines: ShortLine[];
+};
+
+type PackingResponse = {
+  waiting: number;
+  late: number;
+  blocked: number;
+  items: PackOrder[];
+};
+
+type Order = PackOrder;
+
+const getStatusVariant = (s: string) =>
+  s === "PROCESSING" ? "warning" : ("info" as "success" | "warning" | "danger" | "info" | "muted");
+
+const toPackets = (qty: number, packing: number) =>
+  packing > 0 ? { packets: Math.floor(qty / packing), loose: qty % packing } : { packets: 0, loose: qty };
+
+/** Every failure comes back as { message } -- show the wording the API chose. */
+function apiMessage(e: unknown, fallback: string) {
+  if (axios.isAxiosError(e) && e.response) {
+    return (e.response.data as { message?: string })?.message ?? fallback;
+  }
+  return "Cannot reach the server.";
+}
+
 import { formatMoney } from "@/lib/format";
 import { statusLabel } from "@/lib/labels";
 import { cn } from "@/lib/utils";
 
-/** Where the goods are picked from. Everything is packed out of one place. */
-const PICK_FROM = "LOC-02";
 
 type Picked = Record<number, number>;
 
@@ -36,18 +104,70 @@ type Picked = Record<number, number>;
  * box that is quietly incomplete.
  */
 export default function PackingPage() {
-  const queue = React.useMemo(
-    () => orders.filter((o) => ["CONFIRMED", "PROCESSING"].includes(o.status)),
-    []
-  );
-
-  const [selectedId, setSelectedId] = React.useState<number | null>(queue[0]?.id ?? null);
+  const [queue, setQueue] = React.useState<PackOrder[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+  const [selectedId, setSelectedId] = React.useState<number | null>(null);
   const [picked, setPicked] = React.useState<Picked>({});
   const [search, setSearch] = React.useState("");
   const [confirming, setConfirming] = React.useState(false);
+  const [packing, setPacking] = React.useState(false);
+
+  const load = React.useCallback(async () => {
+    try {
+      const res = await axios.get<PackingResponse>(`${API_BASE_URL}/packing`, {
+        headers: authHeader(),
+      });
+      setQueue(res.data.items);
+      setError(null);
+      /* Keep whatever was open if it is still in the queue, otherwise fall
+         back to the first row -- packing an order removes it, and the bench
+         should not be left staring at a blank pane. */
+      setSelectedId((current) =>
+        current !== null && res.data.items.some((o) => o.id === current)
+          ? current
+          : res.data.items[0]?.id ?? null
+      );
+    } catch (e) {
+      setError(apiMessage(e, "Could not load the packing queue."));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    /* eslint-disable-next-line react-hooks/set-state-in-effect --
+       The brief for this project is axios inside the page driven by
+       useState/useEffect. This rule wants the fetch moved to the server, which
+       is a different architecture, not a bug in this line. Disabled here rather
+       than globally so the rule still catches the cases worth fixing. */
+    void load();
+  }, [load]);
 
   const order = queue.find((o) => o.id === selectedId) ?? null;
-  const lines = React.useMemo(() => (order ? orderLines(order) : []), [order]);
+  const lines = React.useMemo(() => order?.lines ?? [], [order]);
+
+  /* The server re-checks every line and refuses the whole order if any of
+     them is short, so a race with another packer cannot half-empty a shelf. */
+  const packOrder = React.useCallback(async () => {
+    if (!order) return;
+    setPacking(true);
+    try {
+      const res = await axios.post<{ message: string }>(
+        `${API_BASE_URL}/packing/${order.id}/pack`,
+        {},
+        { headers: authHeader() }
+      );
+      toast.success(res.data.message);
+      setPicked({});
+      await load();
+    } catch (e) {
+      toast.error(apiMessage(e, "Could not pack this order."));
+    } finally {
+      setPacking(false);
+      setConfirming(false);
+    }
+  }, [order, load]);
 
   const filteredQueue = queue.filter((o) => {
     const q = search.trim().toLowerCase();
@@ -68,14 +188,14 @@ export default function PackingPage() {
     if (!order) return;
     const next: Picked = {};
     for (const l of lines) {
-      next[l.productId] = Math.min(l.qty, stockAt(l.productId, PICK_FROM));
+      next[l.productId] = Math.min(l.qty, l.onHand);
     }
     setPicked(next);
     toast.info("Picked everything the shelf could cover");
   }
 
   const linesWithState = lines.map((l) => {
-    const onShelf = stockAt(l.productId, PICK_FROM);
+    const onShelf = l.onHand;
     const got = picked[l.productId] ?? 0;
     return { ...l, onShelf, got, short: Math.max(0, l.qty - onShelf) };
   });
@@ -86,7 +206,9 @@ export default function PackingPage() {
     linesWithState.every((l) => l.got >= Math.min(l.qty, l.onShelf) && l.got > 0);
   const fullyPicked = linesWithState.every((l) => l.got >= l.qty);
 
-  const pickLocation = getLocationByCode(PICK_FROM);
+  /* Each order is picked from its own location, which the API already
+     resolved -- there is no single warehouse any more. */
+  const pickLocation = order ? { name: order.location } : null;
 
   return (
     <>
@@ -251,18 +373,15 @@ export default function PackingPage() {
         description={
           fullyPicked
             ? `${order?.orderNo} moves to Dispatch, ready for a delivery route.`
-            : `${shortLines.length} ${shortLines.length === 1 ? "line is" : "lines are"} not complete. The order moves to Dispatch with what you picked, and the balance stays outstanding.`
+            : `${shortLines.length} ${shortLines.length === 1 ? "line is" : "lines are"} short. Packing is all-or-nothing on the server, so this will be refused until the shelf can cover every line.`
         }
         variant={fullyPicked ? "info" : "danger"}
-        confirmLabel={fullyPicked ? "Yes, packed" : "Pack it short"}
-        requireReason={!fullyPicked}
-        reasonLabel="Why is it short?"
-        onConfirm={(r) => {
-          toast.success("Marked packed", {
-            description: r ? `${order?.orderNo} — ${r}` : `${order?.orderNo} is ready to dispatch.`,
-          });
-          setConfirming(false);
-          setPicked({});
+        confirmLabel={packing ? "Packing…" : "Yes, packed"}
+        /* The real call. It takes the stock off the shelf, writes a
+           StockMovement per line and moves the order to PACKED -- or refuses
+           the whole thing and lists which lines are short. */
+        onConfirm={() => {
+          void packOrder();
         }}
       />
     </>
@@ -276,7 +395,10 @@ function PickRow({
   onChange: (qty: number) => void;
 }) {
   const packs = toPackets(line.got, line.packing);
-  const elsewhere = line.short > 0 ? stockSpread(line.productId).filter((s) => s.code !== PICK_FROM) : [];
+  /* Where else the shortfall could be pulled from needs a per-product
+     stock-spread call; GET /inventory/products/{id} returns it. Not wired
+     up here yet, so the line shows the shortfall without guessing. */
+  const elsewhere: { code: string; name: string; qty: number }[] = [];
   const done = line.got >= line.qty;
 
   return (
@@ -335,7 +457,7 @@ function PickRow({
             {elsewhere.length > 0 && (
               <div className="text-2xs text-slate-500 dark:text-slate-400 mt-1">
                 {elsewhere
-                  .map((s) => `${getLocationByCode(s.code)?.name ?? s.code}: ${s.qty}`)
+                  .map((s) => `${s.name || s.code}: ${s.qty}`)
                   .join(" · ")}
               </div>
             )}

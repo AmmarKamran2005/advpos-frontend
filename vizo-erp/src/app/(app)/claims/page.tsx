@@ -14,12 +14,124 @@ import { StatusPill, Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { StatCard } from "@/components/widgets/stat-card";
 import { ClaimInDialog } from "@/components/dialogs/claim-in-dialog";
-import {
-  claims, openClaims, claimValue, supplierScorecard, worstItems,
-  CLAIM_STAGE_VARIANT, CLAIM_STAGE_LABEL, OUTCOME_LABEL, type Claim, type ClaimStage,
-} from "@/data/claims";
+import axios from "axios";
+import { AlertCircle } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
 import { claimPolicy } from "@/data/settings";
-import { TODAY } from "@/data/reminders";
+
+/* GET /claims -> { openCount, openValue, totalValue, items }.
+
+   The stage and outcome maps used to be imported from @/data/claims, which
+   dragged the whole mock claim array into the bundle for three lookup
+   tables (AGENTS.md rule 5), so they are inlined here. The keys are the real
+   "ClaimStage".StageKey and "ClaimOutcome".OutcomeKey values.
+
+   TODAY came from the mock reminders module; the API already returns
+   daysWithSupplier, so nothing here has to know what day it is. */
+type ClaimStage =
+  | "RECEIVED" | "SENT" | "REPLACED" | "CREDITED" | "REJECTED" | "WRITTEN_OFF";
+
+type CustomerOutcome = "REPLACED_NOW" | "CREDIT_NOTE" | "WAITING";
+
+const CLAIM_STAGE_VARIANT: Record<ClaimStage, "success" | "warning" | "danger" | "info" | "muted"> = {
+  RECEIVED: "warning",
+  SENT: "info",
+  REPLACED: "success",
+  CREDITED: "success",
+  REJECTED: "danger",
+  WRITTEN_OFF: "muted",
+};
+
+const CLAIM_STAGE_LABEL: Record<ClaimStage, string> = {
+  RECEIVED: "In claim stock",
+  SENT: "With supplier",
+  REPLACED: "Replaced",
+  CREDITED: "Credited",
+  REJECTED: "Refused",
+  WRITTEN_OFF: "Written off",
+};
+
+const OUTCOME_LABEL: Record<CustomerOutcome, string> = {
+  REPLACED_NOW: "Replaced on the spot",
+  CREDIT_NOTE: "Credit given",
+  WAITING: "Customer waiting",
+};
+
+type Claim = {
+  id: number;
+  claimNo: string;
+  customerId: number;
+  customerName: string;
+  customerInitials: string;
+  receivedOn: string;
+  receivedBy: string;
+  productId: number;
+  productName: string;
+  sku: string;
+  qty: number;
+  unitCost: number;
+  value: number;
+  reason: string;
+  reasonLabel: string;
+  usuallyAccepted: boolean;
+  note: string | null;
+  originalOrderNo: string | null;
+  customerOutcome: CustomerOutcome;
+  customerOutcomeLabel: string;
+  stage: ClaimStage;
+  stageLabel: string;
+  isOpen: boolean;
+  supplierId: number | null;
+  supplierName: string | null;
+  sentOn: string | null;
+  settledOn: string | null;
+  supplierNote: string | null;
+  remindersSent: number;
+  daysWithSupplier: number | null;
+};
+
+type ClaimsResponse = {
+  openCount: number;
+  openValue: number;
+  totalValue: number;
+  items: Claim[];
+};
+
+type SupplierCard = {
+  supplierId: number;
+  supplierName: string;
+  supplierInitials: string;
+  total: number;
+  sent: number;
+  settled: number;
+  refused: number;
+  open: number;
+  avgDays: number;
+  honourRate: number;
+  valueOpen: number;
+  valueTotal: number;
+};
+
+type WorstItem = {
+  productId: number;
+  productName: string;
+  sku: string;
+  claims: number;
+  qty: number;
+  value: number;
+};
+
+const claimValue = (list: Claim[]) => list.reduce((sum, c) => sum + c.value, 0);
+
+/** Every failure comes back as { message } -- show the wording the API chose. */
+function apiMessage(e: unknown, fallback: string) {
+  if (axios.isAxiosError(e) && e.response) {
+    return (e.response.data as { message?: string })?.message ?? fallback;
+  }
+  return "Cannot reach the server.";
+}
+
 import { formatMoney, formatCompact, formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -32,14 +144,53 @@ const TABS: { key: ClaimStage | "ALL" | "OPEN"; label: string }[] = [
   { key: "ALL", label: "All" },
 ];
 
+/* The mock pinned "today" to a constant so the demo data always looked fresh.
+   Against a real database the real date is the right one. */
 function daysSince(iso: string) {
-  return Math.round((new Date(TODAY).getTime() - new Date(iso).getTime()) / 86400000);
+  return Math.round((Date.now() - new Date(iso).getTime()) / 86400000);
 }
 
 export default function ClaimsPage() {
+  const [claims, setClaims] = React.useState<Claim[]>([]);
+  const [scorecard, setScorecard] = React.useState<SupplierCard[]>([]);
+  const [worst, setWorst] = React.useState<WorstItem[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
   const [tab, setTab] = React.useState<ClaimStage | "ALL" | "OPEN">("OPEN");
   const [search, setSearch] = React.useState("");
   const [receiving, setReceiving] = React.useState(false);
+
+  const load = React.useCallback(async () => {
+    try {
+      /* Three independent reads, so fire them together rather than in
+         sequence -- the scorecard does not depend on the list. */
+      const [list, cards, items] = await Promise.all([
+        axios.get<ClaimsResponse>(`${API_BASE_URL}/claims`, { headers: authHeader() }),
+        axios.get<SupplierCard[]>(`${API_BASE_URL}/claims/supplier-scorecard`, { headers: authHeader() }),
+        axios.get<WorstItem[]>(`${API_BASE_URL}/claims/worst-items`, {
+          params: { limit: 5 },
+          headers: authHeader(),
+        }),
+      ]);
+      setClaims(list.data.items);
+      setError(null);
+      setScorecard(cards.data);
+      setWorst(items.data);
+    } catch (e) {
+      setError(apiMessage(e, "Could not load the claims."));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    /* eslint-disable-next-line react-hooks/set-state-in-effect --
+       The brief for this project is axios inside the page driven by
+       useState/useEffect. This rule wants the fetch moved to the server, which
+       is a different architecture, not a bug in this line. Disabled here rather
+       than globally so the rule still catches the cases worth fixing. */
+    void load();
+  }, [load]);
 
   const rows = React.useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -54,14 +205,12 @@ export default function ClaimsPage() {
         c.sku.includes(q)
       );
     });
-  }, [tab, search]);
+  }, [claims, tab, search]);
 
-  const open = openClaims();
+  const open = React.useMemo(() => claims.filter((c) => c.isOpen), [claims]);
   const onShelf = claims.filter((c) => c.stage === "RECEIVED");
   const withSupplier = claims.filter((c) => c.stage === "SENT");
   const lost = claims.filter((c) => c.stage === "REJECTED" || c.stage === "WRITTEN_OFF");
-  const scorecard = supplierScorecard();
-  const worst = worstItems(5);
 
   return (
     <>
@@ -76,6 +225,17 @@ export default function ClaimsPage() {
           </Button>
         }
       />
+
+      {error && (
+        <Card className="p-4 mb-6 border-danger/40">
+          <div className="flex items-center gap-3">
+            <AlertCircle className="size-5 text-danger shrink-0" />
+            <div className="flex-1 min-w-0 font-medium text-navy-900 dark:text-white">{error}</div>
+            <Button variant="secondary" size="sm" onClick={() => void load()}>Try again</Button>
+          </div>
+        </Card>
+      )}
+
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-5">
         <StatCard
@@ -292,7 +452,7 @@ function ClaimRow({ claim }: { claim: Claim }) {
                 {formatMoney(claim.qty * claim.unitCost)}
               </div>
               <div className="text-2xs text-slate-500 dark:text-slate-400">
-                {claim.supplierId ? claim.supplierName.split(" ")[0] : formatDate(claim.receivedOn)}
+                {claim.supplierName ? claim.supplierName.split(" ")[0] : formatDate(claim.receivedOn)}
               </div>
             </div>
             <ChevronRight className="size-4 text-slate-300 dark:text-slate-600 opacity-0 group-hover:opacity-100 transition-opacity" />

@@ -10,22 +10,99 @@ import { Avatar } from "@/components/ui/avatar";
 import { StatusPill } from "@/components/ui/badge";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { FilterBar } from "@/components/ui/filter-bar";
-import { purchaseOrders, PO_STATUS_VARIANT, type PO } from "@/data/purchases";
+import axios from "axios";
+import { AlertCircle } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
+
+/* GET /purchases/orders. receivedPercent is computed by the API from the
+   GRN lines, because the GRN is what actually moved stock -- not the PO.
+   These are the real "PurchaseOrderStatus".StatusKey values. */
+type POStatus =
+  | "DRAFT" | "PENDING_APPROVAL" | "APPROVED" | "PARTIALLY_RECEIVED"
+  | "RECEIVED" | "CANCELLED" | "CLOSED";
+
+const PO_STATUS_VARIANT: Record<POStatus, "success" | "warning" | "danger" | "info" | "muted"> = {
+  DRAFT:              "muted",
+  PENDING_APPROVAL:   "warning",
+  APPROVED:           "info",
+  PARTIALLY_RECEIVED: "warning",
+  RECEIVED:           "success",
+  CANCELLED:          "muted",
+  CLOSED:             "muted",
+};
+
+type PO = {
+  id: number;
+  poNo: string;
+  supplierId: number;
+  supplierName: string;
+  supplierInitials: string;
+  location: string;
+  poDate: string;
+  expectedDate: string | null;
+  status: POStatus;
+  statusName: string;
+  itemCount: number;
+  total: number;
+  createdBy: string;
+  approvedBy: string | null;
+  notes: string | null;
+  orderedUnits: number;
+  receivedUnits: number;
+  receivedPercent: number;
+};
+
+/** Every failure comes back as { message } -- show the wording the API chose. */
+function apiMessage(e: unknown, fallback: string) {
+  if (axios.isAxiosError(e) && e.response) {
+    return (e.response.data as { message?: string })?.message ?? fallback;
+  }
+  return "Cannot reach the server.";
+}
+
 import { formatMoney, formatCompact, formatDate } from "@/lib/format";
 import { statusLabel } from "@/lib/labels";
 
 export default function PurchaseOrdersPage() {
+  const [rows, setRows] = React.useState<PO[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
   const [search, setSearch] = React.useState("");
-  const filtered = purchaseOrders.filter((p) =>
+
+  const load = React.useCallback(async () => {
+    try {
+      const res = await axios.get<PO[]>(`${API_BASE_URL}/purchases/orders`, {
+        headers: authHeader(),
+      });
+      setRows(res.data);
+      setError(null);
+    } catch (e) {
+      setError(apiMessage(e, "Could not load the purchase orders."));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    /* eslint-disable-next-line react-hooks/set-state-in-effect --
+       The brief for this project is axios inside the page driven by
+       useState/useEffect. This rule wants the fetch moved to the server, which
+       is a different architecture, not a bug in this line. Disabled here rather
+       than globally so the rule still catches the cases worth fixing. */
+    void load();
+  }, [load]);
+
+  const filtered = rows.filter((p) =>
     !search || p.poNo.toLowerCase().includes(search.toLowerCase()) || p.supplierName.toLowerCase().includes(search.toLowerCase())
   );
 
   const stats = {
-    total: purchaseOrders.length,
-    pending: purchaseOrders.filter((p) => p.status === "PENDING_APPROVAL").length,
-    approved: purchaseOrders.filter((p) => p.status === "APPROVED" || p.status === "PARTIALLY_RECEIVED").length,
-    received: purchaseOrders.filter((p) => p.status === "RECEIVED").length,
-    totalValue: purchaseOrders.filter((p) => p.status !== "CANCELLED").reduce((s, p) => s + p.total, 0),
+    total: rows.length,
+    pending: rows.filter((p) => p.status === "PENDING_APPROVAL").length,
+    approved: rows.filter((p) => p.status === "APPROVED" || p.status === "PARTIALLY_RECEIVED").length,
+    received: rows.filter((p) => p.status === "RECEIVED").length,
+    totalValue: rows.filter((p) => p.status !== "CANCELLED").reduce((s, p) => s + p.total, 0),
   };
 
   const columns: Column<PO>[] = [
@@ -46,7 +123,7 @@ export default function PurchaseOrdersPage() {
         </div>
       )
     },
-    { key: "expectedDate", header: "Expected", sortable: true, cell: (p) => <span className="text-xs text-slate-600 dark:text-slate-300">{formatDate(p.expectedDate)}</span> },
+    { key: "expectedDate", header: "Expected", sortable: true, cell: (p) => <span className="text-xs text-slate-600 dark:text-slate-300">{p.expectedDate ? formatDate(p.expectedDate) : "--"}</span> },
     { key: "itemCount",    header: "Items",    align: "right", cell: (p) => <span className="tabular text-sm text-slate-600 dark:text-slate-300">{p.itemCount}</span> },
     { key: "received",     header: "Received", cell: (p) => p.receivedPercent > 0 ? (
         <div className="flex items-center gap-2 w-32">
@@ -76,6 +153,17 @@ export default function PurchaseOrdersPage() {
           </>
         }
       />
+
+      {error && (
+        <Card className="p-4 mb-6 border-danger/40">
+          <div className="flex items-center gap-3">
+            <AlertCircle className="size-5 text-danger shrink-0" />
+            <div className="flex-1 min-w-0 font-medium text-navy-900 dark:text-white">{error}</div>
+            <Button variant="secondary" size="sm" onClick={() => void load()}>Try again</Button>
+          </div>
+        </Card>
+      )}
+
 
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
         <Card className="p-4"><Stat label="Total POs" value={stats.total.toString()} /></Card>

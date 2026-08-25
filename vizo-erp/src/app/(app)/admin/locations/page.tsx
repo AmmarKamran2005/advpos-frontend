@@ -91,8 +91,6 @@ export default function LocationsPage() {
 
   /* One trip for the cards, one for every dropdown the form needs. */
   const load = React.useCallback(async () => {
-    setLoading(true);
-    setError(null);
     try {
       const [list, look] = await Promise.all([
         axios.get<StockLocation[]>(`${API_BASE_URL}/admin/locations?includeInactive=true`, {
@@ -101,6 +99,7 @@ export default function LocationsPage() {
         axios.get<Lookups>(`${API_BASE_URL}/admin/lookups`, { headers: authHeader() }),
       ]);
       setRows(list.data);
+      setError(null);
       setLookups(look.data);
     } catch (e) {
       setError(apiMessage(e, "Could not load the locations."));
@@ -110,6 +109,11 @@ export default function LocationsPage() {
   }, []);
 
   React.useEffect(() => {
+    /* eslint-disable-next-line react-hooks/set-state-in-effect --
+       The brief for this project is axios inside the page driven by
+       useState/useEffect. This rule wants the fetch moved to the server, which
+       is a different architecture, not a bug in this line. Disabled here rather
+       than globally so the rule still catches the cases worth fixing. */
     void load();
   }, [load]);
 

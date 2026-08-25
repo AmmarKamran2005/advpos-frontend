@@ -2,7 +2,8 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Plus, Download, Upload, Phone, Mail, MapPin } from "lucide-react";
+import axios from "axios";
+import { Plus, Download, Upload, Phone, Mail, MapPin, AlertCircle, RefreshCw } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -10,9 +11,43 @@ import { Avatar } from "@/components/ui/avatar";
 import { Badge, StatusPill } from "@/components/ui/badge";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { FilterBar } from "@/components/ui/filter-bar";
-import { parties, type Party } from "@/data/parties";
+import { Skeleton } from "@/components/ui/skeleton";
+import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
 import { formatCompact } from "@/lib/format";
 import { cn } from "@/lib/utils";
+
+/* GET /parties -> { total, page, pageSize, items }.
+   Balances are computed by the API from POSTED ledger rows, so the whole
+   journal never has to reach the browser just to add up one column. */
+type Party = {
+  id: number;
+  partyCode: string;
+  type: "CUSTOMER" | "SUPPLIER" | "BOTH";
+  legalName: string;
+  displayName: string;
+  initials: string;
+  phone: string | null;
+  email: string | null;
+  city: string;
+  province: string;
+  category: string;
+  categoryName: string;
+  ntn: string | null;
+  creditLimit: number;
+  creditDays: number;
+  creditHoldPolicy: string;
+  salesPerson: string | null;
+  isActive: boolean;
+  createdAt: string;
+  rating: string;
+  currentBalance: number;
+  payableBalance: number;
+  lastPurchaseAt: string | null;
+  lastSupplyAt: string | null;
+  lastPaymentAt: string | null;
+};
+
+type PartyPage = { total: number; page: number; pageSize: number; items: Party[] };
 
 const TYPE_LABEL: Record<Party["type"], { label: string; variant: "info" | "warning" | "accent" }> = {
   CUSTOMER: { label: "Customer", variant: "info" },
@@ -20,33 +55,70 @@ const TYPE_LABEL: Record<Party["type"], { label: string; variant: "info" | "warn
   BOTH:     { label: "Both",     variant: "accent" },
 };
 
-const RATING_COLOR: Record<Party["rating"], string> = {
+const RATING_COLOR: Record<string, string> = {
   A: "bg-success-light text-success-dark dark:bg-success/15 dark:text-success-light",
   B: "bg-info-light text-info-dark dark:bg-info/15 dark:text-info-light",
   C: "bg-warning-light text-warning-dark dark:bg-warning/15 dark:text-warning-light",
   D: "bg-danger-light text-danger-dark dark:bg-danger/15 dark:text-danger-light",
 };
 
+/** Every failure comes back as { message } — show the wording the API chose. */
+function apiMessage(e: unknown, fallback: string) {
+  if (axios.isAxiosError(e) && e.response) {
+    return (e.response.data as { message?: string })?.message ?? fallback;
+  }
+  return "Cannot reach the server.";
+}
+
 export default function PartiesPage() {
+  const [rows, setRows] = React.useState<Party[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
   const [search, setSearch] = React.useState("");
   const [typeFilter, setTypeFilter] = React.useState<Party["type"] | "ALL">("ALL");
 
+  const load = React.useCallback(async () => {
+    try {
+      /* pageSize 200 pulls the whole book in one call; the table paginates in
+         the browser. Past a couple of thousand parties this should move to
+         server-side paging -- the endpoint already accepts page/pageSize. */
+      const res = await axios.get<PartyPage>(`${API_BASE_URL}/parties`, {
+        params: { pageSize: 200 },
+        headers: authHeader(),
+      });
+      setRows(res.data.items);
+      setError(null);
+    } catch (e) {
+      setError(apiMessage(e, "Could not load the party list."));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    /* eslint-disable-next-line react-hooks/set-state-in-effect --
+       The brief for this project is axios inside the page driven by
+       useState/useEffect. This rule wants the fetch moved to the server, which
+       is a different architecture, not a bug in this line. Disabled here rather
+       than globally so the rule still catches the cases worth fixing. */
+    void load();
+  }, [load]);
+
   const filtered = React.useMemo(() => {
-    return parties.filter((p) => {
+    return rows.filter((p) => {
       if (typeFilter !== "ALL" && p.type !== typeFilter && p.type !== "BOTH") return false;
-      if (typeFilter === "ALL" && false) return false;
       if (search) {
         const q = search.toLowerCase();
         return (
           p.legalName.toLowerCase().includes(q) ||
           p.partyCode.toLowerCase().includes(q) ||
-          p.phone.includes(q) ||
+          (p.phone ?? "").includes(q) ||
           p.city.toLowerCase().includes(q)
         );
       }
       return true;
     });
-  }, [search, typeFilter]);
+  }, [rows, search, typeFilter]);
 
   const columns: Column<Party>[] = [
     {
@@ -69,11 +141,13 @@ export default function PartiesPage() {
           <div className="min-w-0">
             <div className="font-medium text-navy-900 dark:text-white">{p.legalName}</div>
             <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              <span className="inline-flex items-center gap-1">
-                <Phone className="size-3" /> {p.phone}
-              </span>
+              {p.phone && (
+                <span className="inline-flex items-center gap-1">
+                  <Phone className="size-3" /> {p.phone}
+                </span>
+              )}
               {p.email && (
-                <span className="inline-flex items-center gap-1 truncate hidden lg:inline-flex">
+                <span className="items-center gap-1 truncate hidden lg:inline-flex">
                   <Mail className="size-3" /> {p.email}
                 </span>
               )}
@@ -151,7 +225,7 @@ export default function PartiesPage() {
         <span
           className={cn(
             "inline-flex items-center justify-center size-7 rounded-md text-xs font-bold",
-            RATING_COLOR[p.rating]
+            RATING_COLOR[p.rating] ?? RATING_COLOR.C
           )}
         >
           {p.rating}
@@ -170,29 +244,40 @@ export default function PartiesPage() {
     },
   ];
 
-  /* Quick stats */
   const stats = React.useMemo(() => {
-    const customers = parties.filter((p) => p.type === "CUSTOMER" || p.type === "BOTH");
-    const suppliers = parties.filter((p) => p.type === "SUPPLIER" || p.type === "BOTH");
-    const totalAR = customers.reduce((s, p) => s + p.currentBalance, 0);
-    const totalAP = suppliers.reduce((s, p) => s + p.payableBalance, 0);
+    const customers = rows.filter((p) => p.type === "CUSTOMER" || p.type === "BOTH");
+    const suppliers = rows.filter((p) => p.type === "SUPPLIER" || p.type === "BOTH");
     return {
-      total: parties.length,
+      total: rows.length,
       customers: customers.length,
       suppliers: suppliers.length,
-      totalAR,
-      totalAP,
+      totalAR: customers.reduce((s, p) => s + p.currentBalance, 0),
+      totalAP: suppliers.reduce((s, p) => s + p.payableBalance, 0),
     };
-  }, []);
+  }, [rows]);
+
+  const counts = React.useMemo(
+    () => ({
+      ALL: rows.length,
+      CUSTOMER: rows.filter((p) => p.type === "CUSTOMER" || p.type === "BOTH").length,
+      SUPPLIER: rows.filter((p) => p.type === "SUPPLIER" || p.type === "BOTH").length,
+      BOTH: rows.filter((p) => p.type === "BOTH").length,
+    }),
+    [rows]
+  );
 
   return (
     <>
       <PageHeader
         breadcrumbs={[{ label: "Parties" }]}
         title="All Parties"
-        subtitle="Customers, suppliers and counter-parties across all locationes"
+        subtitle="Customers, suppliers and counter-parties across all locations"
         actions={
           <>
+            <Button variant="secondary" size="md" className="gap-1.5" onClick={() => void load()}>
+              <RefreshCw />
+              <span className="hidden sm:inline">Refresh</span>
+            </Button>
             <Button variant="secondary" size="md" className="gap-1.5">
               <Upload />
               <span className="hidden sm:inline">Import</span>
@@ -211,50 +296,78 @@ export default function PartiesPage() {
         }
       />
 
-      {/* Quick stats */}
+      {error && (
+        <Card className="p-4 mb-6 border-danger/40">
+          <div className="flex items-center gap-3">
+            <AlertCircle className="size-5 text-danger shrink-0" />
+            <div className="flex-1 min-w-0">
+              <div className="font-medium text-navy-900 dark:text-white">{error}</div>
+            </div>
+            <Button variant="secondary" size="sm" onClick={() => void load()}>
+              Try again
+            </Button>
+          </div>
+        </Card>
+      )}
+
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <Card className="p-4">
           <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">
             Total Parties
           </div>
-          <div className="text-2xl tabular font-bold text-navy-900 dark:text-white mt-1">
-            {stats.total}
-          </div>
+          {loading ? (
+            <Skeleton className="h-8 w-16 mt-1" />
+          ) : (
+            <div className="text-2xl tabular font-bold text-navy-900 dark:text-white mt-1">
+              {stats.total}
+            </div>
+          )}
         </Card>
         <Card className="p-4">
           <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">
             Customers
           </div>
-          <div className="text-2xl tabular font-bold text-info mt-1">{stats.customers}</div>
+          {loading ? (
+            <Skeleton className="h-8 w-16 mt-1" />
+          ) : (
+            <div className="text-2xl tabular font-bold text-info mt-1">{stats.customers}</div>
+          )}
         </Card>
         <Card className="p-4">
           <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">
             Total Receivable
           </div>
-          <div className="text-2xl tabular font-bold text-navy-900 dark:text-white mt-1">
-            {formatCompact(stats.totalAR)}
-          </div>
+          {loading ? (
+            <Skeleton className="h-8 w-24 mt-1" />
+          ) : (
+            <div className="text-2xl tabular font-bold text-navy-900 dark:text-white mt-1">
+              {formatCompact(stats.totalAR)}
+            </div>
+          )}
         </Card>
         <Card className="p-4">
           <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">
             Total Payable
           </div>
-          <div className="text-2xl tabular font-bold text-warning mt-1">
-            {formatCompact(stats.totalAP)}
-          </div>
+          {loading ? (
+            <Skeleton className="h-8 w-24 mt-1" />
+          ) : (
+            <div className="text-2xl tabular font-bold text-warning mt-1">
+              {formatCompact(stats.totalAP)}
+            </div>
+          )}
         </Card>
       </div>
 
-      {/* Type tabs */}
       <div className="flex items-center gap-1 mb-4 border-b border-slate-200 dark:border-navy-700">
         {(
           [
-            ["ALL", "All Parties", parties.length],
-            ["CUSTOMER", "Customers", parties.filter((p) => p.type === "CUSTOMER" || p.type === "BOTH").length],
-            ["SUPPLIER", "Suppliers", parties.filter((p) => p.type === "SUPPLIER" || p.type === "BOTH").length],
-            ["BOTH", "Both", parties.filter((p) => p.type === "BOTH").length],
+            ["ALL", "All Parties"],
+            ["CUSTOMER", "Customers"],
+            ["SUPPLIER", "Suppliers"],
+            ["BOTH", "Both"],
           ] as const
-        ).map(([key, label, count]) => (
+        ).map(([key, label]) => (
           <button
             key={key}
             onClick={() => setTypeFilter(key as Party["type"] | "ALL")}
@@ -266,7 +379,7 @@ export default function PartiesPage() {
             )}
           >
             {label}
-            <Badge variant="muted">{count}</Badge>
+            <Badge variant="muted">{counts[key]}</Badge>
             {typeFilter === key && (
               <span className="absolute left-2 right-2 -bottom-px h-0.5 bg-brand-yellow rounded-t-full" />
             )}
@@ -291,12 +404,20 @@ export default function PartiesPage() {
       />
 
       <Card className="p-0 overflow-hidden">
-        <DataTable
-          columns={columns}
-          data={filtered}
-          rowHref={(p) => `/parties/${p.id}`}
-          pageSize={10}
-        />
+        {loading ? (
+          <div className="p-4 space-y-3">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <Skeleton key={i} className="h-12 w-full" />
+            ))}
+          </div>
+        ) : (
+          <DataTable
+            columns={columns}
+            data={filtered}
+            rowHref={(p) => `/parties/${p.id}`}
+            pageSize={10}
+          />
+        )}
       </Card>
     </>
   );
