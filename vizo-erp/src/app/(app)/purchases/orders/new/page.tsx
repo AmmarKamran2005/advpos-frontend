@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useForm, useFieldArray, type Control } from "react-hook-form";
 import { z } from "zod";
-import { Save, X, Plus, Trash2, Search, Loader2, ArrowLeft, Truck } from "lucide-react";
+import { Save, Plus, Trash2, Search, Loader2, ArrowLeft, Truck, AlertCircle, RefreshCw } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardBody } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -16,11 +16,30 @@ import { Avatar } from "@/components/ui/avatar";
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from "@/components/ui/form";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from "@/components/ui/command";
+import axios from "axios";
+import { Skeleton } from "@/components/ui/skeleton";
 import { vizoResolver } from "@/lib/zod-resolver";
-import { parties } from "@/data/parties";
-import { products } from "@/data/products";
-import { activeLocations } from "@/data/settings";
 import { toast } from "@/components/ui/toaster";
+import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
+
+/* GET /purchases/lookups. Suppliers, receiving locations and the product
+   catalogue all used to be hard-coded arrays out of src/data, which is why a
+   supplier or item created through the app could never be put on a purchase
+   order. Fetched on every mount so the pickers cannot fall behind. */
+type LookupSupplier = { id: number; code: string; name: string };
+type LookupLocation = { id: number; code: string; name: string };
+type LookupProduct = {
+  id: number; sku: string; name: string;
+  costPrice: number; packing: number; taxRatePercent?: number;
+};
+type Lookups = { suppliers: LookupSupplier[]; locations: LookupLocation[]; products: LookupProduct[] };
+
+function apiMessage(e: unknown, fallback: string) {
+  if (axios.isAxiosError(e) && e.response) {
+    return (e.response.data as { message?: string })?.message ?? fallback;
+  }
+  return "Cannot reach the server.";
+}
 import { formatMoney } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -39,7 +58,7 @@ const Schema = z.object({
   poDate: z.string().min(1),
   expectedDate: z.string().min(1, "Expected date required"),
   items: z.array(ItemSchema).min(1, "Add at least one item"),
-  shippingAmount: z.coerce.number().min(0),
+  discount: z.coerce.number().min(0),
   notes: z.string().max(500).optional(),
 }).refine((d) => new Date(d.expectedDate) >= new Date(d.poDate), { message: "Expected date must be on or after PO date", path: ["expectedDate"] });
 
@@ -50,15 +69,19 @@ export default function NewPurchaseOrderPage() {
   const [supplierOpen, setSupplierOpen] = React.useState(false);
   const [productOpen, setProductOpen] = React.useState(false);
 
+  const [lookups, setLookups] = React.useState<Lookups>({ suppliers: [], locations: [], products: [] });
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+
   const form = useForm<Form>({
     resolver: vizoResolver(Schema),
     defaultValues: {
       supplierId: 0 as unknown as number,
-      locationId: activeLocations()[0]?.id ?? 1,
+      locationId: 0,
       poDate: new Date().toISOString().slice(0, 10),
       expectedDate: new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10),
       items: [],
-      shippingAmount: 0,
+      discount: 0,
       notes: "",
     },
   });
@@ -66,25 +89,82 @@ export default function NewPurchaseOrderPage() {
   const { fields, append, remove } = useFieldArray({ control: form.control, name: "items" });
   const items = form.watch("items");
   const supplierId = form.watch("supplierId");
-  const shipping = form.watch("shippingAmount") || 0;
-  const supplier = parties.find((p) => p.id === supplierId);
-  const suppliers = parties.filter((p) => p.type === "SUPPLIER" || p.type === "BOTH");
+  const discount = form.watch("discount") || 0;
+
+  const load = React.useCallback(async () => {
+    try {
+      const res = await axios.get<Lookups>(`${API_BASE_URL}/purchases/lookups`, { headers: authHeader() });
+      setLookups({
+        suppliers: res.data.suppliers ?? [],
+        locations: res.data.locations ?? [],
+        products: res.data.products ?? [],
+      });
+      form.setValue("locationId", res.data.locations?.[0]?.id ?? 0);
+      setError(null);
+    } catch (e) {
+      setError(apiMessage(e, "Could not load suppliers, locations and products."));
+    } finally {
+      setLoading(false);
+    }
+  }, [form]);
+
+  React.useEffect(() => {
+    /* eslint-disable-next-line react-hooks/set-state-in-effect --
+       The brief for this project is axios inside the page driven by
+       useState/useEffect. This rule wants the fetch moved to the server, which
+       is a different architecture, not a bug in this line. */
+    void load();
+  }, [load]);
+
+  const supplier = lookups.suppliers.find((p) => p.id === supplierId);
+  const suppliers = lookups.suppliers;
 
   const subtotal = items.reduce((s, i) => s + i.unitCost * i.qty, 0);
   const tax = items.reduce((s, i) => s + (i.unitCost * i.qty * (i.taxPercent / 100)), 0);
-  const total = subtotal + tax + Number(shipping);
+  const total = subtotal + tax - Number(discount);
 
   function pickProduct(id: number) {
-    const p = products.find((x) => x.id === id);
+    const p = lookups.products.find((x) => x.id === id);
     if (!p) return;
-    append({ productId: id, name: p.name, sku: p.sku, qty: 1, unitCost: p.costPrice, taxPercent: p.taxRatePercent });
+    if (form.getValues("items").some((i) => i.productId === id)) {
+      toast.info("That item is already on this order.");
+      setProductOpen(false);
+      return;
+    }
+    append({
+      productId: id, name: p.name, sku: p.sku, qty: 1,
+      unitCost: p.costPrice,
+      taxPercent: p.taxRatePercent ?? 18,
+    });
     setProductOpen(false);
   }
 
   async function onSubmit(d: Form) {
-    await new Promise((r) => setTimeout(r, 700));
-    toast.success("Purchase Order created", { description: `PO of ${formatMoney(total)} sent for approval.` });
-    router.push("/purchases/orders");
+    try {
+      const res = await axios.post<{ id: number; message: string }>(
+        `${API_BASE_URL}/purchases/orders`,
+        {
+          supplierId: d.supplierId,
+          locationId: d.locationId,
+          poDate: d.poDate,
+          expectedDate: d.expectedDate,
+          discount: Number(d.discount) || 0,
+          notes: d.notes?.trim() || null,
+          submitForApproval: true,
+          lines: d.items.map((i) => ({
+            productId: i.productId,
+            qty: Number(i.qty) || 0,
+            unitCost: Number(i.unitCost) || 0,
+            taxPercent: Number(i.taxPercent) || 0,
+          })),
+        },
+        { headers: authHeader() }
+      );
+      toast.success("Purchase order created", { description: res.data.message });
+      router.push(`/purchases/orders/${res.data.id}`);
+    } catch (e) {
+      toast.error("Purchase order not created", { description: apiMessage(e, "Please try again.") });
+    }
   }
 
   return (
@@ -95,12 +175,27 @@ export default function NewPurchaseOrderPage() {
         actions={
           <>
             <Button variant="ghost" asChild><Link href="/purchases/orders"><ArrowLeft />Back</Link></Button>
-            <Button variant="accent" onClick={form.handleSubmit(onSubmit)} disabled={form.formState.isSubmitting}>
+            <Button variant="accent" onClick={form.handleSubmit(onSubmit)} disabled={form.formState.isSubmitting || loading}>
               {form.formState.isSubmitting ? <><Loader2 className="size-4 animate-spin" /> Saving…</> : <><Save />Submit for Approval</>}
             </Button>
           </>
         }
       />
+
+      {error && (
+        <Card className="mb-6">
+          <CardBody className="flex items-center gap-3">
+            <AlertCircle className="size-5 text-danger shrink-0" />
+            <div className="flex-1">
+              <div className="text-sm font-semibold text-navy-900 dark:text-white">{error}</div>
+              <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">The API must be running on {API_BASE_URL}.</div>
+            </div>
+            <Button variant="ghost" size="sm" className="gap-1.5" onClick={() => { setLoading(true); void load(); }}>
+              <RefreshCw className="size-4" /> Try again
+            </Button>
+          </CardBody>
+        </Card>
+      )}
 
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="grid grid-cols-1 lg:grid-cols-3 gap-6" noValidate>
@@ -113,10 +208,10 @@ export default function NewPurchaseOrderPage() {
                   {supplier ? (
                     <div className="flex items-center justify-between p-3 border border-slate-200 dark:border-navy-700 rounded-lg">
                       <div className="flex items-center gap-3">
-                        <Avatar initials={supplier.initials} size="sm" />
+                        <Avatar initials={supplier.name.slice(0, 2).toUpperCase()} size="sm" />
                         <div>
-                          <div className="font-medium text-navy-900 dark:text-white">{supplier.legalName}</div>
-                          <div className="text-2xs text-slate-500 dark:text-slate-400">{supplier.partyCode} · {supplier.city}</div>
+                          <div className="font-medium text-navy-900 dark:text-white">{supplier.name}</div>
+                          <div className="text-2xs text-slate-500 dark:text-slate-400">{supplier.code}</div>
                         </div>
                       </div>
                       <Button type="button" variant="ghost" size="sm" onClick={() => form.setValue("supplierId", 0 as unknown as number)}>Change</Button>
@@ -135,11 +230,11 @@ export default function NewPurchaseOrderPage() {
                             <CommandEmpty>No supplier found.</CommandEmpty>
                             <CommandGroup>
                               {suppliers.map((p) => (
-                                <CommandItem key={p.id} value={`${p.legalName} ${p.partyCode}`} onSelect={() => { form.setValue("supplierId", p.id); setSupplierOpen(false); }}>
-                                  <Avatar initials={p.initials} size="sm" />
+                                <CommandItem key={p.id} value={`${p.name} ${p.code}`} onSelect={() => { form.setValue("supplierId", p.id); setSupplierOpen(false); }}>
+                                  <Avatar initials={p.name.slice(0, 2).toUpperCase()} size="sm" />
                                   <div>
-                                    <div className="text-sm font-medium text-navy-900 dark:text-white">{p.legalName}</div>
-                                    <div className="text-2xs text-slate-500 dark:text-slate-400">{p.partyCode}</div>
+                                    <div className="text-sm font-medium text-navy-900 dark:text-white">{p.name}</div>
+                                    <div className="text-2xs text-slate-500 dark:text-slate-400">{p.code}</div>
                                   </div>
                                 </CommandItem>
                               ))}
@@ -157,9 +252,11 @@ export default function NewPurchaseOrderPage() {
                     <FormItem>
                       <FormLabel required>Receiving Location</FormLabel>
                       <FormControl>
-                        <SelectNative {...field}>
-                          {activeLocations().map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
-                        </SelectNative>
+                        {loading ? <Skeleton className="h-10" /> : (
+                          <SelectNative {...field}>
+                            {lookups.locations.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
+                          </SelectNative>
+                        )}
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -188,15 +285,14 @@ export default function NewPurchaseOrderPage() {
                         <CommandList>
                           <CommandEmpty>No product found.</CommandEmpty>
                           <CommandGroup>
-                            {products.slice(0, 30).map((p) => (
-                              <CommandItem key={p.id} value={`${p.sku} ${p.name}`} onSelect={() => pickProduct(p.id)}>
-                                <div className="flex-1 min-w-0">
-                                  <div className="text-sm font-medium text-navy-900 dark:text-white truncate">{p.name}</div>
-                                  <div className="text-2xs tabular text-slate-500 dark:text-slate-400">{p.sku}</div>
-                                </div>
-                                <span className="tabular text-2xs text-slate-500 dark:text-slate-400">Cost {formatMoney(p.costPrice)}</span>
-                              </CommandItem>
-                            ))}
+                            {lookups.products.map((p) => (
+                          <CommandItem key={p.id} value={`${p.sku} ${p.name}`} onSelect={() => pickProduct(p.id)}>
+                            <div className="flex-1">
+                              <div className="text-sm">{p.name}</div>
+                              <div className="text-2xs tabular text-slate-500">{p.sku} · cost {formatMoney(p.costPrice)}</div>
+                            </div>
+                          </CommandItem>
+                        ))}
                           </CommandGroup>
                         </CommandList>
                       </Command>
@@ -237,9 +333,9 @@ export default function NewPurchaseOrderPage() {
                   <RowKV label="Items" v={`${fields.length}`} />
                   <RowKV label="Subtotal" v={formatMoney(subtotal)} />
                   <RowKV label="Tax" v={formatMoney(tax)} />
-                  <FormField control={form.control} name="shippingAmount" render={({ field }) => (
+                  <FormField control={form.control} name="discount" render={({ field }) => (
                     <FormItem className="flex items-center gap-3">
-                      <FormLabel className="text-slate-500 dark:text-slate-400 font-normal !mb-0 flex-1">Shipping</FormLabel>
+                      <FormLabel className="text-slate-500 dark:text-slate-400 font-normal !mb-0 flex-1">Discount</FormLabel>
                       <FormControl><Input type="number" min={0} step="0.01" className="w-24 text-right tabular" {...field} /></FormControl>
                     </FormItem>
                   )} />
@@ -250,7 +346,7 @@ export default function NewPurchaseOrderPage() {
                     </div>
                   </div>
                 </div>
-                <Button type="submit" variant="accent" size="md" className="w-full mt-6 gap-1.5" disabled={form.formState.isSubmitting}>
+                <Button type="submit" variant="accent" size="md" className="w-full mt-6 gap-1.5" disabled={form.formState.isSubmitting || loading}>
                   {form.formState.isSubmitting ? <><Loader2 className="size-4 animate-spin" />Submitting…</> : <><Save />Submit PO</>}
                 </Button>
               </CardBody>

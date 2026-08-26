@@ -3,154 +3,215 @@
 import * as React from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import axios from "axios";
 import {
-  ArrowLeft, ArrowRight, AlertCircle, CheckCircle2, Truck, Package, Clock,
-  Send, MoreHorizontal, Printer, Calendar, X,
+  AlertCircle, Printer, RefreshCw, ArrowRight, PackageCheck, Loader2, Truck,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardBody } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge, StatusPill } from "@/components/ui/badge";
+import { StatusPill } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogBody, DialogFooter, DialogDescription,
-} from "@/components/ui/dialog";
-import { ConfirmDialog } from "@/components/dialogs/confirm-dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/toaster";
-import { formatDate } from "@/lib/format";
+import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
+import { formatDate, formatNumber } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-type Status = "DRAFT" | "PENDING_APPROVAL" | "APPROVED" | "IN_TRANSIT" | "RECEIVED" | "REJECTED";
+/* GET /inventory/transfers/{id}. The page held a SAMPLE_ITEMS array, so every
+   transfer id showed the same invented lines. */
+type TransferLine = {
+  id: number; lineNo: number; productId: number; sku: string; name: string;
+  qty: number; packing: number;
+};
+
 type Transfer = {
-  id: number;
-  transferNo: string;
-  date: string;
-  fromWh: string;
-  toWh: string;
-  itemCount: number;
-  totalUnits: number;
-  status: Status;
-  initiatedBy: string;
-  notes?: string;
+  id: number; transferNo: string;
+  fromLocationId: number; fromLocation: string;
+  toLocationId: number; toLocation: string;
+  transferDate: string; receivedOn: string | null;
+  status: string; statusName: string;
+  initiatedBy: string | null; approvedBy: string | null;
+  notes: string | null;
+  lines: TransferLine[];
 };
 
-const TRANSFERS: Transfer[] = [
-  { id: 1, transferNo: "TRF-26-0014", date: "2026-04-30", fromWh: "Karachi Main",       toWh: "Lahore Distribution", itemCount: 8, totalUnits: 240, status: "IN_TRANSIT",       initiatedBy: "Hassan Raza", notes: "Urgent stock for Lahore launch event" },
-  { id: 2, transferNo: "TRF-26-0013", date: "2026-04-29", fromWh: "Karachi Main",       toWh: "Islamabad Hub",       itemCount: 5, totalUnits: 150, status: "RECEIVED",         initiatedBy: "Bilal Ahmed" },
-  { id: 3, transferNo: "TRF-26-0012", date: "2026-04-29", fromWh: "Karachi Main",       toWh: "Lahore Distribution", itemCount: 4, totalUnits: 100, status: "RECEIVED",         initiatedBy: "Hassan Raza" },
-  { id: 4, transferNo: "TRF-26-0008", date: "2026-04-28", fromWh: "Lahore Distribution", toWh: "Islamabad Hub",       itemCount: 3, totalUnits: 60,  status: "APPROVED",         initiatedBy: "Sara Khan" },
-  { id: 5, transferNo: "TRF-26-0011", date: "2026-04-25", fromWh: "Karachi Main",       toWh: "Lahore Distribution", itemCount: 6, totalUnits: 180, status: "PENDING_APPROVAL", initiatedBy: "Hassan Raza" },
-  { id: 6, transferNo: "TRF-26-0010", date: "2026-04-24", fromWh: "Karachi Main",       toWh: "Islamabad Hub",       itemCount: 2, totalUnits: 50,  status: "REJECTED",         initiatedBy: "Hassan Raza", notes: "Rejected — destination over capacity" },
-];
-
-const SAMPLE_ITEMS = [
-  { id: 1, sku: "VZ-TIT-T9-BLK",  name: "VIZO Titan T9 Wireless Earbuds — Black", qtySent: 100, qtyReceived: 100, unitCost: 580 },
-  { id: 2, sku: "VZ-VLT-65W-PD",  name: "VIZO VOLT 65W GaN Type-C Charger",       qtySent: 80,  qtyReceived: 80,  unitCost: 1480 },
-  { id: 3, sku: "VZ-VR-TC-1.5M",  name: "VIZO VR Type-C Data Cable 1.5m",         qtySent: 60,  qtyReceived: 60,  unitCost: 95 },
-];
-
-const STATE_FLOW: Status[] = ["DRAFT", "PENDING_APPROVAL", "APPROVED", "IN_TRANSIT", "RECEIVED"];
-const STATUS_COLOR: Record<Status, "muted" | "warning" | "info" | "success" | "danger"> = {
+const STATUS_VARIANT: Record<string, "muted" | "info" | "success" | "warning" | "danger"> = {
   DRAFT: "muted", PENDING_APPROVAL: "warning", APPROVED: "info",
-  IN_TRANSIT: "warning", RECEIVED: "success", REJECTED: "danger",
+  IN_TRANSIT: "info", RECEIVED: "success", CANCELLED: "danger",
 };
+
+/* Where a transfer is in its life. The database also carries DRAFT and
+   CANCELLED, which sit outside this line rather than on it. */
+const FLOW = ["PENDING_APPROVAL", "APPROVED", "IN_TRANSIT", "RECEIVED"];
+const FLOW_LABEL: Record<string, string> = {
+  PENDING_APPROVAL: "Awaiting approval",
+  APPROVED: "Approved",
+  IN_TRANSIT: "On the way",
+  RECEIVED: "Received",
+};
+
+function apiMessage(e: unknown, fallback: string) {
+  if (axios.isAxiosError(e) && e.response) {
+    return (e.response.data as { message?: string })?.message ?? fallback;
+  }
+  return "Cannot reach the server.";
+}
 
 export default function TransferDetailPage() {
   const params = useParams<{ id: string }>();
-  const id = parseInt(params.id ?? "1", 10);
-  const t = TRANSFERS.find((x) => x.id === id);
+  const id = parseInt(params.id ?? "0", 10);
 
-  const [status, setStatus] = React.useState<Status>(t?.status ?? "DRAFT");
-  const [submitConfirm, setSubmitConfirm] = React.useState(false);
-  const [approveConfirm, setApproveConfirm] = React.useState(false);
-  const [shipConfirm, setShipConfirm] = React.useState(false);
-  const [receiveOpen, setReceiveOpen] = React.useState(false);
-  const [rejectConfirm, setRejectConfirm] = React.useState(false);
-  const [cancelConfirm, setCancelConfirm] = React.useState(false);
+  const [transfer, setTransfer] = React.useState<Transfer | null>(null);
+  const [loading, setLoading] = React.useState(true);
+  const [notFound, setNotFound] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const [receiving, setReceiving] = React.useState(false);
 
-  // For receive dialog: per-line received qty
-  const [receivedQty, setReceivedQty] = React.useState<Record<number, number>>(
-    Object.fromEntries(SAMPLE_ITEMS.map((i) => [i.id, i.qtySent]))
-  );
+  const load = React.useCallback(async () => {
+    if (!id) { setNotFound(true); setLoading(false); return; }
+    try {
+      const res = await axios.get<Transfer>(`${API_BASE_URL}/inventory/transfers/${id}`, { headers: authHeader() });
+      setTransfer(res.data);
+      setNotFound(false);
+      setError(null);
+    } catch (e) {
+      if (axios.isAxiosError(e) && e.response?.status === 404) setNotFound(true);
+      else setError(apiMessage(e, "Could not load this transfer."));
+    } finally {
+      setLoading(false);
+    }
+  }, [id]);
 
-  if (!t) {
-    return <EmptyState icon={AlertCircle} title="Transfer not found" action={<Button asChild><Link href="/inventory/transfers">Back</Link></Button>} />;
+  React.useEffect(() => {
+    /* eslint-disable-next-line react-hooks/set-state-in-effect --
+       The brief for this project is axios inside the page driven by
+       useState/useEffect. This rule wants the fetch moved to the server, which
+       is a different architecture, not a bug in this line. */
+    void load();
+  }, [load]);
+
+  async function receive() {
+    if (!transfer) return;
+    setReceiving(true);
+    try {
+      const res = await axios.post<{ message: string }>(
+        `${API_BASE_URL}/inventory/transfers/${transfer.id}/receive`, {}, { headers: authHeader() }
+      );
+      await load();
+      toast.success("Transfer received", { description: res.data.message });
+    } catch (e) {
+      toast.error("Not received", { description: apiMessage(e, "Please try again.") });
+    } finally {
+      setReceiving(false);
+    }
   }
 
-  const stateIdx = STATE_FLOW.indexOf(status);
-  const totalSent = SAMPLE_ITEMS.reduce((s, i) => s + i.qtySent, 0);
-  const totalReceived = Object.values(receivedQty).reduce((a, b) => a + Number(b), 0);
-  const discrepancy = totalSent - totalReceived;
-
-  function performAction(next: Status, msg: string, desc?: string) {
-    setStatus(next);
-    toast.success(msg, { description: desc });
+  if (loading) {
+    return (
+      <>
+        <PageHeader breadcrumbs={[{ label: "Inventory" }, { label: "Transfers", href: "/inventory/transfers" }]} title="Loading…" />
+        <Skeleton className="h-64" />
+      </>
+    );
   }
+
+  if (notFound) {
+    return (
+      <EmptyState icon={AlertCircle} title="Transfer not found" description={`No stock transfer with id ${id}.`}
+        action={<Button variant="accent" asChild><Link href="/inventory/transfers">Back to Transfers</Link></Button>} />
+    );
+  }
+
+  if (error || !transfer) {
+    return (
+      <>
+        <PageHeader breadcrumbs={[{ label: "Inventory" }, { label: "Transfers", href: "/inventory/transfers" }]} title="Stock Transfer" />
+        <Card><CardBody className="flex items-center gap-3">
+          <AlertCircle className="size-5 text-danger shrink-0" />
+          <div className="flex-1">
+            <div className="text-sm font-semibold text-navy-900 dark:text-white">{error}</div>
+            <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">The API must be running on {API_BASE_URL}.</div>
+          </div>
+          <Button variant="ghost" size="sm" className="gap-1.5" onClick={() => { setLoading(true); void load(); }}>
+            <RefreshCw className="size-4" /> Try again
+          </Button>
+        </CardBody></Card>
+      </>
+    );
+  }
+
+  const stageIdx = FLOW.indexOf(transfer.status);
+  const units = transfer.lines.reduce((s, l) => s + l.qty, 0);
+  const canReceive = transfer.status === "IN_TRANSIT" || transfer.status === "APPROVED";
 
   return (
     <>
       <PageHeader
-        breadcrumbs={[{ label: "Inventory" }, { label: "Transfers", href: "/inventory/transfers" }, { label: t.transferNo }]}
+        breadcrumbs={[{ label: "Inventory" }, { label: "Transfers", href: "/inventory/transfers" }, { label: transfer.transferNo }]}
         title={
           <div className="flex items-center gap-3 flex-wrap">
-            <span>{t.transferNo}</span>
-            <StatusPill variant={STATUS_COLOR[status]}>{status.replace("_", " ")}</StatusPill>
+            <span>{transfer.transferNo}</span>
+            <StatusPill variant={STATUS_VARIANT[transfer.status] ?? "muted"}>{transfer.statusName}</StatusPill>
           </div>
         }
-        subtitle={`${t.fromWh} → ${t.toWh} · Initiated by ${t.initiatedBy} on ${formatDate(t.date)}`}
+        subtitle={`${transfer.fromLocation} → ${transfer.toLocation} · raised ${formatDate(transfer.transferDate)}`}
         actions={
           <>
-            <Button variant="ghost" asChild><Link href="/inventory/transfers"><ArrowLeft />Back</Link></Button>
-            <Button variant="ghost" className="gap-1.5" onClick={() => toast.info("Printing transfer doc…")}><Printer /><span className="hidden sm:inline">Print</span></Button>
-
-            {status === "DRAFT" && (
-              <>
-                <Button variant="ghost" className="text-danger" onClick={() => setCancelConfirm(true)}>Cancel</Button>
-                <Button variant="accent" className="gap-1.5" onClick={() => setSubmitConfirm(true)}><Send />Submit for Approval</Button>
-              </>
-            )}
-            {status === "PENDING_APPROVAL" && (
-              <>
-                <Button variant="ghost" className="text-danger" onClick={() => setRejectConfirm(true)}>Reject</Button>
-                <Button variant="accent" className="gap-1.5" onClick={() => setApproveConfirm(true)}><CheckCircle2 />Approve</Button>
-              </>
-            )}
-            {status === "APPROVED" && (
-              <Button variant="accent" className="gap-1.5" onClick={() => setShipConfirm(true)}><Truck />Ship</Button>
-            )}
-            {status === "IN_TRANSIT" && (
-              <Button variant="accent" className="gap-1.5" onClick={() => setReceiveOpen(true)}><Package />Receive</Button>
+            <Button variant="ghost" className="gap-1.5" onClick={() => window.print()}><Printer />Print</Button>
+            <Button variant="ghost" className="gap-1.5" onClick={() => void load()}><RefreshCw className="size-4" />Refresh</Button>
+            {canReceive && (
+              <Button variant="accent" className="gap-1.5" onClick={() => void receive()} disabled={receiving}>
+                {receiving ? <Loader2 className="size-4 animate-spin" /> : <PackageCheck className="size-4" />}
+                Mark received
+              </Button>
             )}
           </>
         }
       />
 
+      {/* Route */}
+      <Card className="mb-6">
+        <CardBody className="flex flex-col sm:flex-row sm:items-center gap-4">
+          <div className="flex-1">
+            <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">From</div>
+            <div className="text-base font-semibold text-navy-900 dark:text-white mt-0.5">{transfer.fromLocation}</div>
+          </div>
+          <ArrowRight className="size-5 text-brand-yellow shrink-0" />
+          <div className="flex-1">
+            <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">To</div>
+            <div className="text-base font-semibold text-navy-900 dark:text-white mt-0.5">{transfer.toLocation}</div>
+          </div>
+          <div className="sm:text-right">
+            <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Units moving</div>
+            <div className="text-2xl tabular font-bold text-navy-900 dark:text-white mt-0.5">{formatNumber(units)}</div>
+          </div>
+        </CardBody>
+      </Card>
+
       {/* Pipeline */}
-      {status !== "REJECTED" && (
+      {transfer.status !== "CANCELLED" && transfer.status !== "DRAFT" && (
         <Card className="mb-6">
           <CardBody>
-            <div className="flex items-center justify-between gap-2">
-              {STATE_FLOW.map((s, i) => {
-                const passed = i <= stateIdx;
-                const current = i === stateIdx;
+            <div className="flex items-center gap-2">
+              {FLOW.map((st, i) => {
+                const done = stageIdx >= i;
                 return (
-                  <React.Fragment key={s}>
+                  <React.Fragment key={st}>
                     <div className="flex flex-col items-center gap-1.5 flex-1">
-                      <div className={cn("size-9 rounded-full flex items-center justify-center text-xs font-bold transition-colors",
-                        current ? "bg-brand-yellow text-navy-900 ring-4 ring-brand-yellow/20"
-                        : passed ? "bg-success text-white"
-                        : "bg-slate-200 dark:bg-navy-700 text-slate-500"
+                      <div className={cn(
+                        "size-8 rounded-full flex items-center justify-center text-xs font-bold",
+                        done ? "bg-success text-white" : "bg-slate-100 dark:bg-navy-800 text-slate-400"
                       )}>
-                        {passed && !current ? <CheckCircle2 className="size-4" /> : i + 1}
+                        {done ? <PackageCheck className="size-4" /> : i + 1}
                       </div>
-                      <div className={cn("text-2xs font-semibold uppercase tracking-wider text-center", passed ? "text-navy-900 dark:text-white" : "text-slate-400")}>
-                        {s.replace("_", " ")}
-                      </div>
+                      <span className={cn("text-2xs font-medium text-center", done ? "text-navy-900 dark:text-white" : "text-slate-400")}>
+                        {FLOW_LABEL[st]}
+                      </span>
                     </div>
-                    {i < STATE_FLOW.length - 1 && <div className={cn("flex-1 h-0.5 -mt-6", i < stateIdx ? "bg-success" : "bg-slate-200 dark:bg-navy-700")} />}
+                    {i < FLOW.length - 1 && (
+                      <div className={cn("h-0.5 flex-1 rounded", stageIdx > i ? "bg-success" : "bg-slate-100 dark:bg-navy-800")} />
+                    )}
                   </React.Fragment>
                 );
               })}
@@ -159,201 +220,75 @@ export default function TransferDetailPage() {
         </Card>
       )}
 
-      {status === "REJECTED" && (
-        <Card className="bg-danger/5 border-danger/30 mb-6">
-          <CardBody>
-            <div className="flex items-start gap-3">
-              <AlertCircle className="size-5 text-danger flex-shrink-0 mt-0.5" />
-              <div>
-                <h4 className="text-sm font-semibold text-danger-dark dark:text-danger-light">Transfer rejected</h4>
-                <p className="text-sm text-danger-dark/80 dark:text-danger-light/80 mt-1">
-                  {t.notes ?? "This transfer was rejected during approval."}
-                </p>
-              </div>
-            </div>
-          </CardBody>
-        </Card>
-      )}
-
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-6">
+        <div className="lg:col-span-2">
           <Card className="p-0 overflow-hidden">
-            <div className="px-5 py-4 border-b border-slate-200 dark:border-navy-700 flex items-center justify-between">
-              <div>
-                <h3 className="text-base font-semibold text-navy-900 dark:text-white">Items</h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{t.itemCount} products · {totalSent} units</p>
-              </div>
-              {(status === "RECEIVED" || status === "IN_TRANSIT") && discrepancy !== 0 && (
-                <Badge variant={discrepancy > 0 ? "danger" : "warning"}>
-                  {discrepancy > 0 ? `${discrepancy} units short` : `${Math.abs(discrepancy)} units extra`}
-                </Badge>
-              )}
+            <div className="px-5 py-4 border-b border-slate-200 dark:border-navy-700">
+              <h3 className="text-base font-semibold text-navy-900 dark:text-white">Items</h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                {transfer.lines.length} {transfer.lines.length === 1 ? "line" : "lines"}
+              </p>
             </div>
-            <table className="w-full">
-              <thead>
-                <tr className="bg-slate-50 dark:bg-navy-700/50 text-left">
-                  <th className="text-2xs uppercase font-semibold text-slate-500 dark:text-slate-400 px-4 py-2">Product</th>
-                  <th className="text-2xs uppercase font-semibold text-slate-500 dark:text-slate-400 px-4 py-2 text-right">Qty Sent</th>
-                  {(status === "RECEIVED") && <th className="text-2xs uppercase font-semibold text-slate-500 dark:text-slate-400 px-4 py-2 text-right">Qty Received</th>}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-navy-700">
-                {SAMPLE_ITEMS.map((item) => (
-                  <tr key={item.id}>
-                    <td className="px-4 py-3">
-                      <div className="text-sm font-medium text-navy-900 dark:text-white">{item.name}</div>
-                      <div className="text-2xs tabular text-slate-500 dark:text-slate-400 mt-0.5">{item.sku}</div>
-                    </td>
-                    <td className="px-4 py-3 text-right tabular text-sm font-semibold text-navy-900 dark:text-white">{item.qtySent}</td>
-                    {status === "RECEIVED" && <td className="px-4 py-3 text-right tabular text-sm font-semibold text-success">{item.qtyReceived}</td>}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            {transfer.lines.length === 0 ? (
+              <CardBody><EmptyState icon={AlertCircle} title="No lines on this transfer" /></CardBody>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-slate-50 dark:bg-navy-700/50 text-left">
+                      <th className="text-2xs uppercase font-semibold text-slate-500 dark:text-slate-400 px-4 py-2">Product</th>
+                      <th className="text-2xs uppercase font-semibold text-slate-500 dark:text-slate-400 px-4 py-2 text-right">Qty</th>
+                      <th className="text-2xs uppercase font-semibold text-slate-500 dark:text-slate-400 px-4 py-2 text-right">Packets</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-navy-700">
+                    {transfer.lines.map((l) => (
+                      <tr key={l.id}>
+                        <td className="px-4 py-3">
+                          <Link href={`/inventory/products/${l.productId}`} className="text-sm font-medium text-navy-900 dark:text-white hover:text-brand-yellow">
+                            {l.name}
+                          </Link>
+                          <div className="text-2xs tabular text-slate-500 dark:text-slate-400 mt-0.5">{l.sku}</div>
+                        </td>
+                        <td className="px-4 py-3 text-right tabular text-sm font-semibold text-navy-900 dark:text-white">{formatNumber(l.qty)}</td>
+                        <td className="px-4 py-3 text-right tabular text-xs text-slate-500 dark:text-slate-400">
+                          {l.packing > 0 ? `${Math.floor(l.qty / l.packing)} × ${l.packing}` : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </Card>
-
-          {(status === "IN_TRANSIT" || status === "RECEIVED") && (
-            <Card className="bg-info/5 border-info/30">
-              <CardBody>
-                <h4 className="text-sm font-semibold text-info-dark dark:text-info-light mb-2">Accounting Postings</h4>
-                <div className="text-xs font-mono text-info-dark/80 dark:text-info-light/80 space-y-1">
-                  {status === "IN_TRANSIT" && (
-                    <>
-                      <div>📦 On Ship:</div>
-                      <div className="pl-4">DR Goods-in-Transit  · CR Inventory ({t.fromWh})</div>
-                    </>
-                  )}
-                  {status === "RECEIVED" && (
-                    <>
-                      <div>✅ On Receive:</div>
-                      <div className="pl-4">DR Inventory ({t.toWh})  · CR Goods-in-Transit</div>
-                      {discrepancy > 0 && <div className="pl-4 text-danger">DR Shrinkage Expense  · CR Goods-in-Transit (for {discrepancy} units short)</div>}
-                    </>
-                  )}
-                </div>
-              </CardBody>
-            </Card>
-          )}
         </div>
 
-        <div className="space-y-6">
+        <div>
           <Card>
             <CardBody>
-              <h3 className="text-sm font-semibold text-navy-900 dark:text-white mb-3">Route</h3>
-              <div className="text-sm">
-                <div className="font-semibold text-navy-900 dark:text-white">{t.fromWh}</div>
-                <div className="my-2 ml-2"><ArrowRight className="size-4 text-brand-yellow rotate-90" /></div>
-                <div className="font-semibold text-navy-900 dark:text-white">{t.toWh}</div>
-              </div>
-            </CardBody>
-          </Card>
-
-          <Card>
-            <CardBody>
-              <h3 className="text-sm font-semibold text-navy-900 dark:text-white mb-3">Details</h3>
+              <h3 className="text-sm font-semibold text-navy-900 dark:text-white mb-3 inline-flex items-center gap-2">
+                <Truck className="size-4 text-slate-400" /> Transfer Details
+              </h3>
               <dl className="space-y-2.5 text-sm">
-                <Meta label="Transfer #" value={<span className="tabular">{t.transferNo}</span>} />
-                <Meta label="Date" value={formatDate(t.date)} />
-                <Meta label="Items" value={`${t.itemCount} products · ${totalSent} units`} />
-                <Meta label="Initiated by" value={t.initiatedBy} />
+                <Meta label="Raised" value={formatDate(transfer.transferDate)} />
+                <Meta label="Received" value={transfer.receivedOn ? formatDate(transfer.receivedOn) : "Not yet"} />
+                <Meta label="Initiated by" value={transfer.initiatedBy ?? "—"} />
+                <Meta label="Approved by" value={transfer.approvedBy ?? "Not approved"} />
               </dl>
-              {t.notes && (
-                <div className="mt-3 pt-3 border-t border-slate-100 dark:border-navy-700">
-                  <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Notes</div>
-                  <p className="text-xs text-slate-600 dark:text-slate-300 mt-1.5">{t.notes}</p>
-                </div>
+              {transfer.notes && (
+                <p className="mt-3 pt-3 border-t border-slate-100 dark:border-navy-700 text-xs text-slate-600 dark:text-slate-300">
+                  {transfer.notes}
+                </p>
+              )}
+              {canReceive && (
+                <p className="mt-3 text-2xs text-slate-500 dark:text-slate-400">
+                  Receiving moves the stock out of {transfer.fromLocation} and into {transfer.toLocation}.
+                </p>
               )}
             </CardBody>
           </Card>
         </div>
       </div>
-
-      {/* Action confirmations */}
-      <ConfirmDialog open={submitConfirm} onOpenChange={setSubmitConfirm}
-        title="Submit for approval?"
-        description="The transfer will move to PENDING_APPROVAL. Location manager will be notified."
-        variant="info" confirmLabel="Submit"
-        onConfirm={() => { performAction("PENDING_APPROVAL", "Submitted for approval"); setSubmitConfirm(false); }} />
-
-      <ConfirmDialog open={approveConfirm} onOpenChange={setApproveConfirm}
-        title="Approve this transfer?"
-        description="Stock will be reserved at the source location. The location team can then ship."
-        variant="info" confirmLabel="Approve"
-        onConfirm={() => { performAction("APPROVED", "Transfer approved", "Stock reserved at source"); setApproveConfirm(false); }} />
-
-      <ConfirmDialog open={rejectConfirm} onOpenChange={setRejectConfirm}
-        title="Reject this transfer?"
-        variant="danger" confirmLabel="Reject" requireReason
-        onConfirm={(r) => { performAction("REJECTED", "Transfer rejected", `Reason: ${r}`); setRejectConfirm(false); }} />
-
-      <ConfirmDialog open={cancelConfirm} onOpenChange={setCancelConfirm}
-        title="Cancel this draft?"
-        variant="danger" confirmLabel="Yes, cancel"
-        onConfirm={() => { toast.success("Draft cancelled"); setCancelConfirm(false); }} />
-
-      <ConfirmDialog open={shipConfirm} onOpenChange={setShipConfirm}
-        title="Mark as shipped?"
-        description="Stock will be removed from the source location and moved to Goods-in-Transit. A journal entry will be posted automatically."
-        variant="info" confirmLabel="Ship now"
-        onConfirm={() => {
-          performAction("IN_TRANSIT", "Transfer shipped", `${totalSent} units en route to ${t.toWh}`);
-          setShipConfirm(false);
-        }} />
-
-      {/* Receive dialog with per-line discrepancy capture */}
-      <Dialog open={receiveOpen} onOpenChange={setReceiveOpen}>
-        <DialogContent size="xl">
-          <DialogHeader>
-            <DialogTitle>Receive transfer at {t.toWh}</DialogTitle>
-            <DialogDescription>Confirm received quantities. Any discrepancy is logged as Shrinkage Expense automatically.</DialogDescription>
-          </DialogHeader>
-          <DialogBody>
-            <div className="space-y-2">
-              {SAMPLE_ITEMS.map((item) => {
-                const got = receivedQty[item.id] ?? item.qtySent;
-                const diff = got - item.qtySent;
-                return (
-                  <div key={item.id} className="grid grid-cols-12 gap-3 items-center p-3 border border-slate-200 dark:border-navy-700 rounded-lg">
-                    <div className="col-span-6">
-                      <div className="text-sm font-medium text-navy-900 dark:text-white">{item.name}</div>
-                      <div className="text-2xs tabular text-slate-500 dark:text-slate-400">{item.sku}</div>
-                    </div>
-                    <div className="col-span-2 text-center">
-                      <div className="text-2xs uppercase text-slate-500">Sent</div>
-                      <div className="tabular text-sm font-bold text-navy-900 dark:text-white">{item.qtySent}</div>
-                    </div>
-                    <div className="col-span-2">
-                      <Label htmlFor={`r-${item.id}`} className="text-2xs">Received</Label>
-                      <Input id={`r-${item.id}`} type="number" min={0} value={got}
-                        onChange={(e) => setReceivedQty((cur) => ({ ...cur, [item.id]: +e.target.value }))}
-                        className="mt-1 text-right tabular" />
-                    </div>
-                    <div className="col-span-2 text-right">
-                      <div className="text-2xs uppercase text-slate-500">Δ</div>
-                      <div className={cn("tabular text-sm font-bold", diff < 0 ? "text-danger" : diff > 0 ? "text-warning" : "text-success")}>
-                        {diff > 0 ? "+" : ""}{diff}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            {discrepancy !== 0 && (
-              <div className="mt-4 p-3 bg-warning/5 border border-warning/30 rounded-lg flex items-start gap-2 text-xs text-warning-dark dark:text-warning-light">
-                <AlertCircle className="size-3.5 flex-shrink-0 mt-0.5" />
-                <span><strong>{Math.abs(discrepancy)} units {discrepancy > 0 ? "short" : "extra"}.</strong> A shrinkage / overage adjustment will be auto-posted.</span>
-              </div>
-            )}
-          </DialogBody>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setReceiveOpen(false)}><X />Cancel</Button>
-            <Button variant="accent" onClick={() => {
-              performAction("RECEIVED", "Transfer received", `${totalReceived} units added to ${t.toWh}`);
-              setReceiveOpen(false);
-            }}><Package />Confirm Receipt</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </>
   );
 }

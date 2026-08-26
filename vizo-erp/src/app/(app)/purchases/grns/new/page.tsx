@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useForm, useFieldArray, type Control } from "react-hook-form";
 import { z } from "zod";
-import { Save, ArrowLeft, Loader2, Package, Search, Truck, AlertTriangle } from "lucide-react";
+import { Save, ArrowLeft, Loader2, Package, Search, Truck, AlertTriangle , AlertCircle, RefreshCw } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardBody } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -16,21 +16,43 @@ import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from "
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from "@/components/ui/command";
 import { vizoResolver } from "@/lib/zod-resolver";
-import { purchaseOrders } from "@/data/purchases";
-import { activeLocations } from "@/data/settings";
+import axios from "axios";
+import { Skeleton } from "@/components/ui/skeleton";
+import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
+
+/* GET /purchases/orders -> the POs that can still be received against, and
+   GET /purchases/orders/{id} -> that order's real lines. Both used to be
+   hard-coded: the PO picker read a frozen array and every PO opened the SAME
+   three sample lines, whichever order you chose. */
+type OpenPo = {
+  id: number; poNo: string; supplierId: number; supplierName: string;
+  status: string; total: number; locationId?: number;
+};
+type PoDetailLine = {
+  id: number; productId: number; sku: string; name: string;
+  qty: number; unitCost: number; received: number;
+};
+type PoDetail = {
+  id: number; poNo: string; supplierId: number; supplierName: string;
+  locationId: number; expectedDate: string | null; lines: PoDetailLine[];
+};
+type LookupLocation = { id: number; code: string; name: string };
+
+function apiMessage(e: unknown, fallback: string) {
+  if (axios.isAxiosError(e) && e.response) {
+    return (e.response.data as { message?: string })?.message ?? fallback;
+  }
+  return "Cannot reach the server.";
+}
 import { toast } from "@/components/ui/toaster";
 import { formatMoney, formatDate } from "@/lib/format";
 
-const SAMPLE_PO_LINES = [
-  { poItemId: 1, sku: "VZ-TIT-T9-BLK",   name: "VIZO Titan T9 Earbuds", ordered: 100, alreadyReceived: 0, unitCost: 580 },
-  { poItemId: 2, sku: "VZ-VLT-65W-PD",   name: "VIZO VOLT 65W Charger", ordered: 80,  alreadyReceived: 0, unitCost: 1480 },
-  { poItemId: 3, sku: "VZ-VR-TC-1.5M",   name: "VIZO VR Type-C Cable",  ordered: 60,  alreadyReceived: 0, unitCost: 95 },
-];
-
 const ItemSchema = z.object({
   poItemId: z.number(),
+  productId: z.coerce.number().positive(),
   sku: z.string(),
   name: z.string(),
+  unitCost: z.coerce.number().nonnegative(),
   ordered: z.number(),
   alreadyReceived: z.number(),
   qtyReceived: z.coerce.number().min(0),
@@ -55,11 +77,18 @@ export default function NewGRNPage() {
   const router = useRouter();
   const [pickPO, setPickPO] = React.useState(false);
 
+  const [openPos, setOpenPos] = React.useState<OpenPo[]>([]);
+  const [locations, setLocations] = React.useState<LookupLocation[]>([]);
+  const [po, setPo] = React.useState<PoDetail | null>(null);
+  const [loading, setLoading] = React.useState(true);
+  const [loadingPo, setLoadingPo] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
   const form = useForm<Form>({
     resolver: vizoResolver(Schema),
     defaultValues: {
       poId: 0 as unknown as number,
-      locationId: activeLocations()[0]?.id ?? 1,
+      locationId: 0,
       receiptDate: new Date().toISOString().slice(0, 10),
       deliveryNoteNo: "",
       vehicleNo: "",
@@ -69,24 +98,106 @@ export default function NewGRNPage() {
   });
   const { fields, replace } = useFieldArray({ control: form.control, name: "items" });
 
-  const poId = form.watch("poId");
   const items = form.watch("items");
-  const po = purchaseOrders.find((p) => p.id === poId);
 
-  const totalAccepted = items.reduce((s, i) => s + i.qtyReceived, 0);
-  const totalDamaged  = items.reduce((s, i) => s + i.qtyDamaged, 0);
-  const totalValue    = items.reduce((s, i) => s + (i.qtyReceived + i.qtyDamaged) * (SAMPLE_PO_LINES.find((l) => l.poItemId === i.poItemId)?.unitCost ?? 0), 0);
+  const load = React.useCallback(async () => {
+    try {
+      const [orders, lookups] = await Promise.all([
+        axios.get<OpenPo[] | { items: OpenPo[] }>(`${API_BASE_URL}/purchases/orders`, { headers: authHeader() }),
+        axios.get<{ locations: LookupLocation[] }>(`${API_BASE_URL}/purchases/lookups`, { headers: authHeader() }),
+      ]);
+      const rows = Array.isArray(orders.data) ? orders.data : orders.data.items;
+      /* Only what can still be received against. A DRAFT order has not been
+         agreed and a RECEIVED one is finished. */
+      setOpenPos(rows.filter((o) => o.status === "APPROVED" || o.status === "PARTIALLY_RECEIVED"));
+      setLocations(lookups.data.locations ?? []);
+      form.setValue("locationId", lookups.data.locations?.[0]?.id ?? 0);
+      setError(null);
+    } catch (e) {
+      setError(apiMessage(e, "Could not load open purchase orders."));
+    } finally {
+      setLoading(false);
+    }
+  }, [form]);
 
-  function pickPo(id: number) {
-    form.setValue("poId", id);
-    replace(SAMPLE_PO_LINES.map((l) => ({ ...l, qtyReceived: 0, qtyDamaged: 0, batchNo: "", expiryDate: "" })));
+  React.useEffect(() => {
+    /* eslint-disable-next-line react-hooks/set-state-in-effect --
+       The brief for this project is axios inside the page driven by
+       useState/useEffect. This rule wants the fetch moved to the server, which
+       is a different architecture, not a bug in this line. */
+    void load();
+  }, [load]);
+
+  const totalAccepted = items.reduce((s, i) => s + (Number(i.qtyReceived) || 0), 0);
+  const totalDamaged  = items.reduce((s, i) => s + (Number(i.qtyDamaged) || 0), 0);
+  const totalValue    = items.reduce(
+    (s, i) => s + ((Number(i.qtyReceived) || 0) + (Number(i.qtyDamaged) || 0)) * (Number(i.unitCost) || 0), 0);
+
+  /** Reads the chosen order and seeds one row per line still outstanding. */
+  async function pickPo(id: number) {
     setPickPO(false);
+    setLoadingPo(true);
+    try {
+      const res = await axios.get<PoDetail>(`${API_BASE_URL}/purchases/orders/${id}`, { headers: authHeader() });
+      setPo(res.data);
+      form.setValue("poId", id);
+      if (res.data.locationId) form.setValue("locationId", res.data.locationId);
+      replace(res.data.lines.map((l) => ({
+        poItemId: l.id,
+        alreadyReceived: l.received,
+        productId: l.productId,
+        sku: l.sku,
+        name: l.name,
+        unitCost: l.unitCost,
+        ordered: l.qty,
+        /* Default to whatever is still outstanding on the line -- the common
+           case is the rest of the order turning up. */
+        qtyReceived: Math.max(0, l.qty - l.received),
+        qtyDamaged: 0,
+        batchNo: "",
+        expiryDate: "",
+      })));
+    } catch (e) {
+      toast.error("Could not open that purchase order", { description: apiMessage(e, "Please try again.") });
+    } finally {
+      setLoadingPo(false);
+    }
   }
 
-  async function onSubmit(_d: Form) {
-    await new Promise((r) => setTimeout(r, 700));
-    toast.success("GRN draft created", { description: `Will post stock when finalized. Damaged: ${totalDamaged} units flagged.` });
-    router.push("/purchases/grns");
+  async function onSubmit(d: Form) {
+    if (!po) { toast.error("Pick a purchase order first."); return; }
+    const lines = d.items.filter((i) => (Number(i.qtyReceived) || 0) + (Number(i.qtyDamaged) || 0) > 0);
+    if (lines.length === 0) {
+      toast.error("Nothing to receive", { description: "Enter a received or damaged quantity on at least one line." });
+      return;
+    }
+    try {
+      const res = await axios.post<{ id: number; message: string }>(
+        `${API_BASE_URL}/purchases/grns`,
+        {
+          poId: d.poId,
+          supplierId: po.supplierId,
+          locationId: d.locationId,
+          receiptDate: d.receiptDate,
+          deliveryNoteNo: d.deliveryNoteNo.trim(),
+          vehicleNo: d.vehicleNo?.trim() || null,
+          notes: d.notes?.trim() || null,
+          lines: lines.map((i) => ({
+            productId: i.productId,
+            qtyReceived: Number(i.qtyReceived) || 0,
+            qtyDamaged: Number(i.qtyDamaged) || 0,
+            unitCost: Number(i.unitCost) || 0,
+            batchNo: i.batchNo?.trim() || null,
+            expiryDate: i.expiryDate || null,
+          })),
+        },
+        { headers: authHeader() }
+      );
+      toast.success("Goods receipt created", { description: res.data.message });
+      router.push(`/purchases/grns/${res.data.id}`);
+    } catch (e) {
+      toast.error("Goods receipt not created", { description: apiMessage(e, "Please try again.") });
+    }
   }
 
   return (
@@ -97,12 +208,27 @@ export default function NewGRNPage() {
         actions={
           <>
             <Button variant="ghost" asChild><Link href="/purchases/grns"><ArrowLeft />Back</Link></Button>
-            <Button variant="accent" onClick={form.handleSubmit(onSubmit)} disabled={form.formState.isSubmitting}>
+            <Button variant="accent" onClick={form.handleSubmit(onSubmit)} disabled={form.formState.isSubmitting || loading || loadingPo}>
               {form.formState.isSubmitting ? <><Loader2 className="size-4 animate-spin" /> Saving…</> : <><Save />Save Draft</>}
             </Button>
           </>
         }
       />
+
+      {error && (
+        <Card className="mb-6">
+          <CardBody className="flex items-center gap-3">
+            <AlertCircle className="size-5 text-danger shrink-0" />
+            <div className="flex-1">
+              <div className="text-sm font-semibold text-navy-900 dark:text-white">{error}</div>
+              <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">The API must be running on {API_BASE_URL}.</div>
+            </div>
+            <Button variant="ghost" size="sm" className="gap-1.5" onClick={() => { setLoading(true); void load(); }}>
+              <RefreshCw className="size-4" /> Try again
+            </Button>
+          </CardBody>
+        </Card>
+      )}
 
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="grid grid-cols-1 lg:grid-cols-3 gap-6" noValidate>
@@ -114,7 +240,7 @@ export default function NewGRNPage() {
                   <div className="flex items-center justify-between p-3 border border-slate-200 dark:border-navy-700 rounded-lg">
                     <div>
                       <div className="tabular text-base font-bold text-navy-900 dark:text-white">{po.poNo}</div>
-                      <div className="text-xs text-slate-500 dark:text-slate-400">{po.supplierName} · Expected {formatDate(po.expectedDate)}</div>
+                      <div className="text-xs text-slate-500 dark:text-slate-400">{po.supplierName} · Expected {po.expectedDate ? formatDate(po.expectedDate) : "—"}</div>
                     </div>
                     <Button type="button" variant="ghost" size="sm" onClick={() => { form.setValue("poId", 0 as unknown as number); replace([]); }}>Change</Button>
                   </div>
@@ -131,7 +257,7 @@ export default function NewGRNPage() {
                         <CommandList>
                           <CommandEmpty>No PO found.</CommandEmpty>
                           <CommandGroup>
-                            {purchaseOrders.filter((p) => p.status === "APPROVED" || p.status === "PARTIALLY_RECEIVED").map((p) => (
+                            {openPos.map((p) => (
                               <CommandItem key={p.id} value={`${p.poNo} ${p.supplierName}`} onSelect={() => pickPo(p.id)}>
                                 <Truck className="size-3 text-slate-400" />
                                 <div className="flex-1">
@@ -162,7 +288,9 @@ export default function NewGRNPage() {
                       )} />
                       <FormField control={form.control} name="locationId" render={({ field }) => (
                         <FormItem><FormLabel required>Receiving location</FormLabel><FormControl>
-                          <SelectNative {...field}>{activeLocations().map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}</SelectNative>
+                          {loading ? <Skeleton className="h-10" /> : (
+                            <SelectNative {...field}>{locations.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}</SelectNative>
+                          )}
                         </FormControl><FormMessage /></FormItem>
                       )} />
                       <FormField control={form.control} name="deliveryNoteNo" render={({ field }) => (

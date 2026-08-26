@@ -5,7 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useForm, useFieldArray, type Control } from "react-hook-form";
 import { z } from "zod";
-import { Save, ArrowLeft, Loader2, Plus, Trash2, ArrowRight, Search } from "lucide-react";
+import axios from "axios";
+import { Save, ArrowLeft, Loader2, Plus, Trash2, ArrowRight, AlertCircle, RefreshCw } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardBody } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -15,10 +16,29 @@ import { SelectNative } from "@/components/ui/select-native";
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from "@/components/ui/form";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from "@/components/ui/command";
+import { Skeleton } from "@/components/ui/skeleton";
 import { vizoResolver } from "@/lib/zod-resolver";
-import { products } from "@/data/products";
-import { activeLocations } from "@/data/settings";
 import { toast } from "@/components/ui/toaster";
+import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
+
+/* GET /inventory/lookups. The product picker and both location dropdowns used
+   to read hard-coded arrays out of src/data -- so an item or a location added
+   through the app could never be transferred, because it was not in the list.
+   Fetched on every mount, which is what keeps this current. */
+type LookupProduct = { id: number; sku: string; name: string; packing: number; totalStock: number };
+type LookupLocation = { id: number; code: string; name: string };
+type Lookups = { products: LookupProduct[]; locations: LookupLocation[] };
+
+/* GET /inventory/stock-levels?locationId= -> what is actually on the source
+   shelf, so the picker can show it and the form can refuse to move more. */
+type StockRow = { productId: number; qty: number };
+
+function apiMessage(e: unknown, fallback: string) {
+  if (axios.isAxiosError(e) && e.response) {
+    return (e.response.data as { message?: string })?.message ?? fallback;
+  }
+  return "Cannot reach the server.";
+}
 
 const ItemSchema = z.object({
   productId: z.coerce.number().positive(),
@@ -41,11 +61,16 @@ export default function NewTransferPage() {
   const router = useRouter();
   const [productOpen, setProductOpen] = React.useState(false);
 
+  const [lookups, setLookups] = React.useState<Lookups>({ products: [], locations: [] });
+  const [stock, setStock] = React.useState<Map<number, number>>(new Map());
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+
   const form = useForm<Form>({
     resolver: vizoResolver(Schema),
     defaultValues: {
-      fromLocationId: activeLocations()[0]?.id ?? 1,
-      toLocationId: activeLocations()[1]?.id ?? 2,
+      fromLocationId: 0,
+      toLocationId: 0,
       date: new Date().toISOString().slice(0, 10),
       items: [],
       notes: "",
@@ -56,20 +81,93 @@ export default function NewTransferPage() {
   const items = form.watch("items");
   const fromId = form.watch("fromLocationId");
   const toId = form.watch("toLocationId");
-  const fromWh = activeLocations().find((w) => w.id === fromId);
-  const toWh   = activeLocations().find((w) => w.id === toId);
+
+  const load = React.useCallback(async () => {
+    try {
+      const res = await axios.get<Lookups>(`${API_BASE_URL}/inventory/lookups`, { headers: authHeader() });
+      const locs = res.data.locations ?? [];
+      setLookups({ products: res.data.products ?? [], locations: locs });
+      /* Default off the real rows rather than assuming ids 1 and 2 exist. */
+      form.setValue("fromLocationId", locs[0]?.id ?? 0);
+      form.setValue("toLocationId", locs[1]?.id ?? locs[0]?.id ?? 0);
+      setError(null);
+    } catch (e) {
+      setError(apiMessage(e, "Could not load products and locations."));
+    } finally {
+      setLoading(false);
+    }
+  }, [form]);
+
+  React.useEffect(() => {
+    /* eslint-disable-next-line react-hooks/set-state-in-effect --
+       The brief for this project is axios inside the page driven by
+       useState/useEffect. This rule wants the fetch moved to the server, which
+       is a different architecture, not a bug in this line. */
+    void load();
+  }, [load]);
+
+  /* Stock at the SOURCE location, re-read whenever that changes. */
+  const loadStock = React.useCallback(async () => {
+    if (!fromId) return;
+    try {
+      const res = await axios.get<{ items: StockRow[] }>(`${API_BASE_URL}/inventory/stock-levels`, {
+        params: { locationId: fromId },
+        headers: authHeader(),
+      });
+      setStock(new Map(res.data.items.map((r) => [r.productId, r.qty])));
+    } catch {
+      setStock(new Map());
+    }
+  }, [fromId]);
+
+  React.useEffect(() => {
+    /* eslint-disable-next-line react-hooks/set-state-in-effect --
+       Same reason as above: this is the requested per-page fetch pattern. */
+    void loadStock();
+  }, [loadStock]);
+
+  const fromWh = lookups.locations.find((w) => w.id === fromId);
+  const toWh   = lookups.locations.find((w) => w.id === toId);
 
   function pickProduct(id: number) {
-    const p = products.find((x) => x.id === id);
+    const p = lookups.products.find((x) => x.id === id);
     if (!p) return;
+    if (form.getValues("items").some((i) => i.productId === id)) {
+      toast.info("That item is already on this transfer.");
+      setProductOpen(false);
+      return;
+    }
     append({ productId: id, name: p.name, sku: p.sku, qty: 1 });
     setProductOpen(false);
   }
 
-  async function onSubmit(_d: Form) {
-    await new Promise((r) => setTimeout(r, 600));
-    toast.success("Transfer submitted for approval", { description: `${fromWh?.name} → ${toWh?.name} · ${items.reduce((s, i) => s + Number(i.qty), 0)} units` });
-    router.push("/inventory/transfers");
+  async function onSubmit(d: Form) {
+    /* The server checks this too, but saying it here names the item rather
+       than failing the whole transfer over one line. */
+    const short = d.items.find((i) => Number(i.qty) > (stock.get(i.productId) ?? 0));
+    if (short) {
+      toast.error("Not enough stock to move", {
+        description: `${short.name}: ${fromWh?.name ?? "source"} holds ${stock.get(short.productId) ?? 0}, you asked for ${short.qty}.`,
+      });
+      return;
+    }
+    try {
+      const res = await axios.post<{ id: number; message: string }>(
+        `${API_BASE_URL}/inventory/transfers`,
+        {
+          fromLocationId: d.fromLocationId,
+          toLocationId: d.toLocationId,
+          transferDate: d.date,
+          notes: d.notes?.trim() || null,
+          lines: d.items.map((i) => ({ productId: i.productId, qty: Number(i.qty) || 0 })),
+        },
+        { headers: authHeader() }
+      );
+      toast.success("Transfer created", { description: res.data.message });
+      router.push("/inventory/transfers");
+    } catch (e) {
+      toast.error("Transfer not created", { description: apiMessage(e, "Please try again.") });
+    }
   }
 
   return (
@@ -81,12 +179,27 @@ export default function NewTransferPage() {
         actions={
           <>
             <Button variant="ghost" asChild><Link href="/inventory/transfers"><ArrowLeft />Back</Link></Button>
-            <Button variant="accent" onClick={form.handleSubmit(onSubmit)} disabled={form.formState.isSubmitting}>
+            <Button variant="accent" onClick={form.handleSubmit(onSubmit)} disabled={form.formState.isSubmitting || loading}>
               {form.formState.isSubmitting ? <><Loader2 className="size-4 animate-spin" /> Submitting…</> : <><Save />Submit for Approval</>}
             </Button>
           </>
         }
       />
+
+      {error && (
+        <Card className="mb-6">
+          <CardBody className="flex items-center gap-3">
+            <AlertCircle className="size-5 text-danger shrink-0" />
+            <div className="flex-1">
+              <div className="text-sm font-semibold text-navy-900 dark:text-white">{error}</div>
+              <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">The API must be running on {API_BASE_URL}.</div>
+            </div>
+            <Button variant="ghost" size="sm" className="gap-1.5" onClick={() => { setLoading(true); void load(); }}>
+              <RefreshCw className="size-4" /> Try again
+            </Button>
+          </CardBody>
+        </Card>
+      )}
 
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="grid grid-cols-1 lg:grid-cols-3 gap-6 max-w-6xl" noValidate>
@@ -97,7 +210,9 @@ export default function NewTransferPage() {
                 <div className="grid grid-cols-12 gap-3 items-end">
                   <FormField control={form.control} name="fromLocationId" render={({ field }) => (
                     <FormItem className="col-span-12 sm:col-span-5"><FormLabel required>From</FormLabel><FormControl>
-                      <SelectNative {...field}>{activeLocations().map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}</SelectNative>
+                      {loading ? <Skeleton className="h-10" /> : (
+                        <SelectNative {...field}>{lookups.locations.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}</SelectNative>
+                      )}
                     </FormControl><FormMessage /></FormItem>
                   )} />
                   <div className="col-span-12 sm:col-span-2 flex items-center justify-center pb-2">
@@ -105,7 +220,9 @@ export default function NewTransferPage() {
                   </div>
                   <FormField control={form.control} name="toLocationId" render={({ field }) => (
                     <FormItem className="col-span-12 sm:col-span-5"><FormLabel required>To</FormLabel><FormControl>
-                      <SelectNative {...field}>{activeLocations().map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}</SelectNative>
+                      {loading ? <Skeleton className="h-10" /> : (
+                        <SelectNative {...field}>{lookups.locations.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}</SelectNative>
+                      )}
                     </FormControl><FormMessage /></FormItem>
                   )} />
                   <FormField control={form.control} name="date" render={({ field }) => (
@@ -120,12 +237,17 @@ export default function NewTransferPage() {
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-sm font-semibold text-navy-900 dark:text-white">Items <span className="text-danger">*</span> ({fields.length})</h3>
                   <Popover open={productOpen} onOpenChange={setProductOpen}>
-                    <PopoverTrigger asChild><Button type="button" variant="accent" size="sm" className="gap-1"><Plus />Add</Button></PopoverTrigger>
+                    <PopoverTrigger asChild><Button type="button" variant="accent" size="sm" className="gap-1" disabled={loading}><Plus />Add</Button></PopoverTrigger>
                     <PopoverContent className="w-[480px] p-0">
                       <Command><CommandInput placeholder="Search product…" /><CommandList><CommandEmpty>No product found.</CommandEmpty><CommandGroup>
-                        {products.slice(0, 30).map((p) => (
+                        {lookups.products.map((p) => (
                           <CommandItem key={p.id} value={`${p.sku} ${p.name}`} onSelect={() => pickProduct(p.id)}>
-                            <div className="flex-1"><div className="text-sm">{p.name}</div><div className="text-2xs tabular text-slate-500">{p.sku} · stock {p.totalStock}</div></div>
+                            <div className="flex-1">
+                              <div className="text-sm">{p.name}</div>
+                              <div className="text-2xs tabular text-slate-500">
+                                {p.sku} · here {stock.get(p.id) ?? 0} · all locations {p.totalStock}
+                              </div>
+                            </div>
                           </CommandItem>
                         ))}
                       </CommandGroup></CommandList></Command>

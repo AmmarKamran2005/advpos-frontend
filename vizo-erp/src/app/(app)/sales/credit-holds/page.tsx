@@ -101,7 +101,11 @@ export default function CreditHoldsPage() {
       </div>
 
       <div className="space-y-3">
-        {holds.length === 0 ? (
+        {loading ? (
+          <div className="space-y-2">
+            {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-20" />)}
+          </div>
+        ) : holds.length === 0 ? (
           <Card>
             <CardBody>
               <div className="text-center py-12 text-slate-400">

@@ -3,43 +3,119 @@
 import * as React from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ArrowLeft, AlertCircle, Lock, RotateCcw, Printer, Calendar, Building2, FileText, Package, ArrowDownToLine, ArrowUpFromLine } from "lucide-react";
+import axios from "axios";
+import {
+  AlertCircle, Printer, RefreshCw, ArrowUpRight, ArrowDownRight, ClipboardList,
+} from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardBody } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge, StatusPill } from "@/components/ui/badge";
+import { StatusPill } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
-import { ConfirmDialog } from "@/components/dialogs/confirm-dialog";
-import { toast } from "@/components/ui/toaster";
-import { formatDate, formatMoney } from "@/lib/format";
+import { Skeleton } from "@/components/ui/skeleton";
+import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
+import { formatMoney, formatDate, formatNumber } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { statusLabel } from "@/lib/labels";
 
-const ADJUSTMENTS = [
-  { id: 1, adjustmentNo: "ADJ-26-0034", date: "2026-04-28", location: "LOC-01", reason: "Physical count discrepancy", reasonNotes: "Q2 cycle count revealed shortage in earbuds bin", itemCount: 3, netImpact: -8,  netValue: -4640, status: "Posted", user: "Hassan Raza" },
-  { id: 2, adjustmentNo: "ADJ-26-0012", date: "2026-04-25", location: "LOC-03", reason: "Damaged in handling",         reasonNotes: "Earbuds dropped during palletization", itemCount: 2, netImpact: -5, netValue: -2900,  status: "Posted", user: "Sara Khan" },
-  { id: 3, adjustmentNo: "ADJ-26-0033", date: "2026-04-24", location: "LOC-01", reason: "Found extra stock",            reasonNotes: "Misplaced carton found in receiving area", itemCount: 1, netImpact: 4, netValue: 2320,    status: "Posted", user: "Hassan Raza" },
-  { id: 4, adjustmentNo: "ADJ-26-0008", date: "2026-04-22", location: "LOC-02", reason: "Expired stock write-off",      reasonNotes: "Old batch beyond shelf life", itemCount: 4, netImpact: -12, netValue: -6960, status: "Posted", user: "Bilal Ahmed" },
-  { id: 5, adjustmentNo: "ADJ-26-0035", date: "2026-04-30", location: "LOC-01", reason: "Stock count adjustment",       reasonNotes: "Pending review", itemCount: 2, netImpact: 0, netValue: 0,   status: "Draft",  user: "Hassan Raza" },
-];
+/* GET /inventory/adjustments/{id}. The page used to hold two arrays declared at
+   the top of the file, so every adjustment id opened the same three sample
+   lines. `delta` and `costPrice` are computed by the API. */
+type AdjLine = {
+  id: number; lineNo: number; productId: number; sku: string; name: string;
+  currentQty: number; newQty: number; delta: number; costPrice: number;
+};
 
-const SAMPLE_LINES = [
-  { id: 1, sku: "VZ-TIT-T9-BLK", name: "VIZO Titan T9 Wireless Earbuds — Black", currentQty: 248, newQty: 244, delta: -4, unitCost: 580 },
-  { id: 2, sku: "VZ-VR-TC-1.5M", name: "VIZO VR Type-C Data Cable 1.5m",         currentQty: 1840, newQty: 1838, delta: -2, unitCost: 95 },
-  { id: 3, sku: "VZ-VLT-65W-PD", name: "VIZO VOLT 65W GaN Type-C Charger",       currentQty: 410, newQty: 408, delta: -2, unitCost: 1480 },
-];
+type Adjustment = {
+  id: number; adjustmentNo: string;
+  locationId: number; locationName: string;
+  adjustmentDate: string;
+  reason: string; reasonName: string; reasonNotes: string | null;
+  status: string; statusName: string;
+  createdBy: string | null;
+  lines: AdjLine[];
+};
+
+const STATUS_VARIANT: Record<string, "muted" | "success" | "warning" | "danger"> = {
+  DRAFT: "muted", POSTED: "success", CANCELLED: "danger", VOID: "danger",
+};
+
+function apiMessage(e: unknown, fallback: string) {
+  if (axios.isAxiosError(e) && e.response) {
+    return (e.response.data as { message?: string })?.message ?? fallback;
+  }
+  return "Cannot reach the server.";
+}
 
 export default function AdjustmentDetailPage() {
   const params = useParams<{ id: string }>();
-  const id = parseInt(params.id ?? "1", 10);
-  const adj = ADJUSTMENTS.find((a) => a.id === id);
-  const [reverseConfirm, setReverseConfirm] = React.useState(false);
+  const id = parseInt(params.id ?? "0", 10);
 
-  if (!adj) {
-    return <EmptyState icon={AlertCircle} title="Adjustment not found" action={<Button asChild><Link href="/inventory/adjustments">Back</Link></Button>} />;
+  const [adj, setAdj] = React.useState<Adjustment | null>(null);
+  const [loading, setLoading] = React.useState(true);
+  const [notFound, setNotFound] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  const load = React.useCallback(async () => {
+    if (!id) { setNotFound(true); setLoading(false); return; }
+    try {
+      const res = await axios.get<Adjustment>(`${API_BASE_URL}/inventory/adjustments/${id}`, { headers: authHeader() });
+      setAdj(res.data);
+      setNotFound(false);
+      setError(null);
+    } catch (e) {
+      if (axios.isAxiosError(e) && e.response?.status === 404) setNotFound(true);
+      else setError(apiMessage(e, "Could not load this adjustment."));
+    } finally {
+      setLoading(false);
+    }
+  }, [id]);
+
+  React.useEffect(() => {
+    /* eslint-disable-next-line react-hooks/set-state-in-effect --
+       The brief for this project is axios inside the page driven by
+       useState/useEffect. This rule wants the fetch moved to the server, which
+       is a different architecture, not a bug in this line. */
+    void load();
+  }, [load]);
+
+  if (loading) {
+    return (
+      <>
+        <PageHeader breadcrumbs={[{ label: "Inventory" }, { label: "Adjustments", href: "/inventory/adjustments" }]} title="Loading…" />
+        <Skeleton className="h-64" />
+      </>
+    );
   }
 
-  const isPosted = adj.status === "Posted";
+  if (notFound) {
+    return (
+      <EmptyState icon={AlertCircle} title="Adjustment not found" description={`No stock adjustment with id ${id}.`}
+        action={<Button variant="accent" asChild><Link href="/inventory/adjustments">Back to Adjustments</Link></Button>} />
+    );
+  }
+
+  if (error || !adj) {
+    return (
+      <>
+        <PageHeader breadcrumbs={[{ label: "Inventory" }, { label: "Adjustments", href: "/inventory/adjustments" }]} title="Stock Adjustment" />
+        <Card><CardBody className="flex items-center gap-3">
+          <AlertCircle className="size-5 text-danger shrink-0" />
+          <div className="flex-1">
+            <div className="text-sm font-semibold text-navy-900 dark:text-white">{error}</div>
+            <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">The API must be running on {API_BASE_URL}.</div>
+          </div>
+          <Button variant="ghost" size="sm" className="gap-1.5" onClick={() => { setLoading(true); void load(); }}>
+            <RefreshCw className="size-4" /> Try again
+          </Button>
+        </CardBody></Card>
+      </>
+    );
+  }
+
+  const netDelta = adj.lines.reduce((s, l) => s + l.delta, 0);
+  const added = adj.lines.filter((l) => l.delta > 0).reduce((s, l) => s + l.delta, 0);
+  const removed = adj.lines.filter((l) => l.delta < 0).reduce((s, l) => s + Math.abs(l.delta), 0);
+  const valueDelta = adj.lines.reduce((s, l) => s + l.delta * l.costPrice, 0);
 
   return (
     <>
@@ -48,155 +124,98 @@ export default function AdjustmentDetailPage() {
         title={
           <div className="flex items-center gap-3 flex-wrap">
             <span>{adj.adjustmentNo}</span>
-            <StatusPill variant={isPosted ? "success" : "muted"}>{statusLabel(adj.status)}</StatusPill>
-            <Badge variant={adj.netImpact > 0 ? "success" : adj.netImpact < 0 ? "danger" : "muted"}>
-              Net {adj.netImpact > 0 ? "+" : ""}{adj.netImpact} units
-            </Badge>
+            <StatusPill variant={STATUS_VARIANT[adj.status] ?? "muted"}>{adj.statusName}</StatusPill>
           </div>
         }
-        subtitle={`${formatDate(adj.date)} · ${adj.location}`}
+        subtitle={`${formatDate(adj.adjustmentDate)} · ${adj.locationName}${adj.createdBy ? ` · ${adj.createdBy}` : ""}`}
         actions={
           <>
-            <Button variant="ghost" asChild><Link href="/inventory/adjustments"><ArrowLeft />Back</Link></Button>
-            <Button variant="ghost" className="gap-1.5" onClick={() => toast.info("Printing…")}><Printer />Print</Button>
-            {isPosted && (
-              <Button variant="danger" className="gap-1.5" onClick={() => setReverseConfirm(true)}>
-                <RotateCcw />Reverse
-              </Button>
-            )}
+            <Button variant="ghost" className="gap-1.5" onClick={() => window.print()}><Printer />Print</Button>
+            <Button variant="ghost" className="gap-1.5" onClick={() => void load()}><RefreshCw className="size-4" />Refresh</Button>
           </>
         }
       />
 
-      {isPosted && (
-        <Card className="bg-success/5 border-success/30 mb-6">
-          <CardBody className="py-3">
-            <div className="flex items-center gap-2 text-sm text-success-dark dark:text-success-light">
-              <Lock className="size-4" />
-              <span><strong>Posted adjustments are immutable.</strong> To correct, post a reversing adjustment.</span>
+      <Card className="mb-6">
+        <CardBody className="flex items-start gap-3 py-3">
+          <ClipboardList className="size-4 text-brand-yellow shrink-0 mt-0.5" />
+          <div>
+            <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">
+              {adj.reasonName}
             </div>
-          </CardBody>
-        </Card>
-      )}
+            <p className="text-sm text-navy-900 dark:text-white mt-0.5">{adj.reasonNotes || "No further notes."}</p>
+          </div>
+        </CardBody>
+      </Card>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-6">
-          <Card className="p-0 overflow-hidden">
-            <div className="px-5 py-4 border-b border-slate-200 dark:border-navy-700">
-              <h3 className="text-base font-semibold text-navy-900 dark:text-white">Adjusted Items</h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{adj.itemCount} products · Net value impact: {formatMoney(adj.netValue)}</p>
-            </div>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <Fig label="Lines" value={String(adj.lines.length)} />
+        <Fig label="Units added" value={formatNumber(added)} tone="text-success" />
+        <Fig label="Units removed" value={formatNumber(removed)} tone="text-danger" />
+        <Fig label="Value change" value={formatMoney(valueDelta)} tone={valueDelta >= 0 ? "text-success" : "text-danger"} />
+      </div>
+
+      <Card className="p-0 overflow-hidden">
+        <div className="px-5 py-4 border-b border-slate-200 dark:border-navy-700 flex items-center justify-between">
+          <h3 className="text-base font-semibold text-navy-900 dark:text-white">What changed</h3>
+          <span className={cn("tabular text-sm font-bold", netDelta > 0 ? "text-success" : netDelta < 0 ? "text-danger" : "text-slate-500")}>
+            {netDelta > 0 ? "+" : ""}{formatNumber(netDelta)} units net
+          </span>
+        </div>
+        {adj.lines.length === 0 ? (
+          <CardBody><EmptyState icon={AlertCircle} title="No lines on this adjustment" /></CardBody>
+        ) : (
+          <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
                 <tr className="bg-slate-50 dark:bg-navy-700/50 text-left">
                   <th className="text-2xs uppercase font-semibold text-slate-500 dark:text-slate-400 px-4 py-2">Product</th>
-                  <th className="text-2xs uppercase font-semibold text-slate-500 dark:text-slate-400 px-4 py-2 text-right">Old Qty</th>
-                  <th className="text-2xs uppercase font-semibold text-slate-500 dark:text-slate-400 px-4 py-2 text-right">New Qty</th>
-                  <th className="text-2xs uppercase font-semibold text-slate-500 dark:text-slate-400 px-4 py-2 text-right">Δ Delta</th>
-                  <th className="text-2xs uppercase font-semibold text-slate-500 dark:text-slate-400 px-4 py-2 text-right">Value Impact</th>
+                  <th className="text-2xs uppercase font-semibold text-slate-500 dark:text-slate-400 px-4 py-2 text-right">System said</th>
+                  <th className="text-2xs uppercase font-semibold text-slate-500 dark:text-slate-400 px-4 py-2 text-right">Counted</th>
+                  <th className="text-2xs uppercase font-semibold text-slate-500 dark:text-slate-400 px-4 py-2 text-right">Δ</th>
+                  <th className="text-2xs uppercase font-semibold text-slate-500 dark:text-slate-400 px-4 py-2 text-right">Value</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-navy-700">
-                {SAMPLE_LINES.map((l) => {
-                  const valueImpact = l.delta * l.unitCost;
-                  return (
-                    <tr key={l.id}>
-                      <td className="px-4 py-3">
-                        <div className="text-sm font-medium text-navy-900 dark:text-white">{l.name}</div>
-                        <div className="text-2xs tabular text-slate-500 dark:text-slate-400 mt-0.5">{l.sku}</div>
-                      </td>
-                      <td className="px-4 py-3 text-right tabular text-sm text-slate-600 dark:text-slate-300">{l.currentQty}</td>
-                      <td className="px-4 py-3 text-right tabular text-sm font-semibold text-navy-900 dark:text-white">{l.newQty}</td>
-                      <td className={cn("px-4 py-3 text-right tabular text-sm font-bold inline-flex items-center justify-end gap-1 w-full",
-                        l.delta > 0 ? "text-success" : l.delta < 0 ? "text-danger" : "text-slate-500"
-                      )}>
-                        {l.delta > 0 ? <ArrowDownToLine className="size-3" /> : l.delta < 0 ? <ArrowUpFromLine className="size-3" /> : null}
+                {adj.lines.map((l) => (
+                  <tr key={l.id}>
+                    <td className="px-4 py-3">
+                      <Link href={`/inventory/products/${l.productId}`} className="text-sm font-medium text-navy-900 dark:text-white hover:text-brand-yellow">
+                        {l.name}
+                      </Link>
+                      <div className="text-2xs tabular text-slate-500 dark:text-slate-400 mt-0.5">{l.sku}</div>
+                    </td>
+                    <td className="px-4 py-3 text-right tabular text-sm text-slate-600 dark:text-slate-300">{formatNumber(l.currentQty)}</td>
+                    <td className="px-4 py-3 text-right tabular text-sm font-semibold text-navy-900 dark:text-white">{formatNumber(l.newQty)}</td>
+                    <td className="px-4 py-3 text-right">
+                      <span className={cn("tabular text-sm font-bold inline-flex items-center gap-1",
+                        l.delta > 0 ? "text-success" : l.delta < 0 ? "text-danger" : "text-slate-400")}>
+                        {l.delta !== 0 && (l.delta > 0 ? <ArrowUpRight className="size-3" /> : <ArrowDownRight className="size-3" />)}
                         {l.delta > 0 ? "+" : ""}{l.delta}
-                      </td>
-                      <td className={cn("px-4 py-3 text-right tabular text-sm font-semibold", valueImpact < 0 ? "text-danger" : valueImpact > 0 ? "text-success" : "text-slate-500")}>
-                        {valueImpact < 0 ? "(" : ""}{formatMoney(Math.abs(valueImpact))}{valueImpact < 0 ? ")" : ""}
-                      </td>
-                    </tr>
-                  );
-                })}
+                      </span>
+                    </td>
+                    <td className={cn("px-4 py-3 text-right tabular text-sm", l.delta >= 0 ? "text-slate-600 dark:text-slate-300" : "text-danger")}>
+                      {formatMoney(l.delta * l.costPrice)}
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
-          </Card>
-
-          {isPosted && (
-            <Card>
-              <CardBody>
-                <h3 className="text-base font-semibold text-navy-900 dark:text-white mb-3">Linked Journal Entry</h3>
-                <Link href="/accounting/journal-entries/8" className="block p-3 border border-slate-200 dark:border-navy-700 rounded-lg hover:bg-slate-50 dark:hover:bg-navy-700">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="tabular text-sm font-semibold text-navy-900 dark:text-white">JE-26-1043</div>
-                      <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{adj.reason} — {adj.location}</div>
-                    </div>
-                    <Badge variant="success">POSTED</Badge>
-                  </div>
-                </Link>
-                <div className="mt-3 p-3 bg-slate-50 dark:bg-navy-900 rounded-lg text-xs font-mono text-slate-600 dark:text-slate-300">
-                  {adj.netImpact < 0 ? (
-                    <>
-                      <div>DR  Inventory Adjustment Loss  {formatMoney(Math.abs(adj.netValue))}</div>
-                      <div>CR  Inventory                  {formatMoney(Math.abs(adj.netValue))}</div>
-                    </>
-                  ) : (
-                    <>
-                      <div>DR  Inventory                  {formatMoney(adj.netValue)}</div>
-                      <div>CR  Inventory Adjustment Gain  {formatMoney(adj.netValue)}</div>
-                    </>
-                  )}
-                </div>
-              </CardBody>
-            </Card>
-          )}
+          </div>
+        )}
+        <div className="px-5 py-4 border-t border-slate-200 dark:border-navy-700 bg-slate-50 dark:bg-navy-900/40 text-xs text-slate-500 dark:text-slate-400">
+          A posted adjustment writes a stock movement per changed line. It cannot be undone — correct it with another adjustment.
         </div>
-
-        <div className="space-y-6">
-          <Card>
-            <CardBody>
-              <h3 className="text-sm font-semibold text-navy-900 dark:text-white mb-3">Details</h3>
-              <dl className="space-y-2.5 text-sm">
-                <Meta label="Date" icon={Calendar} value={formatDate(adj.date)} />
-                <Meta label="Location" icon={Building2} value={adj.location} />
-                <Meta label="Reason" icon={FileText} value={<Badge variant="muted">{adj.reason}</Badge>} />
-                <Meta label="Items" icon={Package} value={`${adj.itemCount} products`} />
-                <Meta label="Posted by" value={adj.user} />
-              </dl>
-              <div className="mt-3 pt-3 border-t border-slate-100 dark:border-navy-700">
-                <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Reason notes</div>
-                <p className="text-sm text-slate-600 dark:text-slate-300 mt-1.5">{adj.reasonNotes}</p>
-              </div>
-            </CardBody>
-          </Card>
-        </div>
-      </div>
-
-      <ConfirmDialog
-        open={reverseConfirm}
-        onOpenChange={setReverseConfirm}
-        title="Reverse this adjustment?"
-        description="A new reversing adjustment will be posted with opposite quantities. The original entry remains in the audit trail."
-        variant="danger"
-        confirmLabel="Yes, reverse"
-        requireReason
-        reasonLabel="Reason for reversal"
-        onConfirm={(r) => { toast.success("Reversing adjustment posted", { description: `Reason: ${r}` }); setReverseConfirm(false); }}
-      />
+      </Card>
     </>
   );
 }
 
-function Meta({ label, value, icon: Icon }: { label: string; value: React.ReactNode; icon?: typeof Calendar }) {
+function Fig({ label, value, tone }: { label: string; value: string; tone?: string }) {
   return (
-    <div className="flex items-center justify-between gap-3">
-      <dt className="text-xs text-slate-500 dark:text-slate-400 inline-flex items-center gap-1.5">
-        {Icon && <Icon className="size-3.5 text-slate-400" />}
-        {label}
-      </dt>
-      <dd className="text-sm font-medium text-navy-900 dark:text-white">{value}</dd>
-    </div>
+    <Card className="p-4">
+      <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">{label}</div>
+      <div className={cn("text-2xl tabular font-bold mt-1", tone ?? "text-navy-900 dark:text-white")}>{value}</div>
+    </Card>
   );
 }

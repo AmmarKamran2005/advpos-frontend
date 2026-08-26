@@ -3,470 +3,424 @@
 import * as React from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import axios from "axios";
 import {
-  Phone,
-  Mail,
-  MapPin,
-  Edit3,
-  MoreHorizontal,
-  Shield,
-  Calendar,
-  TrendingUp,
-  TrendingDown,
-  ArrowRight,
-  Building,
-  CreditCard,
-  AlertCircle,
-  FileText,
+  AlertCircle, Phone, Mail, MapPin, Building2, FileText, Receipt,
+  RefreshCw, Loader2, Power, CreditCard, Star, User,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardBody } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge, StatusPill } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { DataTable, type Column } from "@/components/ui/data-table";
-import { EmptyState } from "@/components/ui/empty-state";
 import { toast } from "@/components/ui/toaster";
-import { getParty } from "@/data/parties";
-import { formatCompact, formatDate, formatMoney } from "@/lib/format";
+import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
+import { formatMoney, formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { statusLabel } from "@/lib/labels";
 
-/* Mock per-party transactions */
-const mockOrders = [
-  { id: 1, orderNo: "ORD-26-0142", date: "2026-04-30", amount: 145000, status: "Dispatched",  variant: "success" as const },
-  { id: 2, orderNo: "ORD-26-0128", date: "2026-04-22", amount: 88000,  status: "Delivered",   variant: "success" as const },
-  { id: 3, orderNo: "ORD-26-0114", date: "2026-04-15", amount: 215500, status: "Delivered",   variant: "success" as const },
-  { id: 4, orderNo: "ORD-26-0098", date: "2026-04-08", amount: 64200,  status: "Delivered",   variant: "success" as const },
-];
+/* GET /parties/{id}. The whole page ran off getParty() in src/data/parties
+   before, so a customer created on /parties/new opened a "not found" screen. */
+type Party = {
+  id: number; partyCode: string; type: "CUSTOMER" | "SUPPLIER" | "BOTH";
+  legalName: string; displayName: string; initials: string;
+  phone: string | null; altPhone: string | null; email: string | null;
+  cityId: number | null; city: string | null; province: string | null; addressLine: string | null;
+  categoryId: number | null; category: string | null; categoryName: string | null;
+  industry: string | null; ntn: string | null; strn: string | null; cnic: string | null;
+  creditLimit: number; creditDays: number;
+  holdPolicyId: number | null; creditHoldPolicy: string | null;
+  openingBalance: number;
+  salesPersonUserId: number | null; salesPerson: string | null;
+  defaultLocationId: number | null;
+  rating: string | null; notes: string | null;
+  isActive: boolean; createdAt: string;
+  orderCount: number; invoiceCount: number; currentBalance: number;
+};
 
-const mockInvoices = [
-  { id: 1, invoiceNo: "INV-26-0142", date: "2026-04-30", dueDate: "2026-05-30", amount: 145000, paid: 0,      status: "Unpaid",   variant: "warning" as const },
-  { id: 2, invoiceNo: "INV-26-0128", date: "2026-04-22", dueDate: "2026-05-22", amount: 88000,  paid: 88000,  status: "Paid",     variant: "success" as const },
-  { id: 3, invoiceNo: "INV-26-0114", date: "2026-04-15", dueDate: "2026-05-15", amount: 215500, paid: 100000, status: "Partial",  variant: "info" as const },
-  { id: 4, invoiceNo: "INV-26-0098", date: "2026-04-08", dueDate: "2026-05-08", amount: 64200,  paid: 64200,  status: "Paid",     variant: "success" as const },
-];
+/* GET /parties/{id}/statement — the ledger tab. */
+type StatementLine = {
+  id: number; date: string; entryNo: string; entryType: string;
+  reference: string | null; narration: string | null;
+  debit: number; credit: number; balance: number;
+};
+type Statement = {
+  openingBalance: number; closingBalance: number;
+  totalDebit: number; totalCredit: number; lines: StatementLine[];
+};
 
-const mockLedger = [
-  { id: 1, date: "2026-04-30", reference: "INV-26-0142", description: "Sales Invoice",      debit: 145000, credit: 0,      balance: 245000 },
-  { id: 2, date: "2026-04-25", reference: "VCH-26-0089", description: "Bank Receipt",       debit: 0,      credit: 100000, balance: 100000 },
-  { id: 3, date: "2026-04-22", reference: "INV-26-0128", description: "Sales Invoice",      debit: 88000,  credit: 0,      balance: 200000 },
-  { id: 4, date: "2026-04-22", reference: "VCH-26-0085", description: "Cash Receipt",       debit: 0,      credit: 88000,  balance: 112000 },
-  { id: 5, date: "2026-04-15", reference: "INV-26-0114", description: "Sales Invoice",      debit: 215500, credit: 0,      balance: 200000 },
-];
+type OrderRow = { id: number; orderNo: string; orderDate: string; statusName: string; total: number };
+type InvoiceRow = { id: number; invoiceNo: string; invoiceDate: string; statusName: string; total: number };
+type VisitRow = {
+  id: number; customerId: number; visitedAt: string;
+  salesPerson: string | null; outcomeName: string | null; note: string | null;
+};
 
-const mockVisits = [
-  { id: 1, date: "2026-04-29", time: "11:30 AM", salesPerson: "Sara Khan",  outcome: "Order Placed",   variant: "success" as const, notes: "Discussed bulk discount on PowerX line" },
-  { id: 2, date: "2026-04-22", time: "10:15 AM", salesPerson: "Sara Khan",  outcome: "Order Placed",   variant: "success" as const, notes: "Repeat order for Titan T9" },
-  { id: 3, date: "2026-04-15", time: "02:00 PM", salesPerson: "Sara Khan",  outcome: "Followup",       variant: "info" as const,    notes: "Will confirm next week" },
-];
+const TYPE_LABEL: Record<Party["type"], { label: string; variant: "info" | "warning" | "accent" }> = {
+  CUSTOMER: { label: "Customer", variant: "info" },
+  SUPPLIER: { label: "Supplier", variant: "warning" },
+  BOTH: { label: "Customer & Supplier", variant: "accent" },
+};
+
+function apiMessage(e: unknown, fallback: string) {
+  if (axios.isAxiosError(e) && e.response) {
+    return (e.response.data as { message?: string })?.message ?? fallback;
+  }
+  return "Cannot reach the server.";
+}
 
 export default function PartyDetailPage() {
   const params = useParams<{ id: string }>();
-  const partyId = parseInt(params.id ?? "1", 10);
-  const party = getParty(partyId);
+  const partyId = parseInt(params.id ?? "0", 10);
 
-  if (!party) {
+  const [party, setParty] = React.useState<Party | null>(null);
+  const [statement, setStatement] = React.useState<Statement | null>(null);
+  const [orders, setOrders] = React.useState<OrderRow[]>([]);
+  const [invoices, setInvoices] = React.useState<InvoiceRow[]>([]);
+  const [visits, setVisits] = React.useState<VisitRow[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [notFound, setNotFound] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const [toggling, setToggling] = React.useState(false);
+
+  const load = React.useCallback(async () => {
+    if (!partyId) { setNotFound(true); setLoading(false); return; }
+    try {
+      const res = await axios.get<Party>(`${API_BASE_URL}/parties/${partyId}`, { headers: authHeader() });
+      setParty(res.data);
+      setNotFound(false);
+      setError(null);
+
+      /* The tabs are secondary: if one of them fails the header should still
+         render, so they are settled separately from the party itself. */
+      const [st, ord, inv, vis] = await Promise.allSettled([
+        axios.get<Statement>(`${API_BASE_URL}/parties/${partyId}/statement`, { headers: authHeader() }),
+        axios.get<{ items: OrderRow[] } | OrderRow[]>(`${API_BASE_URL}/sales/orders`, { params: { customerId: partyId, pageSize: 100 }, headers: authHeader() }),
+        axios.get<{ items: InvoiceRow[] } | InvoiceRow[]>(`${API_BASE_URL}/sales/invoices`, { params: { customerId: partyId, pageSize: 100 }, headers: authHeader() }),
+        axios.get<VisitRow[] | { items: VisitRow[] }>(`${API_BASE_URL}/parties/visits`, { headers: authHeader() }),
+      ]);
+
+      if (st.status === "fulfilled") setStatement(st.value.data);
+      if (ord.status === "fulfilled") {
+        const d = ord.value.data;
+        setOrders(Array.isArray(d) ? d : d.items);
+      }
+      if (inv.status === "fulfilled") {
+        const d = inv.value.data;
+        setInvoices(Array.isArray(d) ? d : d.items);
+      }
+      if (vis.status === "fulfilled") {
+        const d = vis.value.data;
+        const rows = Array.isArray(d) ? d : d.items;
+        setVisits(rows.filter((v) => v.customerId === partyId));
+      }
+    } catch (e) {
+      if (axios.isAxiosError(e) && e.response?.status === 404) setNotFound(true);
+      else setError(apiMessage(e, "Could not load this party."));
+    } finally {
+      setLoading(false);
+    }
+  }, [partyId]);
+
+  React.useEffect(() => {
+    /* eslint-disable-next-line react-hooks/set-state-in-effect --
+       The brief for this project is axios inside the page driven by
+       useState/useEffect. This rule wants the fetch moved to the server, which
+       is a different architecture, not a bug in this line. */
+    void load();
+  }, [load]);
+
+  async function toggleActive() {
+    if (!party) return;
+    setToggling(true);
+    try {
+      /* The endpoint binds to ActiveRequest(bool Value), so the field is
+         `value` -- and it answers { id, isActive }, not a message. */
+      await axios.patch(
+        `${API_BASE_URL}/parties/${party.id}/active`,
+        { value: !party.isActive },
+        { headers: authHeader() }
+      );
+      const wasActive = party.isActive;
+      await load();
+      toast.success(wasActive ? "Party deactivated" : "Party reactivated", {
+        description: wasActive
+          ? `${party.displayName} will no longer appear in pickers.`
+          : `${party.displayName} can be used again.`,
+      });
+    } catch (e) {
+      toast.error("Could not change the status", { description: apiMessage(e, "Please try again.") });
+    } finally {
+      setToggling(false);
+    }
+  }
+
+  if (loading) {
     return (
-      <EmptyState
-        icon={AlertCircle}
-        title="Party not found"
-        description="The party you are looking for does not exist or has been deleted."
-        action={
-          <Button variant="accent" asChild>
-            <Link href="/parties">Back to Parties</Link>
+      <>
+        <PageHeader breadcrumbs={[{ label: "People" }, { label: "Parties", href: "/parties" }]} title="Loading…" />
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-24" />)}
+        </div>
+        <Skeleton className="h-64" />
+      </>
+    );
+  }
+
+  if (notFound) {
+    return (
+      <EmptyState icon={AlertCircle} title="Party not found" description={`No party with id ${partyId}.`}
+        action={<Button variant="accent" asChild><Link href="/parties">Back to Parties</Link></Button>} />
+    );
+  }
+
+  if (error || !party) {
+    return (
+      <>
+        <PageHeader breadcrumbs={[{ label: "People" }, { label: "Parties", href: "/parties" }]} title="Party" />
+        <Card><CardBody className="flex items-center gap-3">
+          <AlertCircle className="size-5 text-danger shrink-0" />
+          <div className="flex-1">
+            <div className="text-sm font-semibold text-navy-900 dark:text-white">{error}</div>
+            <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">The API must be running on {API_BASE_URL}.</div>
+          </div>
+          <Button variant="ghost" size="sm" className="gap-1.5" onClick={() => { setLoading(true); void load(); }}>
+            <RefreshCw className="size-4" /> Try again
           </Button>
-        }
-      />
+        </CardBody></Card>
+      </>
     );
   }
 
   const overLimit = party.creditLimit > 0 && party.currentBalance > party.creditLimit;
-  const utilPct = party.creditLimit > 0 ? (party.currentBalance / party.creditLimit) * 100 : 0;
+  const usedPercent = party.creditLimit > 0 ? Math.min(100, (party.currentBalance / party.creditLimit) * 100) : 0;
 
-  const orderColumns: Column<(typeof mockOrders)[number]>[] = [
-    { key: "orderNo", header: "Order #", cell: (o) => <span className="tabular text-sm font-medium text-navy-900 dark:text-white">{o.orderNo}</span> },
-    { key: "date",    header: "Date",    cell: (o) => <span className="text-xs text-slate-500 dark:text-slate-400">{formatDate(o.date)}</span> },
-    { key: "amount",  header: "Amount",  align: "right", cell: (o) => <span className="tabular text-sm font-semibold text-navy-900 dark:text-white">{formatMoney(o.amount)}</span> },
-    { key: "status",  header: "Status",  cell: (o) => <StatusPill variant={o.variant}>{statusLabel(o.status)}</StatusPill> },
+  const ledgerColumns: Column<StatementLine>[] = [
+    { key: "date", header: "Date", cell: (l) => <span className="text-xs text-slate-500 dark:text-slate-400">{formatDate(l.date)}</span> },
+    { key: "entryNo", header: "Entry", cell: (l) => <span className="tabular text-xs font-medium text-navy-900 dark:text-white">{l.entryNo}</span> },
+    { key: "reference", header: "Reference", cell: (l) => <span className="tabular text-xs text-slate-600 dark:text-slate-300">{l.reference ?? "—"}</span> },
+    { key: "narration", header: "Description", cell: (l) => <span className="text-sm text-slate-600 dark:text-slate-300">{l.narration ?? l.entryType}</span> },
+    { key: "debit", header: "Debit", align: "right", cell: (l) => l.debit > 0 ? <span className="tabular text-sm font-semibold">{formatMoney(l.debit)}</span> : <span className="text-slate-300">—</span> },
+    { key: "credit", header: "Credit", align: "right", cell: (l) => l.credit > 0 ? <span className="tabular text-sm font-semibold text-success">{formatMoney(l.credit)}</span> : <span className="text-slate-300">—</span> },
+    { key: "balance", header: "Balance", align: "right", cell: (l) => <span className="tabular text-sm font-bold text-navy-900 dark:text-white">{formatMoney(l.balance)}</span> },
   ];
 
-  const invoiceColumns: Column<(typeof mockInvoices)[number]>[] = [
-    { key: "invoiceNo", header: "Invoice #", cell: (i) => <span className="tabular text-sm font-medium text-navy-900 dark:text-white">{i.invoiceNo}</span> },
-    { key: "date",      header: "Date",      cell: (i) => <span className="text-xs text-slate-500 dark:text-slate-400">{formatDate(i.date)}</span> },
-    { key: "dueDate",   header: "Due",       cell: (i) => <span className="text-xs text-slate-500 dark:text-slate-400">{formatDate(i.dueDate)}</span> },
-    { key: "amount",    header: "Amount",    align: "right", cell: (i) => <span className="tabular text-sm font-semibold text-navy-900 dark:text-white">{formatMoney(i.amount)}</span> },
-    { key: "paid",      header: "Paid",      align: "right", cell: (i) => <span className="tabular text-sm text-success">{formatMoney(i.paid)}</span> },
-    { key: "balance",   header: "Balance",   align: "right", cell: (i) => <span className="tabular text-sm font-semibold text-warning">{formatMoney(i.amount - i.paid)}</span> },
-    { key: "status",    header: "Status",    cell: (i) => <StatusPill variant={i.variant}>{statusLabel(i.status)}</StatusPill> },
+  const orderColumns: Column<OrderRow>[] = [
+    { key: "orderNo", header: "Order", cell: (o) => <span className="tabular text-sm font-medium text-navy-900 dark:text-white">{o.orderNo}</span> },
+    { key: "orderDate", header: "Date", cell: (o) => <span className="text-xs text-slate-500 dark:text-slate-400">{formatDate(o.orderDate)}</span> },
+    { key: "statusName", header: "Status", cell: (o) => <Badge variant="muted">{o.statusName}</Badge> },
+    { key: "total", header: "Total", align: "right", cell: (o) => <span className="tabular text-sm font-semibold">{formatMoney(o.total)}</span> },
   ];
 
-  const ledgerColumns: Column<(typeof mockLedger)[number]>[] = [
-    { key: "date",        header: "Date",        cell: (l) => <span className="text-xs text-slate-600 dark:text-slate-300">{formatDate(l.date)}</span> },
-    { key: "reference",   header: "Reference",   cell: (l) => <span className="tabular text-xs font-medium text-navy-900 dark:text-white">{l.reference}</span> },
-    { key: "description", header: "Description", cell: (l) => <span className="text-sm text-slate-600 dark:text-slate-300">{l.description}</span> },
-    { key: "debit",       header: "Debit",       align: "right", cell: (l) => l.debit > 0 ? <span className="tabular text-sm font-semibold text-navy-900 dark:text-white">{formatMoney(l.debit)}</span> : <span className="text-slate-300">—</span> },
-    { key: "credit",      header: "Credit",      align: "right", cell: (l) => l.credit > 0 ? <span className="tabular text-sm font-semibold text-success">{formatMoney(l.credit)}</span> : <span className="text-slate-300">—</span> },
-    { key: "balance",     header: "Balance",     align: "right", cell: (l) => <span className="tabular text-sm font-bold text-navy-900 dark:text-white">{formatMoney(l.balance)}</span> },
+  const invoiceColumns: Column<InvoiceRow>[] = [
+    { key: "invoiceNo", header: "Invoice", cell: (i) => <span className="tabular text-sm font-medium text-navy-900 dark:text-white">{i.invoiceNo}</span> },
+    { key: "invoiceDate", header: "Date", cell: (i) => <span className="text-xs text-slate-500 dark:text-slate-400">{formatDate(i.invoiceDate)}</span> },
+    { key: "statusName", header: "Status", cell: (i) => <Badge variant="muted">{i.statusName}</Badge> },
+    { key: "total", header: "Total", align: "right", cell: (i) => <span className="tabular text-sm font-semibold">{formatMoney(i.total)}</span> },
   ];
 
   return (
     <>
       <PageHeader
-        breadcrumbs={[
-          { label: "Parties", href: "/parties" },
-          { label: party.type === "SUPPLIER" ? "Suppliers" : "Customers", href: party.type === "SUPPLIER" ? "/parties/suppliers" : "/parties/customers" },
-          { label: party.legalName },
-        ]}
+        breadcrumbs={[{ label: "People" }, { label: "Parties", href: "/parties" }, { label: party.displayName }]}
         title={
           <div className="flex items-center gap-3">
-            <Avatar initials={party.initials} size="xl" />
-            <div className="min-w-0">
+            <Avatar initials={party.initials} size="xl" className="size-12" />
+            <div>
               <div>{party.legalName}</div>
-              <div className="flex items-center gap-2 mt-1.5">
-                <span className="text-xs text-slate-500 dark:text-slate-400 tabular">{party.partyCode}</span>
-                <Badge variant={party.type === "BOTH" ? "accent" : party.type === "SUPPLIER" ? "warning" : "info"}>
-                  {party.type === "BOTH" ? "Customer & Supplier" : party.type === "SUPPLIER" ? "Supplier" : "Customer"}
-                </Badge>
-                <span className="text-xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">{party.category}</span>
-                {party.isActive ? <StatusPill variant="success">Active</StatusPill> : <StatusPill variant="muted">Inactive</StatusPill>}
+              <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                <span className="tabular text-xs text-slate-500 dark:text-slate-400">{party.partyCode}</span>
+                <Badge variant={TYPE_LABEL[party.type].variant}>{TYPE_LABEL[party.type].label}</Badge>
+                {party.categoryName && <Badge variant="muted">{party.categoryName}</Badge>}
+                {party.rating && <Badge variant="muted"><Star className="size-3 inline mr-0.5" />{party.rating}</Badge>}
+                <StatusPill variant={party.isActive ? "success" : "muted"}>{party.isActive ? "Active" : "Inactive"}</StatusPill>
               </div>
             </div>
           </div>
         }
         actions={
           <>
-            <Button variant="ghost" size="md" className="gap-1.5" asChild>
-              <Link href={`/parties/${party.id}/statement`}>
-                <FileText />
-                <span className="hidden sm:inline">Statement</span>
-              </Link>
+            <Button variant="ghost" className="gap-1.5" onClick={() => void load()}><RefreshCw className="size-4" />Refresh</Button>
+            <Button variant="secondary" className="gap-1.5" asChild>
+              <Link href={`/parties/${party.id}/statement`}><FileText />Statement</Link>
             </Button>
-            <Button variant="secondary" size="md" className="gap-1.5" asChild>
-              <Link href={`/parties/new?id=${party.id}`}>
-                <Edit3 />
-                <span className="hidden sm:inline">Edit</span>
-              </Link>
-            </Button>
-            <Button variant="accent" size="md" className="gap-1.5" asChild>
-              <Link href={`/sales/orders/new?customerId=${party.id}`}>
-                <ArrowRight />
-                <span>New Order</span>
-              </Link>
-            </Button>
-            <Button variant="ghost" size="icon">
-              <MoreHorizontal />
+            <Button variant={party.isActive ? "ghost" : "accent"} className="gap-1.5" onClick={() => void toggleActive()} disabled={toggling}>
+              {toggling ? <Loader2 className="size-4 animate-spin" /> : <Power className="size-4" />}
+              {party.isActive ? "Deactivate" : "Reactivate"}
             </Button>
           </>
         }
       />
 
-      {/* Stats row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <Card className="p-4">
-          <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">
-            {party.type === "SUPPLIER" ? "Payable Balance" : "Outstanding"}
+          <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Balance</div>
+          <div className={cn("text-2xl tabular font-bold mt-1", overLimit ? "text-danger" : "text-navy-900 dark:text-white")}>
+            {formatMoney(party.currentBalance)}
           </div>
-          <div className={cn(
-            "text-2xl tabular font-bold mt-1",
-            overLimit ? "text-danger" : "text-navy-900 dark:text-white"
-          )}>
-            {formatCompact(party.type === "SUPPLIER" ? party.payableBalance : party.currentBalance, false)}
-          </div>
-          <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            {party.type === "SUPPLIER" ? "We owe supplier" : "Customer owes us"}
+          {overLimit && <div className="text-2xs text-danger mt-1">Over the credit limit</div>}
+        </Card>
+        <Card className="p-4">
+          <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Credit Limit</div>
+          <div className="text-2xl tabular font-bold text-navy-900 dark:text-white mt-1">{formatMoney(party.creditLimit)}</div>
+          <div className="w-full h-1 bg-slate-100 dark:bg-navy-700 rounded-full overflow-hidden mt-2">
+            <div className={cn("h-full", overLimit ? "bg-danger" : "bg-success")} style={{ width: `${usedPercent}%` }} />
           </div>
         </Card>
-
-        {party.type !== "SUPPLIER" && party.creditLimit > 0 && (
-          <Card className="p-4">
-            <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">
-              Credit Utilization
-            </div>
-            <div className={cn(
-              "text-2xl tabular font-bold mt-1",
-              overLimit ? "text-danger" : utilPct > 80 ? "text-warning" : "text-success"
-            )}>
-              {Math.round(utilPct)}%
-            </div>
-            <div className="mt-1.5 h-1.5 bg-slate-100 dark:bg-navy-700 rounded-full overflow-hidden">
-              <div
-                className={cn("h-full rounded-full",
-                  overLimit ? "bg-danger" : utilPct > 80 ? "bg-warning" : "bg-success"
-                )}
-                style={{ width: `${Math.min(utilPct, 100)}%` }}
-              />
-            </div>
-            <div className="text-xs text-slate-500 dark:text-slate-400 mt-1.5">
-              Limit {formatCompact(party.creditLimit, false)} · NET {party.creditDays}
-            </div>
-          </Card>
-        )}
-
         <Card className="p-4">
-          <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">
-            Total Orders (LTM)
-          </div>
-          <div className="text-2xl tabular font-bold text-navy-900 dark:text-white mt-1">42</div>
-          <div className="text-xs text-success font-semibold mt-1 inline-flex items-center gap-1">
-            <TrendingUp className="size-3" /> +18% vs last year
-          </div>
+          <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Orders</div>
+          <div className="text-2xl tabular font-bold text-navy-900 dark:text-white mt-1">{party.orderCount}</div>
         </Card>
-
         <Card className="p-4">
-          <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">
-            Lifetime Revenue
-          </div>
-          <div className="text-2xl tabular font-bold text-navy-900 dark:text-white mt-1">
-            {formatCompact(8420000)}
-          </div>
-          <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">Since {formatDate(party.createdAt)}</div>
+          <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Invoices</div>
+          <div className="text-2xl tabular font-bold text-navy-900 dark:text-white mt-1">{party.invoiceCount}</div>
         </Card>
       </div>
 
-      {/* Tabs */}
       <Tabs defaultValue="overview" className="w-full">
-        <TabsList className="w-full sm:w-auto overflow-x-auto scrollbar-thin flex-nowrap">
+        <TabsList className="overflow-x-auto scrollbar-thin flex-nowrap">
           <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="ledger">Ledger</TabsTrigger>
-          <TabsTrigger value="orders">Orders</TabsTrigger>
-          <TabsTrigger value="invoices">Invoices</TabsTrigger>
-          {party.type !== "SUPPLIER" && <TabsTrigger value="visits">Visits</TabsTrigger>}
+          <TabsTrigger value="ledger">Ledger ({statement?.lines.length ?? 0})</TabsTrigger>
+          <TabsTrigger value="orders">Orders ({orders.length})</TabsTrigger>
+          <TabsTrigger value="invoices">Invoices ({invoices.length})</TabsTrigger>
+          {party.type !== "SUPPLIER" && <TabsTrigger value="visits">Visits ({visits.length})</TabsTrigger>}
           {party.type !== "SUPPLIER" && <TabsTrigger value="credit">Credit</TabsTrigger>}
         </TabsList>
 
-        {/* OVERVIEW TAB */}
         <TabsContent value="overview">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            {/* Contact Info */}
-            <Card className="lg:col-span-2">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Card>
               <CardBody>
                 <h3 className="text-base font-semibold text-navy-900 dark:text-white mb-4">Contact Information</h3>
-                <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
-                  <div>
-                    <dt className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Phone</dt>
-                    <dd className="text-sm text-navy-900 dark:text-white mt-1 inline-flex items-center gap-2">
-                      <Phone className="size-3.5 text-slate-400" />
-                      {party.phone}
-                    </dd>
-                  </div>
-                  {party.email && (
-                    <div>
-                      <dt className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Email</dt>
-                      <dd className="text-sm text-navy-900 dark:text-white mt-1 inline-flex items-center gap-2">
-                        <Mail className="size-3.5 text-slate-400" />
-                        {party.email}
-                      </dd>
-                    </div>
-                  )}
-                  <div>
-                    <dt className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">City</dt>
-                    <dd className="text-sm text-navy-900 dark:text-white mt-1 inline-flex items-center gap-2">
-                      <MapPin className="size-3.5 text-slate-400" />
-                      {party.city}, {party.province}
-                    </dd>
-                  </div>
-                  {party.ntn && (
-                    <div>
-                      <dt className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">NTN</dt>
-                      <dd className="text-sm tabular text-navy-900 dark:text-white mt-1">{party.ntn}</dd>
-                    </div>
-                  )}
-                  {party.salesPerson && (
-                    <div>
-                      <dt className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Sales Rep</dt>
-                      <dd className="text-sm text-navy-900 dark:text-white mt-1">{party.salesPerson}</dd>
-                    </div>
-                  )}
-                  <div>
-                    <dt className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Customer Since</dt>
-                    <dd className="text-sm text-navy-900 dark:text-white mt-1 inline-flex items-center gap-2">
-                      <Calendar className="size-3.5 text-slate-400" />
-                      {formatDate(party.createdAt)}
-                    </dd>
-                  </div>
+                <dl className="space-y-3 text-sm">
+                  <Row icon={Phone} label="Phone" value={party.phone ?? "—"} />
+                  {party.altPhone && <Row icon={Phone} label="Alt. phone" value={party.altPhone} />}
+                  <Row icon={Mail} label="Email" value={party.email ?? "—"} />
+                  <Row icon={MapPin} label="Address" value={[party.addressLine, party.city, party.province].filter(Boolean).join(", ") || "—"} />
+                  <Row icon={Building2} label="Industry" value={party.industry ?? "—"} />
+                  <Row icon={User} label="Sales person" value={party.salesPerson ?? "Not assigned"} />
                 </dl>
               </CardBody>
             </Card>
 
-            {/* Quick Actions */}
             <Card>
               <CardBody>
-                <h3 className="text-base font-semibold text-navy-900 dark:text-white mb-4">Quick Actions</h3>
-                <div className="space-y-2">
-                  <Button variant="secondary" size="md" className="w-full justify-start" asChild>
-                    <Link href={`/sales/orders/new?customerId=${party.id}`}>
-                      <ArrowRight />
-                      Create New Order
-                    </Link>
-                  </Button>
-                  <Button variant="secondary" size="md" className="w-full justify-start" onClick={() => toast.info("Opening payment dialog…")}>
-                    <CreditCard />
-                    Record Payment
-                  </Button>
-                  <Button variant="secondary" size="md" className="w-full justify-start" onClick={() => toast.info("Generating statement…")}>
-                    <Building />
-                    Print Statement
-                  </Button>
-                  <Button variant="secondary" size="md" className="w-full justify-start" asChild>
-                    <Link href={`/parties/new?id=${party.id}`}>
-                      <Edit3 />
-                      Edit Credit Limit
-                    </Link>
-                  </Button>
-                </div>
+                <h3 className="text-base font-semibold text-navy-900 dark:text-white mb-4">Tax &amp; Registration</h3>
+                <dl className="space-y-3 text-sm">
+                  <Row icon={Receipt} label="NTN" value={party.ntn ?? "—"} />
+                  <Row icon={Receipt} label="STRN" value={party.strn ?? "—"} />
+                  <Row icon={Receipt} label="CNIC" value={party.cnic ?? "—"} />
+                  <Row icon={FileText} label="Opened" value={formatDate(party.createdAt)} />
+                  <Row icon={FileText} label="Opening balance" value={formatMoney(party.openingBalance)} />
+                </dl>
+                {party.notes && (
+                  <p className="mt-4 pt-4 border-t border-slate-100 dark:border-navy-700 text-xs text-slate-600 dark:text-slate-300">
+                    {party.notes}
+                  </p>
+                )}
               </CardBody>
             </Card>
           </div>
         </TabsContent>
 
-        {/* LEDGER TAB */}
         <TabsContent value="ledger">
           <Card className="p-0 overflow-hidden">
-            <div className="p-5 pb-3 flex items-center justify-between">
-              <div>
-                <h3 className="text-base font-semibold text-navy-900 dark:text-white">Party Ledger</h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">All transactions, latest first</p>
-              </div>
-              <Button variant="secondary" size="sm">
-                <Calendar />
-                <span>Last 30 days</span>
-              </Button>
-            </div>
-            <DataTable columns={ledgerColumns} data={mockLedger} pageSize={10} />
+            {!statement || statement.lines.length === 0 ? (
+              <CardBody><EmptyState icon={FileText} title="Nothing posted yet" description="This party has no posted ledger entries." /></CardBody>
+            ) : (
+              <>
+                <DataTable columns={ledgerColumns} data={statement.lines} pageSize={20} />
+                <div className="px-5 py-3 border-t border-slate-100 dark:border-navy-700 bg-slate-50 dark:bg-navy-900/40 flex items-center justify-between text-sm">
+                  <span className="text-slate-500 dark:text-slate-400">
+                    Opened at {formatMoney(statement.openingBalance)} · {formatMoney(statement.totalDebit)} debit · {formatMoney(statement.totalCredit)} credit
+                  </span>
+                  <span className="tabular font-bold text-navy-900 dark:text-white">{formatMoney(statement.closingBalance)}</span>
+                </div>
+              </>
+            )}
           </Card>
         </TabsContent>
 
-        {/* ORDERS TAB */}
         <TabsContent value="orders">
           <Card className="p-0 overflow-hidden">
-            <DataTable columns={orderColumns} data={mockOrders} pageSize={10} rowHref={(o) => `/sales/orders/${o.id}`} />
+            {orders.length === 0
+              ? <CardBody><EmptyState icon={FileText} title="No orders" description="Nothing has been ordered by this party." /></CardBody>
+              : <DataTable columns={orderColumns} data={orders} pageSize={15} rowHref={(o) => `/sales/orders/${o.id}`} />}
           </Card>
         </TabsContent>
 
-        {/* INVOICES TAB */}
         <TabsContent value="invoices">
           <Card className="p-0 overflow-hidden">
-            <DataTable columns={invoiceColumns} data={mockInvoices} pageSize={10} rowHref={(i) => `/sales/invoices/${i.id}`} />
+            {invoices.length === 0
+              ? <CardBody><EmptyState icon={Receipt} title="No invoices" description="Nothing has been invoiced to this party." /></CardBody>
+              : <DataTable columns={invoiceColumns} data={invoices} pageSize={15} rowHref={(i) => `/sales/invoices/${i.id}`} />}
           </Card>
         </TabsContent>
 
-        {/* VISITS TAB */}
         {party.type !== "SUPPLIER" && (
           <TabsContent value="visits">
-            <div className="space-y-3">
-              {mockVisits.map((v) => (
-                <Card key={v.id}>
-                  <CardBody>
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-start gap-3">
-                        <div className="size-10 rounded-lg bg-brand-yellow/10 flex items-center justify-center flex-shrink-0">
-                          <MapPin className="size-4 text-brand-yellow" />
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-sm font-semibold text-navy-900 dark:text-white">{v.salesPerson}</span>
-                            <span className="text-xs text-slate-500 dark:text-slate-400">visited on</span>
-                            <span className="text-xs text-navy-900 dark:text-white font-medium">{formatDate(v.date)} at {v.time}</span>
+            <Card>
+              <CardBody>
+                {visits.length === 0 ? (
+                  <EmptyState icon={MapPin} title="No visits recorded" description="No sales visit has been logged against this customer." />
+                ) : (
+                  <div className="space-y-2">
+                    {visits.map((v) => (
+                      <div key={v.id} className="flex items-start gap-3 p-3 border border-slate-200 dark:border-navy-700 rounded-lg">
+                        <MapPin className="size-4 text-brand-yellow shrink-0 mt-0.5" />
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm text-navy-900 dark:text-white">
+                            {v.salesPerson ?? "Someone"} visited
+                            {v.outcomeName && <> · <span className="font-medium">{v.outcomeName}</span></>}
                           </div>
-                          <p className="text-sm text-slate-600 dark:text-slate-300 mt-1">{v.notes}</p>
-                          <div className="text-2xs text-slate-400 dark:text-slate-500 mt-1.5">GPS: 24.8607° N, 67.0011° E</div>
+                          {v.note && <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{v.note}</div>}
                         </div>
+                        <div className="text-2xs text-slate-500 dark:text-slate-400 shrink-0">{formatDate(v.visitedAt)}</div>
                       </div>
-                      <StatusPill variant={v.variant}>{v.outcome}</StatusPill>
-                    </div>
-                  </CardBody>
-                </Card>
-              ))}
-            </div>
+                    ))}
+                  </div>
+                )}
+              </CardBody>
+            </Card>
           </TabsContent>
         )}
 
-        {/* CREDIT TAB */}
         {party.type !== "SUPPLIER" && (
           <TabsContent value="credit">
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-              <Card className="lg:col-span-2">
-                <CardBody>
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-base font-semibold text-navy-900 dark:text-white">Credit Settings</h3>
-                    <Button variant="secondary" size="sm" asChild>
-                      <Link href={`/parties/new?id=${party.id}`}>
-                        <Edit3 />
-                        Edit
-                      </Link>
-                    </Button>
-                  </div>
-                  <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
-                    <div>
-                      <dt className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Credit Limit</dt>
-                      <dd className="text-lg tabular font-bold text-navy-900 dark:text-white mt-1">{formatMoney(party.creditLimit)}</dd>
-                    </div>
-                    <div>
-                      <dt className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Payment Terms</dt>
-                      <dd className="text-lg tabular font-bold text-navy-900 dark:text-white mt-1">NET {party.creditDays}</dd>
-                    </div>
-                    <div>
-                      <dt className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Hold Policy</dt>
-                      <dd className="mt-1">
-                        <Badge variant={
-                          party.creditHoldPolicy === "BLOCK" ? "danger" : party.creditHoldPolicy === "WARN" ? "warning" : "muted"
-                        }>
-                          {party.creditHoldPolicy}
-                        </Badge>
-                      </dd>
-                    </div>
-                    <div>
-                      <dt className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Credit Rating</dt>
-                      <dd className="mt-1">
-                        <span className={cn(
-                          "inline-flex items-center justify-center size-7 rounded-md text-xs font-bold",
-                          party.rating === "A" && "bg-success-light text-success-dark",
-                          party.rating === "B" && "bg-info-light text-info-dark",
-                          party.rating === "C" && "bg-warning-light text-warning-dark",
-                          party.rating === "D" && "bg-danger-light text-danger-dark",
-                        )}>{party.rating}</span>
-                      </dd>
-                    </div>
-                  </dl>
-                </CardBody>
-              </Card>
-
-              <Card>
-                <CardBody>
-                  <h3 className="text-base font-semibold text-navy-900 dark:text-white mb-4">Credit Health</h3>
-                  <div className="space-y-3">
-                    <div>
-                      <div className="flex items-center justify-between text-sm mb-1.5">
-                        <span className="text-slate-600 dark:text-slate-300">Utilization</span>
-                        <span className={cn("font-semibold tabular",
-                          overLimit ? "text-danger" : utilPct > 80 ? "text-warning" : "text-success"
-                        )}>{Math.round(utilPct)}%</span>
-                      </div>
-                      <div className="h-2 bg-slate-100 dark:bg-navy-700 rounded-full overflow-hidden">
-                        <div className={cn("h-full",
-                          overLimit ? "bg-danger" : utilPct > 80 ? "bg-warning" : "bg-success"
-                        )} style={{ width: `${Math.min(utilPct, 100)}%` }} />
-                      </div>
-                    </div>
-                    <div className="pt-3 border-t border-slate-100 dark:border-navy-700">
-                      <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Days Past Due</div>
-                      <div className="text-2xl font-bold tabular text-navy-900 dark:text-white mt-1">0</div>
-                    </div>
-                    <div className="pt-3 border-t border-slate-100 dark:border-navy-700">
-                      <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Last Payment</div>
-                      <div className="text-sm font-semibold text-navy-900 dark:text-white mt-1">
-                        {party.lastPaymentAt ? formatDate(party.lastPaymentAt) : "Never"}
-                      </div>
-                    </div>
-                  </div>
-                </CardBody>
-              </Card>
-            </div>
+            <Card>
+              <CardBody>
+                <h3 className="text-base font-semibold text-navy-900 dark:text-white mb-4 inline-flex items-center gap-2">
+                  <CreditCard className="size-4 text-slate-400" /> Credit Settings
+                </h3>
+                <dl className="space-y-3 text-sm max-w-md">
+                  <Row icon={CreditCard} label="Credit limit" value={formatMoney(party.creditLimit)} />
+                  <Row icon={CreditCard} label="Credit days" value={`${party.creditDays} days`} />
+                  <Row icon={CreditCard} label="When over limit" value={party.creditHoldPolicy ?? "—"} />
+                  <Row icon={CreditCard} label="Currently owes" value={formatMoney(party.currentBalance)} />
+                </dl>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-4">
+                  {overLimit
+                    ? "This party is over its limit. What happens next depends on the hold policy above."
+                    : `${formatMoney(Math.max(0, party.creditLimit - party.currentBalance))} of the limit is still available.`}
+                </p>
+              </CardBody>
+            </Card>
           </TabsContent>
         )}
       </Tabs>
     </>
+  );
+}
+
+function Row({ icon: Icon, label, value }: { icon: typeof Phone; label: string; value: string }) {
+  return (
+    <div className="flex items-start gap-2.5">
+      <Icon className="size-3.5 text-slate-400 shrink-0 mt-0.5" />
+      <dt className="text-slate-500 dark:text-slate-400 w-28 shrink-0">{label}</dt>
+      <dd className="text-navy-900 dark:text-white font-medium min-w-0 break-words">{value}</dd>
+    </div>
   );
 }
