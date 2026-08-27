@@ -3,23 +3,45 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import axios from "axios";
 import { useForm, useFieldArray, type Control } from "react-hook-form";
 import { z } from "zod";
-import { Save, ArrowLeft, Loader2, Plus, Trash2, Search, AlertTriangle } from "lucide-react";
+import { Save, ArrowLeft, Loader2, Plus, Trash2, AlertTriangle, AlertCircle, RefreshCw } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardBody } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { SelectNative } from "@/components/ui/select-native";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage, FormDescription } from "@/components/ui/form";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from "@/components/ui/command";
 import { vizoResolver } from "@/lib/zod-resolver";
-import { products } from "@/data/products";
-import { activeLocations } from "@/data/settings";
 import { toast } from "@/components/ui/toaster";
+import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
 import { cn } from "@/lib/utils";
+
+/* GET /inventory/lookups.
+   `products` used to be a hard-coded array imported from src/data/products, so
+   an item added on the New Product screen could not be adjusted at all -- it
+   was simply missing from this picker. Same for locations and the reason list,
+   which was six <option> tags written into the page while the database carries
+   the AdjustmentReason rows that the API actually validates against. */
+type LookupProduct = { id: number; sku: string; name: string; packing: number; costPrice: number; totalStock: number };
+type LookupLocation = { id: number; code: string; name: string };
+type LookupReason = { id: number; key: string; name: string };
+
+type Lookups = {
+  products: LookupProduct[];
+  locations: LookupLocation[];
+  adjustmentReasons: LookupReason[];
+};
+
+/* GET /inventory/stock-levels?locationId= -> what is on the shelf AT THAT
+   LOCATION. The old form showed the product's total across every location as
+   "current", which is not the number anybody counting one shelf would see. */
+type StockRow = { productId: number; qty: number };
 
 const ItemSchema = z.object({
   productId: z.coerce.number().positive(),
@@ -30,24 +52,36 @@ const ItemSchema = z.object({
 });
 
 const Schema = z.object({
-  locationId: z.coerce.number().positive(),
+  locationId: z.coerce.number().positive("Pick a location"),
   date: z.string().min(1),
-  reason: z.enum(["PHYSICAL_COUNT", "DAMAGED", "EXPIRED", "FOUND", "WRITE_OFF", "OTHER"]),
-  reasonNotes: z.string().min(5).max(500),
+  reasonId: z.coerce.number().positive("Pick a reason"),
+  reasonNotes: z.string().min(5, "Say what happened — this is the audit trail").max(500),
   items: z.array(ItemSchema).min(1, "Add at least one item"),
 });
-type Form = z.infer<typeof Schema>;
+type FormValues = z.infer<typeof Schema>;
+
+function apiMessage(e: unknown, fallback: string) {
+  if (axios.isAxiosError(e) && e.response) {
+    return (e.response.data as { message?: string })?.message ?? fallback;
+  }
+  return "Cannot reach the server.";
+}
 
 export default function NewAdjustmentPage() {
   const router = useRouter();
   const [productOpen, setProductOpen] = React.useState(false);
 
-  const form = useForm<Form>({
+  const [lookups, setLookups] = React.useState<Lookups>({ products: [], locations: [], adjustmentReasons: [] });
+  const [stock, setStock] = React.useState<Map<number, number>>(new Map());
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+
+  const form = useForm<FormValues>({
     resolver: vizoResolver(Schema),
     defaultValues: {
-      locationId: activeLocations()[0]?.id ?? 1,
+      locationId: 0,
       date: new Date().toISOString().slice(0, 10),
-      reason: "PHYSICAL_COUNT",
+      reasonId: 0,
       reasonNotes: "",
       items: [],
     },
@@ -55,20 +89,104 @@ export default function NewAdjustmentPage() {
 
   const { fields, append, remove } = useFieldArray({ control: form.control, name: "items" });
   const items = form.watch("items");
+  const locationId = form.watch("locationId");
+
+  /* ── lookups: every mount, so a product added a minute ago is here ── */
+  const load = React.useCallback(async () => {
+    try {
+      const res = await axios.get<Lookups>(`${API_BASE_URL}/inventory/lookups`, { headers: authHeader() });
+      setLookups({
+        products: res.data.products ?? [],
+        locations: res.data.locations ?? [],
+        adjustmentReasons: res.data.adjustmentReasons ?? [],
+      });
+      /* Default to the first real location and reason rather than guessing an
+         id that may not exist in this database. */
+      form.setValue("locationId", res.data.locations?.[0]?.id ?? 0);
+      form.setValue("reasonId", res.data.adjustmentReasons?.[0]?.id ?? 0);
+      setError(null);
+    } catch (e) {
+      setError(apiMessage(e, "Could not load products, locations and reasons."));
+    } finally {
+      setLoading(false);
+    }
+  }, [form]);
+
+  React.useEffect(() => {
+    /* eslint-disable-next-line react-hooks/set-state-in-effect --
+       The brief for this project is axios inside the page driven by
+       useState/useEffect. This rule wants the fetch moved to the server, which
+       is a different architecture, not a bug in this line. */
+    void load();
+  }, [load]);
+
+  /* ── per-location stock, re-read whenever the location changes ── */
+  const loadStock = React.useCallback(async () => {
+    if (!locationId) return;
+    try {
+      const res = await axios.get<{ items: StockRow[] }>(`${API_BASE_URL}/inventory/stock-levels`, {
+        params: { locationId },
+        headers: authHeader(),
+      });
+      setStock(new Map(res.data.items.map((r) => [r.productId, r.qty])));
+    } catch {
+      /* Not fatal: the server re-reads the true quantity when it posts, so a
+         missing figure here costs a hint, not correctness. */
+      setStock(new Map());
+    }
+  }, [locationId]);
+
+  React.useEffect(() => {
+    /* eslint-disable-next-line react-hooks/set-state-in-effect --
+       Same reason as above: this is the requested per-page fetch pattern. */
+    void loadStock();
+  }, [loadStock]);
+
+  /* Lines already added keep showing the count for the location they were
+     added under, so re-point them when the location changes. */
+  React.useEffect(() => {
+    const current = form.getValues("items");
+    if (current.length === 0) return;
+    current.forEach((it, i) => {
+      /* eslint-disable-next-line react-hooks/set-state-in-effect --
+         Same requested pattern; this keeps the "current" column honest. */
+      form.setValue(`items.${i}.currentQty`, stock.get(it.productId) ?? 0);
+    });
+  }, [stock, form]);
 
   function pickProduct(id: number) {
-    const p = products.find((x) => x.id === id);
+    const p = lookups.products.find((x) => x.id === id);
     if (!p) return;
-    append({ productId: id, name: p.name, sku: p.sku, currentQty: p.totalStock, newQty: p.totalStock });
+    if (form.getValues("items").some((i) => i.productId === id)) {
+      toast.info("That item is already on this adjustment.");
+      setProductOpen(false);
+      return;
+    }
+    const current = stock.get(id) ?? 0;
+    append({ productId: id, name: p.name, sku: p.sku, currentQty: current, newQty: current });
     setProductOpen(false);
   }
 
-  const netDelta = items.reduce((s, i) => s + (i.newQty - i.currentQty), 0);
+  const netDelta = items.reduce((s, i) => s + ((Number(i.newQty) || 0) - i.currentQty), 0);
 
-  async function onSubmit(_d: Form) {
-    await new Promise((r) => setTimeout(r, 600));
-    toast.success("Adjustment posted", { description: `Net delta: ${netDelta > 0 ? "+" : ""}${netDelta} units` });
-    router.push("/inventory/adjustments");
+  async function onSubmit(d: FormValues) {
+    try {
+      const res = await axios.post<{ id: number; message: string }>(
+        `${API_BASE_URL}/inventory/adjustments`,
+        {
+          locationId: d.locationId,
+          adjustmentDate: d.date,
+          reasonId: d.reasonId,
+          reasonNotes: d.reasonNotes.trim(),
+          lines: d.items.map((i) => ({ productId: i.productId, newQty: Number(i.newQty) || 0 })),
+        },
+        { headers: authHeader() }
+      );
+      toast.success("Adjustment posted", { description: res.data.message });
+      router.push("/inventory/adjustments");
+    } catch (e) {
+      toast.error("Adjustment not posted", { description: apiMessage(e, "Please try again.") });
+    }
   }
 
   return (
@@ -76,16 +194,31 @@ export default function NewAdjustmentPage() {
       <PageHeader
         breadcrumbs={[{ label: "Inventory" }, { label: "Adjustments", href: "/inventory/adjustments" }, { label: "New" }]}
         title="New Stock Adjustment"
-        subtitle="Manually correct stock — every adjustment posts a journal entry"
+        subtitle="Manually correct stock — every adjustment posts a stock movement"
         actions={
           <>
             <Button variant="ghost" asChild><Link href="/inventory/adjustments"><ArrowLeft />Back</Link></Button>
-            <Button variant="accent" onClick={form.handleSubmit(onSubmit)} disabled={form.formState.isSubmitting}>
+            <Button variant="accent" onClick={form.handleSubmit(onSubmit)} disabled={form.formState.isSubmitting || loading}>
               {form.formState.isSubmitting ? <><Loader2 className="size-4 animate-spin" /> Posting…</> : <><Save />Post Adjustment</>}
             </Button>
           </>
         }
       />
+
+      {error && (
+        <Card className="mb-6">
+          <CardBody className="flex items-center gap-3">
+            <AlertCircle className="size-5 text-danger shrink-0" />
+            <div className="flex-1">
+              <div className="text-sm font-semibold text-navy-900 dark:text-white">{error}</div>
+              <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">The API must be running on {API_BASE_URL}.</div>
+            </div>
+            <Button variant="ghost" size="sm" className="gap-1.5" onClick={() => { setLoading(true); void load(); }}>
+              <RefreshCw className="size-4" /> Try again
+            </Button>
+          </CardBody>
+        </Card>
+      )}
 
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="grid grid-cols-1 lg:grid-cols-3 gap-6" noValidate>
@@ -95,22 +228,23 @@ export default function NewAdjustmentPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <FormField control={form.control} name="locationId" render={({ field }) => (
                     <FormItem><FormLabel required>Location</FormLabel><FormControl>
-                      <SelectNative {...field}>{activeLocations().map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}</SelectNative>
+                      {loading ? <Skeleton className="h-10" /> : (
+                        <SelectNative {...field}>
+                          {lookups.locations.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
+                        </SelectNative>
+                      )}
                     </FormControl><FormMessage /></FormItem>
                   )} />
                   <FormField control={form.control} name="date" render={({ field }) => (
                     <FormItem><FormLabel required>Date</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>
                   )} />
-                  <FormField control={form.control} name="reason" render={({ field }) => (
+                  <FormField control={form.control} name="reasonId" render={({ field }) => (
                     <FormItem><FormLabel required>Reason</FormLabel><FormControl>
-                      <SelectNative {...field}>
-                        <option value="PHYSICAL_COUNT">Physical count discrepancy</option>
-                        <option value="DAMAGED">Damaged in handling</option>
-                        <option value="EXPIRED">Expired write-off</option>
-                        <option value="FOUND">Extra stock found</option>
-                        <option value="WRITE_OFF">General write-off</option>
-                        <option value="OTHER">Other</option>
-                      </SelectNative>
+                      {loading ? <Skeleton className="h-10" /> : (
+                        <SelectNative {...field}>
+                          {lookups.adjustmentReasons.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+                        </SelectNative>
+                      )}
                     </FormControl><FormMessage /></FormItem>
                   )} />
                   <FormField control={form.control} name="reasonNotes" render={({ field }) => (
@@ -125,15 +259,29 @@ export default function NewAdjustmentPage() {
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-sm font-semibold text-navy-900 dark:text-white">Items <span className="text-danger">*</span> ({fields.length})</h3>
                   <Popover open={productOpen} onOpenChange={setProductOpen}>
-                    <PopoverTrigger asChild><Button type="button" variant="accent" size="sm" className="gap-1"><Plus />Add</Button></PopoverTrigger>
+                    <PopoverTrigger asChild>
+                      <Button type="button" variant="accent" size="sm" className="gap-1" disabled={loading}><Plus />Add</Button>
+                    </PopoverTrigger>
                     <PopoverContent className="w-[480px] p-0">
-                      <Command><CommandInput placeholder="Search product…" /><CommandList><CommandEmpty>No product found.</CommandEmpty><CommandGroup>
-                        {products.slice(0, 30).map((p) => (
-                          <CommandItem key={p.id} value={`${p.sku} ${p.name}`} onSelect={() => pickProduct(p.id)}>
-                            <div className="flex-1"><div className="text-sm">{p.name}</div><div className="text-2xs tabular text-slate-500">{p.sku} · current {p.totalStock}</div></div>
-                          </CommandItem>
-                        ))}
-                      </CommandGroup></CommandList></Command>
+                      <Command>
+                        <CommandInput placeholder="Search product…" />
+                        <CommandList>
+                          <CommandEmpty>No product found.</CommandEmpty>
+                          <CommandGroup>
+                            {/* Whole active catalogue, straight off the API. */}
+                            {lookups.products.map((p) => (
+                              <CommandItem key={p.id} value={`${p.sku} ${p.name}`} onSelect={() => pickProduct(p.id)}>
+                                <div className="flex-1">
+                                  <div className="text-sm">{p.name}</div>
+                                  <div className="text-2xs tabular text-slate-500">
+                                    {p.sku} · here {stock.get(p.id) ?? 0} · all locations {p.totalStock}
+                                  </div>
+                                </div>
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
                     </PopoverContent>
                   </Popover>
                 </div>
@@ -162,7 +310,11 @@ export default function NewAdjustmentPage() {
                 </div>
                 <div className="mt-4 p-3 bg-warning/5 border border-warning/30 rounded-lg flex items-start gap-2 text-xs text-warning-dark dark:text-warning-light">
                   <AlertTriangle className="size-3.5 flex-shrink-0 mt-0.5" />
-                  <span>Adjustments cannot be undone. A journal entry will be posted.</span>
+                  <span>
+                    Adjustments cannot be undone. The server re-reads what is actually on the shelf as it
+                    posts, so if somebody sells the same item while this form is open, their sale is not
+                    silently overwritten.
+                  </span>
                 </div>
               </CardBody>
             </Card>
@@ -173,7 +325,7 @@ export default function NewAdjustmentPage() {
   );
 }
 
-function AdjRow({ idx, control, onRemove }: { idx: number; control: Control<Form>; onRemove: () => void }) {
+function AdjRow({ idx, control, onRemove }: { idx: number; control: Control<FormValues>; onRemove: () => void }) {
   return (
     <FormField control={control} name={`items.${idx}.newQty`} render={({ field: newQtyF }) => (
       <FormField control={control} name={`items.${idx}.currentQty`} render={({ field: curF }) => {

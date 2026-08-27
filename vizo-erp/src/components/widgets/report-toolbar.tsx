@@ -6,10 +6,18 @@ import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { activeLocations, getLocation } from "@/data/settings";
+import axios from "axios";
+import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
 import { toast } from "@/components/ui/toaster";
 import { formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
+
+/* GET /parties/lookups -> locations. The list used to come from
+   activeLocations() in src/data/settings, a hard-coded array, so a location
+   added at /admin/locations never appeared in any report filter. Every report
+   screen shares this widget, so it is fetched here once per mount rather than
+   threaded through eight pages as a prop. */
+type ToolbarLocation = { id: number; code: string; name: string };
 
 export type DateMode = "asOf" | "range";
 
@@ -63,6 +71,31 @@ export function ReportToolbar({
 }: ReportToolbarProps) {
   const [datePickerOpen, setDatePickerOpen] = React.useState(false);
   const [locationOpen, setLocationOpen] = React.useState(false);
+  const [locations, setLocations] = React.useState<ToolbarLocation[]>([]);
+
+  const loadLocations = React.useCallback(async () => {
+    try {
+      const res = await axios.get<{ locations: ToolbarLocation[] }>(
+        `${API_BASE_URL}/parties/lookups`,
+        { headers: authHeader() }
+      );
+      setLocations(res.data.locations ?? []);
+    } catch {
+      /* A filter that cannot load its options is not worth an error card on a
+         report that is otherwise fine -- the button simply offers "All
+         Locations", which is the default anyway. */
+      setLocations([]);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    if (!onLocationChange) return;   // the filter is not rendered at all
+    /* eslint-disable-next-line react-hooks/set-state-in-effect --
+       The brief for this project is axios inside the component driven by
+       useState/useEffect. This rule wants the fetch moved to the server, which
+       is a different architecture, not a bug in this line. */
+    void loadLocations();
+  }, [onLocationChange, loadLocations]);
 
   const [tempAsOf, setTempAsOf] = React.useState(asOfDate ?? "");
   const [tempFrom, setTempFrom] = React.useState(fromDate ?? "");
@@ -78,7 +111,7 @@ export function ReportToolbar({
     setTempTo(toDate ?? "");
   }
 
-  const location = locationId ? getLocation(locationId) : null;
+  const location = locationId ? locations.find((l) => l.id === locationId) ?? null : null;
 
   function applyDate() {
     if (mode === "asOf") onAsOfChange?.(tempAsOf);
@@ -165,7 +198,7 @@ export function ReportToolbar({
               {!locationId && <Check className="size-3.5 text-brand-yellow" />}
             </button>
             <div className="border-t border-slate-100 dark:border-navy-700">
-              {activeLocations().map((l) => (
+              {locations.map((l) => (
                 <button
                   key={l.id}
                   onClick={() => { onLocationChange?.(l.id); setLocationOpen(false); toast.success(`Filtered to ${l.name}`); }}

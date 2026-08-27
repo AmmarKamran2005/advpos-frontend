@@ -3,349 +3,288 @@
 import * as React from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import {
-  ArrowLeft, Printer, MessageCircle, HandCoins, AlertCircle,
-} from "lucide-react";
+import axios from "axios";
+import { AlertCircle, Printer, RefreshCw, ArrowLeft } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardBody } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { EmptyState } from "@/components/ui/empty-state";
-import { RecordCollectionDialog, WhatsAppShareDialog } from "@/components/dialogs";
-import { toast } from "@/components/ui/toaster";
-import { getParty } from "@/data/parties";
-import { orders } from "@/data/sales";
-import { collectionsFor } from "@/data/collections";
-import { company } from "@/data/settings";
+import { Skeleton } from "@/components/ui/skeleton";
+import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
 import { formatMoney, formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-type Line = {
-  date: string;
-  ref: string;
-  detail: string;
-  debit: number;
-  credit: number;
+/* GET /parties/{id}/statement?from=&to=
+   Everything here used to be assembled in the browser out of src/data —
+   getParty, the orders array, collectionsFor() and a hard-coded `company`
+   object. The running balance is now computed server-side off POSTED journal
+   lines, and the letterhead comes from the Company row, so a change made at
+   /admin/settings reaches the paper a customer actually receives. */
+type StatementLine = {
+  id: number; date: string; entryNo: string; entryType: string;
+  reference: string | null; narration: string | null;
+  debit: number; credit: number; balance: number;
 };
 
-/** Age buckets the way a collections round actually works. */
-const BUCKETS = [
-  { label: "0–30 days", from: 0, to: 30 },
-  { label: "31–60 days", from: 31, to: 60 },
-  { label: "61–90 days", from: 61, to: 90 },
-  { label: "90+ days", from: 91, to: 99999 },
-];
+type Statement = {
+  party: {
+    id: number; partyCode: string; name: string; initials: string;
+    phone: string | null; city: string | null;
+    creditLimit: number; creditDays: number;
+  };
+  openingBalance: number;
+  closingBalance: number;
+  totalDebit: number;
+  totalCredit: number;
+  lines: StatementLine[];
+  company: {
+    name: string; legalName: string; ntn: string; strn: string;
+    email: string; phone: string; city: string; country: string;
+    addressLine: string; currencySymbol: string;
+  } | null;
+};
 
-const TODAY = new Date("2026-08-15");
-
-function daysOld(iso: string) {
-  return Math.round((TODAY.getTime() - new Date(iso).getTime()) / 86400000);
+function apiMessage(e: unknown, fallback: string) {
+  if (axios.isAxiosError(e) && e.response) {
+    return (e.response.data as { message?: string })?.message ?? fallback;
+  }
+  return "Cannot reach the server.";
 }
 
-export default function CustomerStatementPage() {
+export default function PartyStatementPage() {
   const params = useParams<{ id: string }>();
-  const id = parseInt(params.id ?? "1", 10);
-  const party = getParty(id);
+  const id = parseInt(params.id ?? "0", 10);
 
-  const [collecting, setCollecting] = React.useState(false);
-  const [sharing, setSharing] = React.useState(false);
+  const [data, setData] = React.useState<Statement | null>(null);
+  const [loading, setLoading] = React.useState(true);
+  const [notFound, setNotFound] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
 
-  if (!party) {
+  const [from, setFrom] = React.useState(() => new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10));
+  const [to, setTo] = React.useState(() => new Date().toISOString().slice(0, 10));
+
+  const load = React.useCallback(async () => {
+    if (!id) { setNotFound(true); setLoading(false); return; }
+    try {
+      const res = await axios.get<Statement>(`${API_BASE_URL}/parties/${id}/statement`, {
+        params: { from, to },
+        headers: authHeader(),
+      });
+      setData(res.data);
+      setNotFound(false);
+      setError(null);
+    } catch (e) {
+      if (axios.isAxiosError(e) && e.response?.status === 404) setNotFound(true);
+      else setError(apiMessage(e, "Could not load this statement."));
+    } finally {
+      setLoading(false);
+    }
+  }, [id, from, to]);
+
+  React.useEffect(() => {
+    /* eslint-disable-next-line react-hooks/set-state-in-effect --
+       The brief for this project is axios inside the page driven by
+       useState/useEffect. This rule wants the fetch moved to the server, which
+       is a different architecture, not a bug in this line. */
+    void load();
+  }, [load]);
+
+  if (notFound) {
     return (
-      <EmptyState
-        icon={AlertCircle}
-        title="Customer not found"
-        action={<Button asChild><Link href="/parties/customers">Back</Link></Button>}
-      />
+      <EmptyState icon={AlertCircle} title="Party not found" description={`No party with id ${id}.`}
+        action={<Button variant="accent" asChild><Link href="/parties">Back to Parties</Link></Button>} />
     );
   }
-
-  /* Invoices out, money in — one running list. */
-  const theirOrders = orders.filter(
-    (o) => o.customerId === id && o.status !== "DRAFT" && o.status !== "CANCELLED"
-  );
-  const theirCollections = collectionsFor(id).filter((c) => c.status === "CONFIRMED");
-
-  const opening = 0;
-
-  const lines: Line[] = [
-    ...theirOrders.map((o) => ({
-      date: o.orderDate,
-      ref: o.orderNo,
-      detail: `Goods supplied — ${o.itemCount} items`,
-      debit: o.total,
-      credit: 0,
-    })),
-    ...theirCollections.map((c) => ({
-      date: c.collectedOn,
-      ref: c.receiptNo,
-      detail: `Payment received — ${c.method.toLowerCase()}${c.reference !== "—" ? ` ${c.reference}` : ""}`,
-      debit: 0,
-      credit: c.amount,
-    })),
-  ].sort((a, b) => a.date.localeCompare(b.date));
-
-  /* Running balance, computed without mutating anything mid-render. */
-  const withBalance = lines.map((l, i) => ({
-    ...l,
-    balance: lines
-      .slice(0, i + 1)
-      .reduce((sum, x) => sum + x.debit - x.credit, opening),
-  }));
-
-  const closing = withBalance.length > 0 ? withBalance[withBalance.length - 1].balance : opening;
-  const pending = collectionsFor(id).filter((c) => c.status === "AWAITING");
-
-  /* The two dates the shopkeeper is actually asked about on the phone. */
-  const lastPayment = theirCollections.length > 0
-    ? theirCollections[theirCollections.length - 1].collectedOn
-    : null;
-  const lastOrder = theirOrders.length > 0
-    ? theirOrders[theirOrders.length - 1].orderDate
-    : null;
-  const sincePayment = lastPayment ? daysOld(lastPayment) : null;
-
-  /* Aging works off unpaid orders, not the running balance. */
-  const unpaid = theirOrders.filter((o) => o.total - o.paidAmount > 0);
-  const buckets = BUCKETS.map((b) => ({
-    ...b,
-    amount: unpaid
-      .filter((o) => {
-        const d = daysOld(o.orderDate);
-        return d >= b.from && d <= b.to;
-      })
-      .reduce((sum, o) => sum + (o.total - o.paidAmount), 0),
-  }));
 
   return (
     <>
       <PageHeader
         breadcrumbs={[
           { label: "People" },
-          { label: "Customers", href: "/parties/customers" },
-          { label: party.displayName, href: `/parties/${id}` },
+          { label: "Parties", href: "/parties" },
+          { label: data?.party.name ?? "Party", href: `/parties/${id}` },
           { label: "Statement" },
         ]}
-        title="Statement of Account"
-        subtitle={`${party.displayName} · ${party.partyCode}`}
+        title="Account Statement"
+        subtitle={data ? `${data.party.name} · ${data.party.partyCode}` : "Loading…"}
         actions={
           <>
-            <Button variant="ghost" size="md" className="gap-1.5" asChild>
-              <Link href={`/parties/${id}`}><ArrowLeft /> Back</Link>
+            <Button variant="ghost" className="gap-1.5" asChild>
+              <Link href={`/parties/${id}`}><ArrowLeft />Back</Link>
             </Button>
-            <Button variant="ghost" size="md" className="gap-1.5"
-              onClick={() => { window.print(); toast.info("Print dialog opened"); }}>
-              <Printer /><span className="hidden sm:inline">Print / Save PDF</span>
+            <Button variant="ghost" className="gap-1.5" onClick={() => { setLoading(true); void load(); }}>
+              <RefreshCw className="size-4" />Refresh
             </Button>
-            <Button variant="secondary" size="md" className="gap-1.5" onClick={() => setSharing(true)}>
-              <MessageCircle /><span className="hidden sm:inline">WhatsApp</span>
+            <Button variant="accent" className="gap-1.5 print:hidden" onClick={() => window.print()}>
+              <Printer />Print
             </Button>
-            {closing > 0 && (
-              <Button variant="accent" size="md" className="gap-1.5" onClick={() => setCollecting(true)}>
-                <HandCoins /> Record Payment
-              </Button>
-            )}
           </>
         }
       />
 
-      <Card className="max-w-5xl mx-auto">
-        <CardBody className="p-6 sm:p-10">
-          {/* Letterhead */}
-          <div className="flex items-start justify-between gap-6 pb-5 border-b border-slate-200 dark:border-navy-700">
-            <div>
-              <div className="text-lg font-bold text-navy-900 dark:text-white">{company.name}</div>
-              <div className="text-xs text-slate-600 dark:text-slate-300 mt-1 space-y-0.5">
-                <div>{company.addressLine}, {company.city}</div>
-                <div className="tabular">{company.phone}</div>
-              </div>
+      {error && (
+        <Card className="mb-4 print:hidden">
+          <CardBody className="flex items-center gap-3">
+            <AlertCircle className="size-5 text-danger shrink-0" />
+            <div className="flex-1">
+              <div className="text-sm font-semibold text-navy-900 dark:text-white">{error}</div>
+              <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">The API must be running on {API_BASE_URL}.</div>
             </div>
-            <div className="text-right">
-              <div className="text-2xl font-bold tracking-tight text-navy-900 dark:text-white">
-                STATEMENT
-              </div>
-              <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                as of {formatDate("2026-08-15")}
-              </div>
-            </div>
-          </div>
+            <Button variant="ghost" size="sm" className="gap-1.5" onClick={() => { setLoading(true); void load(); }}>
+              <RefreshCw className="size-4" /> Try again
+            </Button>
+          </CardBody>
+        </Card>
+      )}
 
-          {/* Who */}
-          <div className="grid sm:grid-cols-2 gap-6 py-5 border-b border-slate-200 dark:border-navy-700">
-            <div>
-              <div className="text-2xs uppercase font-bold tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
-                Account of
-              </div>
-              <div className="text-base font-semibold text-navy-900 dark:text-white">
-                {party.legalName}
-              </div>
-              <div className="text-xs text-slate-600 dark:text-slate-300 mt-0.5">
-                <span className="tabular">{party.partyCode}</span> · {party.city}
-              </div>
-              <div className="tabular text-xs text-slate-600 dark:text-slate-300">{party.phone}</div>
-            </div>
-            <div className="sm:text-right">
-              <div className="text-2xs uppercase font-bold tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
-                Balance due
-              </div>
-              <div
-                className={cn(
-                  "tabular text-3xl font-bold",
-                  closing > 0 ? "text-danger" : "text-success"
-                )}
-              >
-                {formatMoney(closing)}
-              </div>
-              {pending.length > 0 && (
-                <div className="text-2xs text-warning mt-1">
-                  {formatMoney(pending.reduce((s, c) => s + c.amount, 0))} received, awaiting confirmation
-                </div>
-              )}
-              <dl className="mt-3 space-y-0.5 text-2xs text-slate-600 dark:text-slate-300">
-                <div className="sm:justify-end flex gap-2">
-                  <dt className="text-slate-500 dark:text-slate-400">Last order</dt>
-                  <dd className="tabular">{lastOrder ? formatDate(lastOrder) : "—"}</dd>
-                </div>
-                <div className="sm:justify-end flex gap-2">
-                  <dt className="text-slate-500 dark:text-slate-400">Last payment</dt>
-                  <dd className="tabular">
-                    {lastPayment ? formatDate(lastPayment) : "—"}
-                    {sincePayment !== null && sincePayment > 0 && (
-                      <span className={cn("ml-1", sincePayment > 45 ? "text-danger" : "text-slate-500")}>
-                        ({sincePayment} days ago)
-                      </span>
-                    )}
-                  </dd>
-                </div>
-              </dl>
-            </div>
+      <Card className="mb-4 print:hidden">
+        <CardBody className="flex flex-col sm:flex-row sm:items-end gap-3">
+          <div>
+            <Label htmlFor="from">From</Label>
+            <Input id="from" type="date" value={from} className="mt-1.5"
+              onChange={(e) => { setLoading(true); setFrom(e.target.value); }} />
           </div>
-
-          {/* Running account */}
-          <div className="py-5 overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b-2 border-navy-900 dark:border-brand-yellow">
-                  <th className="text-left text-2xs uppercase font-bold tracking-wider text-navy-900 dark:text-white px-2 py-2">Date</th>
-                  <th className="text-left text-2xs uppercase font-bold tracking-wider text-navy-900 dark:text-white px-2 py-2">Reference</th>
-                  <th className="text-left text-2xs uppercase font-bold tracking-wider text-navy-900 dark:text-white px-2 py-2">Detail</th>
-                  <th className="text-right text-2xs uppercase font-bold tracking-wider text-navy-900 dark:text-white px-2 py-2">Charged</th>
-                  <th className="text-right text-2xs uppercase font-bold tracking-wider text-navy-900 dark:text-white px-2 py-2">Paid</th>
-                  <th className="text-right text-2xs uppercase font-bold tracking-wider text-navy-900 dark:text-white px-2 py-2">Balance</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-navy-800">
-                <tr>
-                  <td className="px-2 py-2 tabular text-xs text-slate-500">—</td>
-                  <td className="px-2 py-2 text-xs text-slate-500">—</td>
-                  <td className="px-2 py-2 text-xs text-slate-600 dark:text-slate-300 italic">Opening balance</td>
-                  <td className="px-2 py-2" />
-                  <td className="px-2 py-2" />
-                  <td className="px-2 py-2 text-right tabular text-xs text-slate-600 dark:text-slate-300">
-                    {formatMoney(opening)}
-                  </td>
-                </tr>
-                {withBalance.map((l, i) => (
-                  <tr key={i} className="hover:bg-slate-50 dark:hover:bg-navy-800/50">
-                    <td className="px-2 py-2 tabular text-xs text-slate-600 dark:text-slate-300 whitespace-nowrap">
-                      {formatDate(l.date)}
-                    </td>
-                    <td className="px-2 py-2 tabular text-xs text-navy-900 dark:text-white whitespace-nowrap">
-                      {l.ref}
-                    </td>
-                    <td className="px-2 py-2 text-xs text-slate-600 dark:text-slate-300">{l.detail}</td>
-                    <td className="px-2 py-2 text-right tabular text-xs text-navy-900 dark:text-white">
-                      {l.debit > 0 ? formatMoney(l.debit) : "—"}
-                    </td>
-                    <td className="px-2 py-2 text-right tabular text-xs text-success">
-                      {l.credit > 0 ? formatMoney(l.credit) : "—"}
-                    </td>
-                    <td className="px-2 py-2 text-right tabular text-xs font-semibold text-navy-900 dark:text-white">
-                      {formatMoney(l.balance)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr className="border-t-2 border-navy-900 dark:border-brand-yellow">
-                  <td colSpan={5} className="px-2 py-3 text-right text-sm font-bold text-navy-900 dark:text-white">
-                    Closing balance
-                  </td>
-                  <td className="px-2 py-3 text-right tabular text-base font-bold text-navy-900 dark:text-white">
-                    {formatMoney(closing)}
-                  </td>
-                </tr>
-              </tfoot>
-            </table>
+          <div>
+            <Label htmlFor="to">To</Label>
+            <Input id="to" type="date" value={to} className="mt-1.5"
+              onChange={(e) => { setLoading(true); setTo(e.target.value); }} />
           </div>
-
-          {/* How old the money is */}
-          <div className="pt-5 border-t border-slate-200 dark:border-navy-700">
-            <div className="text-2xs uppercase font-bold tracking-wider text-slate-500 dark:text-slate-400 mb-3">
-              How long it has been outstanding
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {buckets.map((b) => (
-                <div
-                  key={b.label}
-                  className={cn(
-                    "rounded-lg border p-3",
-                    b.from >= 61 && b.amount > 0
-                      ? "border-danger/40 bg-danger/5"
-                      : "border-slate-200 dark:border-navy-700"
-                  )}
-                >
-                  <div className="text-2xs text-slate-500 dark:text-slate-400">{b.label}</div>
-                  <div
-                    className={cn(
-                      "tabular text-base font-bold mt-0.5",
-                      b.from >= 61 && b.amount > 0 ? "text-danger" : "text-navy-900 dark:text-white"
-                    )}
-                  >
-                    {formatMoney(b.amount)}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <p className="mt-6 text-2xs text-slate-400 dark:text-slate-500 text-center">
-            Please quote the reference number when paying. {company.phone}
+          <p className="text-xs text-slate-500 dark:text-slate-400 sm:ml-auto">
+            Only POSTED entries appear on a statement — a draft is not money owed.
           </p>
         </CardBody>
       </Card>
 
-      <RecordCollectionDialog
-        open={collecting}
-        onOpenChange={setCollecting}
-        customerName={party.displayName}
-        customerCode={party.partyCode}
-        outstanding={closing}
-        openOrders={unpaid.map((o) => ({ orderNo: o.orderNo, balance: o.total - o.paidAmount }))}
-      />
+      {loading ? (
+        <Card><CardBody className="space-y-2">
+          {Array.from({ length: 10 }).map((_, i) => <Skeleton key={i} className="h-10" />)}
+        </CardBody></Card>
+      ) : !data ? null : (
+        <Card>
+          <CardBody className="p-6 sm:p-8">
+            {/* ── Letterhead ─────────────────────────────────────────── */}
+            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 pb-6 border-b border-slate-200 dark:border-navy-700">
+              <div>
+                <div className="text-lg font-bold text-navy-900 dark:text-white">
+                  {data.company?.name ?? "—"}
+                </div>
+                {data.company && (
+                  <div className="text-xs text-slate-500 dark:text-slate-400 mt-1 space-y-0.5">
+                    <div>{data.company.legalName}</div>
+                    <div>{[data.company.addressLine, data.company.city, data.company.country].filter(Boolean).join(", ")}</div>
+                    <div className="tabular">{data.company.phone}{data.company.email ? ` · ${data.company.email}` : ""}</div>
+                    {data.company.ntn && <div className="tabular">NTN {data.company.ntn}{data.company.strn ? ` · STRN ${data.company.strn}` : ""}</div>}
+                  </div>
+                )}
+              </div>
+              <div className="sm:text-right">
+                <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Statement of Account</div>
+                <div className="text-sm font-semibold text-navy-900 dark:text-white mt-1">{data.party.name}</div>
+                <div className="tabular text-xs text-slate-500 dark:text-slate-400">{data.party.partyCode}</div>
+                {data.party.phone && <div className="tabular text-xs text-slate-500 dark:text-slate-400">{data.party.phone}</div>}
+                {data.party.city && <div className="text-xs text-slate-500 dark:text-slate-400">{data.party.city}</div>}
+                <div className="text-xs text-slate-500 dark:text-slate-400 mt-2">
+                  {formatDate(from)} – {formatDate(to)}
+                </div>
+              </div>
+            </div>
 
-      <WhatsAppShareDialog
-        open={sharing}
-        onOpenChange={setSharing}
-        docNo={`Statement — ${formatDate("2026-08-15")}`}
-        docLabel="Statement"
-        customerName={party.displayName}
-        customerPhone={party.phone}
-        total={closing}
-        note={[
-          lastOrder ? `Last order: ${formatDate(lastOrder)}` : null,
-          lastPayment ? `Last payment: ${formatDate(lastPayment)}` : "No payment received yet",
-          "",
-          sincePayment !== null && sincePayment > 0 && closing > 0
-            ? `Aap ki aakhri adaigi ko ${sincePayment} din ho gaye hain. Baraye meharbani adaigi karwa dein.`
-            : closing > 0
-              ? "Baraye meharbani adaigi karwa dein."
-              : "Shukriya — aap ka hisaab clear hai.",
-          buckets[3].amount > 0
-            ? `${formatMoney(buckets[3].amount)} 90 din se zyada purana hai.`
-            : null,
-        ].filter(Boolean).join("\n")}
-      />
+            {/* ── Summary ────────────────────────────────────────────── */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 py-5 border-b border-slate-200 dark:border-navy-700">
+              <Fig label="Opening" value={formatMoney(data.openingBalance)} />
+              <Fig label="Charged" value={formatMoney(data.totalDebit)} />
+              <Fig label="Paid" value={formatMoney(data.totalCredit)} tone="text-success" />
+              <Fig label="Closing balance" value={formatMoney(data.closingBalance)} strong />
+            </div>
 
+            {/* ── Lines ──────────────────────────────────────────────── */}
+            {data.lines.length === 0 ? (
+              <div className="py-12">
+                <EmptyState
+                  icon={AlertCircle}
+                  title="Nothing posted in this range"
+                  description="This party has no posted entries between the two dates. Widen the range above."
+                />
+              </div>
+            ) : (
+              <div className="overflow-x-auto mt-4">
+                <table className="w-full">
+                  <thead>
+                    <tr className="text-left border-b border-slate-200 dark:border-navy-700">
+                      <th className="text-2xs uppercase font-semibold text-slate-500 dark:text-slate-400 py-2 pr-3">Date</th>
+                      <th className="text-2xs uppercase font-semibold text-slate-500 dark:text-slate-400 py-2 px-3">Entry</th>
+                      <th className="text-2xs uppercase font-semibold text-slate-500 dark:text-slate-400 py-2 px-3">Reference</th>
+                      <th className="text-2xs uppercase font-semibold text-slate-500 dark:text-slate-400 py-2 px-3">Description</th>
+                      <th className="text-2xs uppercase font-semibold text-slate-500 dark:text-slate-400 py-2 px-3 text-right">Charged</th>
+                      <th className="text-2xs uppercase font-semibold text-slate-500 dark:text-slate-400 py-2 px-3 text-right">Paid</th>
+                      <th className="text-2xs uppercase font-semibold text-slate-500 dark:text-slate-400 py-2 pl-3 text-right">Balance</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-navy-700">
+                    <tr>
+                      <td className="py-2.5 pr-3 text-xs text-slate-500 dark:text-slate-400">{formatDate(from)}</td>
+                      <td className="py-2.5 px-3" colSpan={3}>
+                        <span className="text-sm italic text-slate-500 dark:text-slate-400">Opening balance</span>
+                      </td>
+                      <td className="py-2.5 px-3" /><td className="py-2.5 px-3" />
+                      <td className="py-2.5 pl-3 text-right tabular text-sm font-semibold text-navy-900 dark:text-white">
+                        {formatMoney(data.openingBalance)}
+                      </td>
+                    </tr>
+                    {data.lines.map((l) => (
+                      <tr key={l.id}>
+                        <td className="py-2.5 pr-3 text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap">{formatDate(l.date)}</td>
+                        <td className="py-2.5 px-3 tabular text-xs font-medium text-navy-900 dark:text-white whitespace-nowrap">{l.entryNo}</td>
+                        <td className="py-2.5 px-3 tabular text-xs text-slate-600 dark:text-slate-300 whitespace-nowrap">{l.reference ?? "—"}</td>
+                        <td className="py-2.5 px-3 text-sm text-slate-600 dark:text-slate-300">{l.narration ?? l.entryType}</td>
+                        <td className="py-2.5 px-3 text-right tabular text-sm">
+                          {l.debit > 0 ? formatMoney(l.debit) : <span className="text-slate-300">—</span>}
+                        </td>
+                        <td className="py-2.5 px-3 text-right tabular text-sm text-success">
+                          {l.credit > 0 ? formatMoney(l.credit) : <span className="text-slate-300">—</span>}
+                        </td>
+                        <td className="py-2.5 pl-3 text-right tabular text-sm font-semibold text-navy-900 dark:text-white">
+                          {formatMoney(l.balance)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-t-2 border-slate-300 dark:border-navy-600">
+                      <td className="py-3 pr-3" colSpan={4}>
+                        <span className="text-sm font-bold text-navy-900 dark:text-white">Closing balance</span>
+                      </td>
+                      <td className="py-3 px-3 text-right tabular text-sm font-semibold">{formatMoney(data.totalDebit)}</td>
+                      <td className="py-3 px-3 text-right tabular text-sm font-semibold text-success">{formatMoney(data.totalCredit)}</td>
+                      <td className="py-3 pl-3 text-right tabular text-base font-bold text-navy-900 dark:text-white">
+                        {formatMoney(data.closingBalance)}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            )}
+
+            <div className="mt-6 pt-4 border-t border-slate-200 dark:border-navy-700 text-2xs text-slate-500 dark:text-slate-400">
+              Credit limit {formatMoney(data.party.creditLimit)} · {data.party.creditDays} days.
+              Please quote the entry number when settling. Raised from AdvPOS.
+            </div>
+          </CardBody>
+        </Card>
+      )}
     </>
+  );
+}
+
+function Fig({ label, value, tone, strong }: { label: string; value: string; tone?: string; strong?: boolean }) {
+  return (
+    <div>
+      <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">{label}</div>
+      <div className={cn("tabular font-bold mt-1", strong ? "text-2xl" : "text-lg", tone ?? "text-navy-900 dark:text-white")}>
+        {value}
+      </div>
+    </div>
   );
 }

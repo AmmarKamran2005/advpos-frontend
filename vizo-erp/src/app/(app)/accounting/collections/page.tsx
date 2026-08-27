@@ -255,7 +255,8 @@ export default function ConfirmCollectionsPage() {
         </Card>
       ) : (
         <div className="space-y-2">
-          {rows.map((c) => (
+          {loading && Array.from({ length: 5 }).map((_, i) => <Skeleton key={`s${i}`} className="h-20" />)}
+          {!loading && rows.map((c) => (
             <CollectionCard
               key={c.id}
               c={c}

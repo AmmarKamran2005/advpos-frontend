@@ -183,7 +183,9 @@ export default function COAPage() {
       <Card>
         <CardBody>
           <div className="space-y-1">
-            {roots.map((root) => renderAccount(root))}
+            {loading
+              ? Array.from({ length: 10 }).map((_, i) => <Skeleton key={i} className="h-10 mb-1" />)
+              : roots.map((root) => renderAccount(root))}
           </div>
         </CardBody>
       </Card>

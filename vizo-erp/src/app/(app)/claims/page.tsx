@@ -423,7 +423,9 @@ export default function ClaimsPage() {
         </Card>
       ) : (
         <div className="space-y-2">
-          {rows.map((c) => <ClaimRow key={c.id} claim={c} policy={policy} />)}
+          {loading
+            ? Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-20" />)
+            : rows.map((c) => <ClaimRow key={c.id} claim={c} policy={policy} />)}
         </div>
       )}
 

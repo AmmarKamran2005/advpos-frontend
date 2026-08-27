@@ -294,7 +294,13 @@ export default function ProductsPage() {
 
       {view === "table" ? (
         <Card className="p-0 overflow-hidden">
+          {loading ? (
+          <div className="p-4 space-y-2">
+            {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-12" />)}
+          </div>
+        ) : (
           <DataTable columns={columns} data={filtered} rowHref={(p) => `/inventory/products/${p.id}`} />
+        )}
         </Card>
       ) : (
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">

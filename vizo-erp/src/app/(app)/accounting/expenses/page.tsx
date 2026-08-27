@@ -54,7 +54,7 @@ export default function ExpensesPage() {
 
   const load = React.useCallback(async () => {
     try {
-      const res = await axios.get<ExpenseResponse>(`${API_BASE_URL}/accounting/rows`, {
+ const res = await axios.get<ExpenseResponse>(`${API_BASE_URL}/accounting/expenses`, {
         headers: authHeader(),
       });
       setRows(res.data.items);
@@ -140,7 +140,13 @@ export default function ExpensesPage() {
       <FilterBar searchPlaceholder="Search rows…" searchValue={search} onSearchChange={setSearch} />
 
       <Card className="p-0 overflow-hidden">
-        <DataTable columns={columns} data={filtered} rowHref={(e) => `/accounting/expenses/${e.id}`} />
+        {loading ? (
+          <div className="p-4 space-y-2">
+            {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-12" />)}
+          </div>
+        ) : (
+          <DataTable columns={columns} data={filtered} rowHref={(e) => `/accounting/expenses/${e.id}`} />
+        )}
       </Card>
     </>
   );

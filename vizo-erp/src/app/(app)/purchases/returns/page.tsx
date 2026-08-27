@@ -109,7 +109,13 @@ export default function PurchaseReturnsPage() {
 
 
       <Card className="p-0 overflow-hidden">
-        <DataTable columns={columns} data={rows} rowHref={(r) => `/purchases/returns/${r.id}`} />
+        {loading ? (
+          <div className="p-4 space-y-2">
+            {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-12" />)}
+          </div>
+        ) : (
+          <DataTable columns={columns} data={rows} rowHref={(r) => `/purchases/returns/${r.id}`} />
+        )}
       </Card>
     </>
   );
