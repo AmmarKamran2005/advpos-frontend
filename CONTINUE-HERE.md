@@ -1,9 +1,21 @@
 # AdvPOS — Continue From Here
 
-**Read `HANDOFF.md` first** for the project itself (architecture, traps,
-credentials, how to run). This file is the *session* handoff: exactly where the
-work stopped, what to do next, and which decisions are already settled so they
-do not get re-argued.
+> ## ⛔ SUPERSEDED — read `HANDOFF.md` instead
+>
+> This file froze on **2026-08-25** and is now wrong in ways that will waste
+> your time:
+>
+> * It says **35 screens** are left on mock data. It is **15**.
+> * It points at frontend `86217e7`. Current is **`69afbe6`** — and that
+>   one is **Talha's**; he pushes to this repo too now, not just the backend.
+> * It points at backend `03f7a0e`. Current is **`aa510f1`** — and that one is
+>   **Talha's**, pushed 2026-08-27.
+> * Its page-by-page endpoint map lists work that is already done.
+>
+> `HANDOFF.md` is dated newest-first and carries all of this, plus the traps
+> and the settled decisions that were only in here. Kept below for history.
+
+---
 
 State as of **2026-08-25, end of second session**.
 
