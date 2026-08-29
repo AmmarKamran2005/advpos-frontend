@@ -109,6 +109,7 @@ export default function NewOrderPage() {
     setProductPickerOpen(false);
   }
 
+
   async function nextStep() {
     let valid = false;
     if (step === 0) valid = await form.trigger(["customerId", "items"]);
