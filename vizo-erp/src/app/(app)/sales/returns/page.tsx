@@ -2,10 +2,11 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { Plus , Loader2, Download} from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { toast } from "@/components/ui/toaster";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge, StatusPill } from "@/components/ui/badge";
 import { DataTable, type Column } from "@/components/ui/data-table";
@@ -14,6 +15,7 @@ import axios from "axios";
 import { AlertCircle } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
+import { downloadXlsx, exportError } from "@/lib/export";
 
 /* GET /sales/returns. resalableQty / damagedQty come from the line
    ReturnCondition -- only resalable stock goes back on the shelf. */
@@ -106,6 +108,20 @@ export default function SalesReturnsPage() {
     { key: "status", header: "Status", cell: (r) => <StatusPill variant={RETURN_STATUS_VARIANT[r.status]}>{statusLabel(r.status)}</StatusPill> },
   ];
 
+  const [exporting, setExporting] = React.useState(false);
+
+  async function exportXlsx() {
+    setExporting(true);
+    try {
+      await downloadXlsx("sales/returns/export", { q: search || undefined }, "sales-returns.xlsx");
+      toast.success("Export ready", { description: "Returns downloaded as a spreadsheet." });
+    } catch (e) {
+      toast.error("Could not export", { description: await exportError(e) });
+    } finally {
+      setExporting(false);
+    }
+  }
+
   return (
     <>
       <PageHeader
@@ -113,12 +129,18 @@ export default function SalesReturnsPage() {
         title="Sales Returns"
         subtitle="Partial returns with condition tracking"
         actions={
-          <Button variant="accent" size="md" className="gap-1.5" asChild>
-            <Link href="/sales/returns/new">
-              <Plus />
-              <span>New Return</span>
-            </Link>
-          </Button>
+          <>
+            <Button variant="secondary" size="md" className="gap-1.5" onClick={exportXlsx} disabled={exporting}>
+              {exporting ? <Loader2 className="size-4 animate-spin" /> : <Download />}
+              <span className="hidden sm:inline">{exporting ? "Exporting…" : "Export"}</span>
+            </Button>
+            <Button variant="accent" size="md" className="gap-1.5" asChild>
+              <Link href="/sales/returns/new">
+                <Plus />
+                <span>New Return</span>
+              </Link>
+            </Button>
+          </>
         }
       />
 

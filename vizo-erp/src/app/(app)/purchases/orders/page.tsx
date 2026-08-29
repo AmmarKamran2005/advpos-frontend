@@ -2,10 +2,11 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Plus, Truck, CheckCircle2, Clock, Download } from "lucide-react";
+import { Plus, Truck, CheckCircle2, Clock, Download , Loader2} from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { toast } from "@/components/ui/toaster";
 import { Avatar } from "@/components/ui/avatar";
 import { StatusPill } from "@/components/ui/badge";
 import { DataTable, type Column } from "@/components/ui/data-table";
@@ -14,6 +15,7 @@ import axios from "axios";
 import { AlertCircle } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
+import { downloadXlsx, exportError } from "@/lib/export";
 
 /* GET /purchases/orders. receivedPercent is computed by the API from the
    GRN lines, because the GRN is what actually moved stock -- not the PO.
@@ -138,6 +140,22 @@ export default function PurchaseOrdersPage() {
     { key: "status",       header: "Status",  cell: (p) => <StatusPill variant={PO_STATUS_VARIANT[p.status]}>{statusLabel(p.status)}</StatusPill> },
   ];
 
+  /* The Export button used to be a toast. The API builds the workbook from the
+     same list query this screen ran, so the file is what is on the page. */
+  const [exporting, setExporting] = React.useState(false);
+
+  async function exportXlsx() {
+    setExporting(true);
+    try {
+      await downloadXlsx("purchases/orders/export", { q: search || undefined }, "purchase-orders.xlsx");
+      toast.success("Export ready", { description: "Purchase orders downloaded as a spreadsheet." });
+    } catch (e) {
+      toast.error("Could not export", { description: await exportError(e) });
+    } finally {
+      setExporting(false);
+    }
+  }
+
   return (
     <>
       <PageHeader
@@ -146,7 +164,10 @@ export default function PurchaseOrdersPage() {
         subtitle="Manage procurement from suppliers"
         actions={
           <>
-            <Button variant="secondary" size="md" className="gap-1.5"><Download /><span className="hidden sm:inline">Export</span></Button>
+            <Button variant="secondary" size="md" className="gap-1.5" onClick={exportXlsx} disabled={exporting}>
+              {exporting ? <Loader2 className="size-4 animate-spin" /> : <Download />}
+              <span className="hidden sm:inline">{exporting ? "Exporting…" : "Export"}</span>
+            </Button>
             <Button variant="accent" size="md" className="gap-1.5" asChild>
               <Link href="/purchases/orders/new"><Plus /><span>New PO</span></Link>
             </Button>

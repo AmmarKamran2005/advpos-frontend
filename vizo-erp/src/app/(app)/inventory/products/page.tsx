@@ -2,9 +2,10 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Plus, Download, Upload, LayoutGrid, List, Barcode, Package } from "lucide-react";
+import { Plus, Download, Upload, LayoutGrid, List, Barcode, Package , Loader2} from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
+import { toast } from "@/components/ui/toaster";
 import { Card } from "@/components/ui/card";
 import { Badge, StatusPill } from "@/components/ui/badge";
 import { DataTable, type Column } from "@/components/ui/data-table";
@@ -13,6 +14,7 @@ import axios from "axios";
 import { AlertCircle } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
+import { downloadXlsx, exportError } from "@/lib/export";
 
 /* GET /inventory/products -> { total, page, pageSize, items }.
    status and totalStock are computed by the API from StockBalance across
@@ -199,6 +201,22 @@ export default function ProductsPage() {
     },
   ];
 
+  /* The Export button used to be a toast. The API builds the workbook from the
+     same list query this screen ran, so the file is what is on the page. */
+  const [exporting, setExporting] = React.useState(false);
+
+  async function exportXlsx() {
+    setExporting(true);
+    try {
+      await downloadXlsx("inventory/products/export", { q: search || undefined }, "products.xlsx");
+      toast.success("Export ready", { description: "Products downloaded as a spreadsheet." });
+    } catch (e) {
+      toast.error("Could not export", { description: await exportError(e) });
+    } finally {
+      setExporting(false);
+    }
+  }
+
   return (
     <>
       <PageHeader
@@ -211,9 +229,9 @@ export default function ProductsPage() {
               <Upload />
               <span className="hidden sm:inline">Import CSV</span>
             </Button>
-            <Button variant="secondary" size="md" className="gap-1.5">
-              <Download />
-              <span className="hidden sm:inline">Export</span>
+            <Button variant="secondary" size="md" className="gap-1.5" onClick={exportXlsx} disabled={exporting}>
+              {exporting ? <Loader2 className="size-4 animate-spin" /> : <Download />}
+              <span className="hidden sm:inline">{exporting ? "Exporting…" : "Export"}</span>
             </Button>
             <Button variant="accent" size="md" className="gap-1.5" asChild>
               <Link href="/inventory/products/new">

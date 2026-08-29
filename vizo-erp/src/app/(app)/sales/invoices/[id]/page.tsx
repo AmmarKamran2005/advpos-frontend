@@ -19,6 +19,7 @@ import { RecordPaymentDialog } from "@/components/dialogs/record-payment-dialog"
 import { WhatsAppShareDialog } from "@/components/dialogs/whatsapp-share-dialog";
 import { toast } from "@/components/ui/toaster";
 import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
+import { openDocument, openDocumentWhenReady } from "@/lib/documents";
 import { formatMoney, formatDate } from "@/lib/format";
 import { statusLabel } from "@/lib/labels";
 import { prettyPhone } from "@/lib/whatsapp";
@@ -115,11 +116,25 @@ export default function InvoiceDetailPage() {
     void load();
   }, [load]);
 
-  /* Print and Download are the SAME document, rendered by the API from the row
-     as it stands. Printing the web page instead would print the app chrome and
-     a layout nobody designed for A4. */
-  function openBill() {
-    window.open(`${API_BASE_URL}/sales/invoices/${id}/pdf`, "_blank", "noopener,noreferrer");
+  /* Print and Download open the SAME file: the bill in the Cloudinary store,
+     which is the one the customer was sent. Printing the web page instead would
+     print the app chrome and a layout nobody designed for A4; rendering a fresh
+     PDF would mean the copy on screen was never the copy in the store.
+
+     The Cloudinary URL rather than an API route, because window.open carries no
+     Authorization header. */
+  async function openBill(attachment = false) {
+    if (invoice?.pdfUrl) {
+      openDocument(invoice.pdfUrl, attachment);
+      return;
+    }
+    const opened = await openDocumentWhenReady(async () => {
+      const res = await axios.post<{ pdfUrl: string | null }>(
+        `${API_BASE_URL}/sales/invoices/${id}/pdf`, {}, { headers: authHeader() });
+      await load();
+      return res.data.pdfUrl;
+    }, attachment);
+    if (!opened) toast.error("Could not open the bill", { description: "Try again in a moment." });
   }
 
   async function rebuildBill() {
@@ -182,8 +197,8 @@ export default function InvoiceDetailPage() {
         subtitle={`Issued ${formatDate(invoice.invoiceDate)} · Due ${formatDate(invoice.dueDate)} · by ${invoice.createdBy}`}
         actions={
           <>
-            <Button variant="ghost" size="md" className="gap-1.5" onClick={openBill}><Printer /><span className="hidden sm:inline">Print</span></Button>
-            <Button variant="ghost" size="md" className="gap-1.5" onClick={openBill}><Download /><span className="hidden sm:inline">Download</span></Button>
+            <Button variant="ghost" size="md" className="gap-1.5" onClick={() => void openBill(false)}><Printer /><span className="hidden sm:inline">Print</span></Button>
+            <Button variant="ghost" size="md" className="gap-1.5" onClick={() => void openBill(true)}><Download /><span className="hidden sm:inline">Download</span></Button>
             <Button variant="ghost" size="md" className="gap-1.5" onClick={() => setShareOpen(true)}><MessageCircle /><span className="hidden sm:inline">WhatsApp</span></Button>
             {invoice.status !== "PAID" && invoice.status !== "VOID" && (
               <Button variant="accent" size="md" className="gap-1.5" onClick={() => setPay(true)}>

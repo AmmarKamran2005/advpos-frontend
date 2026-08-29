@@ -5,7 +5,7 @@ import Link from "next/link";
 import axios from "axios";
 import {
   Plus, Download, FileText, Clock, CheckCircle2, AlertCircle,
-  Printer, MessageCircle, Users, RefreshCw,
+  Printer, MessageCircle, Users, RefreshCw, Loader2,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
@@ -18,6 +18,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { WhatsAppShareDialog } from "@/components/dialogs/whatsapp-share-dialog";
 import { toast } from "@/components/ui/toaster";
 import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
+import { openDocument, openDocumentWhenReady } from "@/lib/documents";
+import { downloadXlsx, exportError } from "@/lib/export";
 import { formatMoney, formatCompact, formatDate } from "@/lib/format";
 import { statusLabel } from "@/lib/labels";
 
@@ -100,37 +102,43 @@ export default function InvoicesPage() {
     totalOutstanding: rows.reduce((s, i) => s + i.balance, 0),
   }), [rows]);
 
-  function openBill(id: number) {
-    window.open(`${API_BASE_URL}/sales/invoices/${id}/pdf`, "_blank", "noopener,noreferrer");
-  }
-
-  /* Exports what is on screen, filters and all. Built in the browser from data
-     already fetched -- no round trip, and what lands in Excel is exactly the
-     list the user is looking at. */
-  function exportCsv() {
-    if (filtered.length === 0) {
-      toast.error("Nothing to export", { description: "No invoices match the current search." });
+  /* Opens the bill's own file in the Cloudinary store -- the same one the
+     customer gets over WhatsApp. window.open carries no Authorization header,
+     so it must be the Cloudinary URL and not an API route. */
+  async function openBill(invoiceId: number, storedUrl?: string | null, attachment = false) {
+    if (storedUrl) {
+      openDocument(storedUrl, attachment);
       return;
     }
-    const header = ["Invoice No", "Order No", "Customer", "Location", "Invoice Date", "Due Date",
-      "Subtotal", "Discount", "Tax", "Total", "Paid", "Balance", "Status", "Payment Method"];
-    const esc = (v: string | number | null) => {
-      const s = String(v ?? "");
-      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-    };
-    const body = filtered.map((i) => [
-      i.invoiceNo, i.orderNo ?? "", i.customerName, i.location, i.invoiceDate, i.dueDate,
-      i.subtotal, i.discount, i.tax, i.total, i.paid, i.balance, i.statusName, i.paymentMethod,
-    ].map(esc).join(","));
+    const opened = await openDocumentWhenReady(async () => {
+      const res = await axios.post<{ pdfUrl: string | null }>(
+        `${API_BASE_URL}/sales/invoices/${invoiceId}/pdf`, {}, { headers: authHeader() });
+      return res.data.pdfUrl;
+    }, attachment);
+    if (!opened) {
+      toast.error("Could not open the bill", {
+        description: "It could not be saved to the document store. Try again in a moment.",
+      });
+    }
+  }
 
-    const blob = new Blob([[header.join(","), ...body].join("\n")], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `sale-invoices-${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-    toast.success(`${filtered.length} invoices exported`);
+  /* The API builds the workbook from the same list query this screen ran, so
+     the file is what is on the page -- and money, dates and counts arrive as
+     typed cells rather than text that merely looks like numbers. It used to be
+     a CSV assembled here in the browser; one export format across the app beats
+     two that behave differently. */
+  const [exporting, setExporting] = React.useState(false);
+
+  async function exportXlsx() {
+    setExporting(true);
+    try {
+      await downloadXlsx("sales/invoices/export", { q: search || undefined }, "sale-invoices.xlsx");
+      toast.success("Export ready", { description: "Invoices downloaded as a spreadsheet." });
+    } catch (e) {
+      toast.error("Could not export", { description: await exportError(e) });
+    } finally {
+      setExporting(false);
+    }
   }
 
   const columns: Column<Invoice>[] = [
@@ -172,7 +180,7 @@ export default function InvoicesPage() {
       cell: (i) => (
         /* stopPropagation so tapping Print does not also follow the row link. */
         <div className="flex items-center justify-end gap-1" onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}>
-          <Button variant="ghost" size="icon-sm" aria-label={`Print ${i.invoiceNo}`} onClick={() => openBill(i.id)}>
+          <Button variant="ghost" size="icon-sm" aria-label={`Print ${i.invoiceNo}`} onClick={() => void openBill(i.id, i.pdfUrl)}>
             <Printer />
           </Button>
           <Button variant="ghost" size="icon-sm" aria-label={`Send ${i.invoiceNo} on WhatsApp`} onClick={() => setShare(i)}>
@@ -194,9 +202,9 @@ export default function InvoicesPage() {
             <Button variant="ghost" size="md" className="gap-1.5" asChild>
               <Link href="/sales/direct/walkin"><Users /><span className="hidden sm:inline">Walk-in bills</span></Link>
             </Button>
-            <Button variant="secondary" size="md" className="gap-1.5" onClick={exportCsv}>
-              <Download />
-              <span className="hidden sm:inline">Export</span>
+            <Button variant="secondary" size="md" className="gap-1.5" onClick={exportXlsx} disabled={exporting}>
+              {exporting ? <Loader2 className="size-4 animate-spin" /> : <Download />}
+              <span className="hidden sm:inline">{exporting ? "Exporting…" : "Export"}</span>
             </Button>
             <Button variant="accent" size="md" className="gap-1.5" asChild>
               <Link href="/sales/invoices/new">
