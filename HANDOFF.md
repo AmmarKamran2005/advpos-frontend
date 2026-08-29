@@ -148,6 +148,43 @@ Every one `deliverable=True`. Driven from the UI as well as curl: Save to store
 on the Sales Summary screen, and the purchase-order screen correctly showing
 **Saved** for a document already in the store.
 
+### How to check the whole pipeline in two minutes
+
+Three questions, three commands. None of them need the app open.
+
+**1. Is anything being written to disk?** Both should come back empty (the one
+`find` hit is the design document that was already in the repo).
+
+```bash
+grep -rn "File.Write\|FileStream\|StreamWriter\|wwwroot\|Path.Combine" --include=*.cs backend/
+find . -iname "*.pdf" -not -path "*/node_modules/*"
+```
+
+**2. Where did the last documents actually go?** Open **Setup → Document Store**
+in the app, or ask the database directly:
+
+```bash
+psql "$NEON_URL" -c 'SELECT "DocKind", "DocNo", "IsDeliverable", "PdfUrl"
+                       FROM "DocumentFile" ORDER BY "GeneratedAt" DESC LIMIT 10;'
+```
+
+Every `PdfUrl` must start `https://res.cloudinary.com/dve3ucdo/raw/upload/advpos/documents/`.
+Sale invoices are the exception — those keep their link on `SalesInvoice.PdfUrl`,
+because there it is part of the invoice's identity rather than a stored artefact.
+
+**3. Will Cloudinary actually serve them?** Take any `PdfUrl` from above and
+fetch it with no credentials at all:
+
+```bash
+curl -sL -o /dev/null -w "%{http_code} %{content_type} %{size_download}\n" "<PdfUrl>"
+```
+
+`200 application/pdf <bytes>` is right. **`401` means PDF delivery has been
+turned off again** on the Cloudinary account — Settings → Security → Restricted
+media types. The app keeps working when that happens (it falls back to serving
+its own signed link) but `/admin/documents` will show a non-zero "Not being
+served" count, which is the signal to go and look.
+
 ### Also fixed while in there
 
 - **Page numbering was wrong on any document that overflowed.** A two-page
@@ -518,9 +555,11 @@ document and builds its lines from that document rather than a fixed array.
    live Neon password, the JWT signing key, two Cloudinary secrets and a Gmail
    app password — and they are in git history, so deleting the file does not
    undo it. Rotate all four.
-   **Note:** the JWT key now also signs the anonymous bill links
-   (`/sales/bill/{no}?k=`). Rotating it invalidates every link already sent to
-   a customer, which is the correct behaviour but worth knowing before you do it.
+   **Note:** the JWT key now also signs BOTH families of anonymous share link --
+   `/sales/bill/{invoiceNo}?k=` and `/documents/open/{kind}/{key}?k=`. Rotating
+   it invalidates every one already sent to a customer or supplier. That is the
+   correct behaviour and it is the point of signing them that way, but do it
+   knowing the WhatsApp links people are holding will stop opening.
 2. **🟢 Cloudinary PDF delivery — DONE.** It was off; it has been turned on in
    the console and every stored link now serves. Nothing in the code changed:
    `PdfStore` HEADs each URL after uploading, so the app switched from its own
@@ -700,6 +739,9 @@ of the whole folder reverts his work. Two further traps that recipe avoids:
 | `backend/database/09_document_series_catchup.sql` | Winds `DocumentSeries.NextNumber` past the data. **Applied. Re-run after any import with explicit document numbers.** |
 | `backend/database/10_document_files.sql` | `DocumentFile` — one row per generated PDF and its Cloudinary link. **Applied.** |
 | `backend/vizo-backend/Documents/` | `PdfCanvas` (a small PDF writer, no dependency), `InvoicePdf` (the bill), `DocumentPdf` (every other document and report), `PdfStore` (Cloudinary + delivery check), `DocumentArchive` (render, upload, record) |
+| **`/admin/documents`** (Setup → Document Store) | **Every PDF the system has generated and its real Cloudinary link.** Open this first when somebody asks where the documents go. |
+| `vizo-erp/src/components/widgets/document-actions.tsx` | Print / Download / Save-to-store for one document. Used by all ten document screens |
+| `vizo-erp/src/components/widgets/report-toolbar.tsx` | Shared by 13 report and statement screens. Give it a `doc` prop and it renders the real PDF; without one it falls back to the browser print dialog |
 | `backend/database/db_code_changes.txt` | **Every DB change, applied or not, with rollbacks.** §9–12 are the newest |
 | `backend/SETUP.md` | NuGet packages, configuration, how to run |
 | `backend/API_CONTRACT.md` | endpoint request/response shapes |
