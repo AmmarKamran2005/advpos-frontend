@@ -220,6 +220,7 @@ export const navigation: NavNode[] = [
       { label: "Users",            href: "/admin/users",         match: "admin.users",      perms: ["users.manage"] },
       { label: "Roles",            href: "/admin/roles",         match: "admin.roles",      perms: ["users.manage"] },
       { label: "Settings",         href: "/admin/settings",      match: "admin.settings",   perms: ["setup.manage"] },
+      { label: "Document Store",   href: "/admin/documents",     match: "admin.documents",  perms: ["setup.manage"] },
       { label: "Backup & Restore", href: "/admin/backup",        match: "admin.backup",     perms: ["backup.manage"] },
       { label: "Activity History", href: "/admin/audit-log",     match: "admin.audit",      perms: ["activity.view"] },
     ],

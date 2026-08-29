@@ -4,10 +4,11 @@ import * as React from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import axios from "axios";
-import { AlertCircle, Printer, RefreshCw, Undo2 } from "lucide-react";
+import { AlertCircle, RefreshCw, Undo2 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardBody } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { DocumentActions } from "@/components/widgets/document-actions";
 import { Avatar } from "@/components/ui/avatar";
 import { StatusPill } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -124,7 +125,7 @@ export default function PurchaseReturnDetailPage() {
         subtitle={`${pr.supplierName} · ${formatDate(pr.returnDate)} · from ${pr.location}`}
         actions={
           <>
-            <Button variant="ghost" className="gap-1.5" onClick={() => window.print()}><Printer />Print</Button>
+            <DocumentActions kind="purchase-return" id={id} label="purchase return" />
             <Button variant="ghost" className="gap-1.5" onClick={() => void load()}><RefreshCw className="size-4" />Refresh</Button>
           </>
         }

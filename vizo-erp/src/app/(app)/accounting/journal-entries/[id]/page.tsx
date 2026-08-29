@@ -3,10 +3,11 @@
 import * as React from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ArrowLeft, Printer, AlertCircle, RotateCcw, Lock, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, AlertCircle, RotateCcw, Lock, CheckCircle2 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardBody } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { DocumentActions } from "@/components/widgets/document-actions";
 import { Badge, StatusPill } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ConfirmDialog } from "@/components/dialogs/confirm-dialog";
@@ -52,7 +53,7 @@ export default function JEDetailPage() {
         actions={
           <>
             <Button variant="ghost" asChild><Link href="/accounting/journal-entries"><ArrowLeft />Back</Link></Button>
-            <Button variant="ghost" className="gap-1.5"><Printer />Print</Button>
+            <DocumentActions kind="journal-entry" id={id} label="journal entry" />
             {je.status === "DRAFT" && (
               <Button variant="accent" onClick={() => setPost(true)} className="gap-1.5">
                 <CheckCircle2 />Post Entry

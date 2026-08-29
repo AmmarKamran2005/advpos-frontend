@@ -96,6 +96,7 @@ export default function TopCustomersPage() {
             onRangeChange={(f, t) => { setFrom(f); setTo(t); }}
             locationId={locationId}
             onLocationChange={setLocationId}
+            doc={{ family: "report", key: "top-customers" }}
           />
         }
       />

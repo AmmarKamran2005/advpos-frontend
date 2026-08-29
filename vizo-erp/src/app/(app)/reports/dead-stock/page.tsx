@@ -160,7 +160,8 @@ export default function DeadStockPage() {
               <Archive />
               <span className="hidden sm:inline">Plan Clearance</span>
             </Button>
-            <ReportToolbar mode="asOf" reportName="Dead Stock" locationId={locationId} onLocationChange={setLocationId} />
+            <ReportToolbar mode="asOf" reportName="Dead Stock" locationId={locationId} onLocationChange={setLocationId}
+              doc={{ family: "report", key: "dead-stock" }} docParams={{ days }} />
           </>
         }
       />

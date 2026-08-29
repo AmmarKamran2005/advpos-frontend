@@ -16,10 +16,10 @@ day to day.
 |---|---|
 | **Frontend** | `AmmarKamran2005/advpos-frontend` @ `main` |
 | **Backend** | `muhammadtalhabinsuhail/vizo-backend` @ `master`. Talha's last was `aa510f1` (2026-08-27). |
-| **Database** | Neon PostgreSQL 18, Singapore. PascalCase columns. Real data, shared with Talha. Migrations **08** and **09** are applied. |
-| **API** | 26 controllers. Sales now carries 22 actions. Every action wrapped in try/catch. |
-| **Screens** | 98 pages. **90 on live data, 8 still on mock** — all eight are accounting forms. |
-| **Gate** | `tsc` clean · eslint **0 errors, 73 warnings** (was 83) · `next build` **83 routes** |
+| **Database** | Neon PostgreSQL 18, Singapore. PascalCase columns. Real data, shared with Talha. Migrations **08**, **09** and **10** are applied. |
+| **API** | 27 controllers. Every printable document in the system renders to PDF and uploads to Cloudinary. Every action wrapped in try/catch. |
+| **Screens** | 99 pages. **91 on live data, 8 still on mock** — all eight are accounting forms. |
+| **Gate** | `tsc` clean · eslint **0 errors, 67 warnings** (was 83) · `next build` **84 routes** |
 
 ### ⚠️ Read before touching ANY repo
 
@@ -29,6 +29,177 @@ day to day.
 **Always `git fetch` before staging — on the frontend as well as the backend.**
 A `--force` here would delete a day of his work. Both remotes were unchanged
 when this session pushed (`32fd4a2` / `aa510f1`).
+
+---
+
+## 2026-08-30 — every PDF in the system, and where they actually go
+
+**The reported worry was that PDFs were being written into the backend folder.
+They were not.** `GET /api/sales/invoices/16/pdf` is not a file path — it is the
+API rendering the bill in memory and streaming it. Checked rather than asserted:
+
+```bash
+grep -rn "File.Write\|FileStream\|StreamWriter\|wwwroot\|Path.Combine" --include=*.cs backend/
+find . -iname "*.pdf" -not -path "*/node_modules/*"
+```
+
+The first returns nothing. The second returns one file — the design document
+that was already in the repo. Nothing in this project has ever written a PDF to
+disk, and the six bills that existed were all in Cloudinary.
+
+**The real gap was the opposite one: most documents were not PDFs at all.**
+
+### What was actually there
+
+| Screen | Its Print button |
+|---|---|
+| `purchases/orders/[id]`, `purchases/invoices/[id]`, `purchases/grns/[id]`, `purchases/returns/[id]` | `window.print()` |
+| `inventory/adjustments/[id]`, `inventory/transfers/[id]` | `window.print()` |
+| `parties/[id]/statement` | `window.print()` |
+| `accounting/vouchers/[id]`, `accounting/journal-entries/[id]` | **no `onClick` at all** |
+| `accounting/expenses/[id]` | `toast.info("Printing receipt…")` |
+| All 13 screens using `report-toolbar` | Export → PDF / Excel / CSV, all three `toast.success("Exporting…")` and nothing else |
+
+`window.print()` prints the *web page* — sidebar, buttons, filter chips, at
+whatever width the window happens to be — and stores nothing anywhere. So of the
+sixteen printable things in the admin panel, exactly one produced a real
+document, and that was the sale invoice built the day before.
+
+### What there is now
+
+**Every one of them renders a real A4 PDF from the database and uploads to the
+`CloudinaryPdfs` account.**
+
+Ten business documents, six reports and five financial statements — twenty-one
+document types, all through one renderer:
+
+```
+GET  /api/documents/{kind}/{id}/pdf     render + stream   (Print, Download)
+POST /api/documents/{kind}/{id}/pdf     render + upload   (Save to store)
+GET/POST /api/reports/{key}/pdf         the six reports
+GET/POST /api/accounting/{key}/pdf      the five statements
+GET  /api/documents                     the store, with every Cloudinary link
+GET  /api/documents/open/{kind}/{key}?k=  anonymous share link
+```
+
+`Documents/DocumentPdf.cs` is the renderer. Column widths are **weights**, not
+points — the caller says "description is worth 5 of these, qty 1" and the
+renderer divides the page — so a three-column statement and an eight-column
+ageing report both fill the page without either being hand-measured. The sale
+invoice keeps its own renderer: it is the document a customer sees and the
+client cares about its exact shape.
+
+**Reports and statements cannot drift from their screens.** Each PDF endpoint
+calls the *same action the browser calls* and reads its result, rather than
+re-running a copy of the query. If the ageing buckets change, both change
+together. A statement that quietly differs from the screen it was printed from
+is the worst thing an accounting system can produce.
+
+### Where the files go, and how to check
+
+`10_document_files.sql` adds **`DocumentFile`** — one row per generated PDF,
+keyed on `(DocKind, DocKey)`, so re-generating replaces the row instead of
+piling up copies. Reports have no row to key off, so their key is a fingerprint
+of the parameters they were run with.
+
+New screen at **`/admin/documents`** (Setup → Document Store) lists every
+generated PDF with its real Cloudinary URL, its size, who made it, and whether
+that URL will actually serve the file. It exists so nobody has to take "the PDFs
+go to Cloudinary" on trust.
+
+### 🟢 Cloudinary now serves PDFs
+
+Yesterday both accounts refused: the upload succeeded and every request to the
+link answered `401 deny or ACL failure`. **That has been changed in the console
+and PDF delivery is on.** Verified with no credentials:
+
+```
+GET https://res.cloudinary.com/dve3ucdo/raw/upload/.../PO-26-0042_omlulp.pdf
+200  application/pdf  6846 bytes
+```
+
+The bills uploaded *before* the change now serve too, and the app switched over
+on its own — `PdfStore` HEADs each URL after uploading and records the answer, so
+the moment delivery worked it started handing out Cloudinary links instead of the
+API fallback. **No code changed for that.** The fallback stays in place for the
+next time an account is provisioned fresh.
+
+`isDeliverable` is on every `DocumentFile` row, and `/admin/documents` shows the
+count of anything not being served, so a regression here is visible rather than
+silent.
+
+### Verified end to end
+
+All 21 archived to Cloudinary and re-fetched anonymously:
+
+```
+purchase-order PO-26-0042      purchase-invoice PI-26-0042
+goods-receipt  GRN-26-0089     purchase-return  PR-26-0008
+stock-adjustment ADJ-26-0034   stock-transfer   TRF-26-0014
+voucher        VCH-26-0089     journal-entry    JE-26-1042
+expense        EXP-26-0024     party-statement  VZ-C-0001
+reports: sales-summary · aging-customer · aging-supplier ·
+         dead-stock · slow-moving · top-customers
+statements: trial-balance · balance-sheet · profit-loss ·
+            cash-flow · ledger
+```
+
+Every one `deliverable=True`. Driven from the UI as well as curl: Save to store
+on the Sales Summary screen, and the purchase-order screen correctly showing
+**Saved** for a document already in the store.
+
+### How to check the whole pipeline in two minutes
+
+Three questions, three commands. None of them need the app open.
+
+**1. Is anything being written to disk?** Both should come back empty (the one
+`find` hit is the design document that was already in the repo).
+
+```bash
+grep -rn "File.Write\|FileStream\|StreamWriter\|wwwroot\|Path.Combine" --include=*.cs backend/
+find . -iname "*.pdf" -not -path "*/node_modules/*"
+```
+
+**2. Where did the last documents actually go?** Open **Setup → Document Store**
+in the app, or ask the database directly:
+
+```bash
+psql "$NEON_URL" -c 'SELECT "DocKind", "DocNo", "IsDeliverable", "PdfUrl"
+                       FROM "DocumentFile" ORDER BY "GeneratedAt" DESC LIMIT 10;'
+```
+
+Every `PdfUrl` must start `https://res.cloudinary.com/dve3ucdo/raw/upload/advpos/documents/`.
+Sale invoices are the exception — those keep their link on `SalesInvoice.PdfUrl`,
+because there it is part of the invoice's identity rather than a stored artefact.
+
+**3. Will Cloudinary actually serve them?** Take any `PdfUrl` from above and
+fetch it with no credentials at all:
+
+```bash
+curl -sL -o /dev/null -w "%{http_code} %{content_type} %{size_download}\n" "<PdfUrl>"
+```
+
+`200 application/pdf <bytes>` is right. **`401` means PDF delivery has been
+turned off again** on the Cloudinary account — Settings → Security → Restricted
+media types. The app keeps working when that happens (it falls back to serving
+its own signed link) but `/admin/documents` will show a non-zero "Not being
+served" count, which is the signal to go and look.
+
+### Also fixed while in there
+
+- **Page numbering was wrong on any document that overflowed.** A two-page
+  balance sheet printed "Page 1 of 1" on its first page, because the footer was
+  drawn while the page was being laid out and nobody yet knew a second page was
+  coming. `PdfCanvas.SelectPage` lets the renderer go back and stamp the footers
+  once the count is real.
+- **The Excel and CSV export options are gone from the report toolbar.** Neither
+  ever did anything, and there is no endpoint behind them. Leaving two dead
+  options beside a working PDF makes the working one look dead too. `/sales/invoices`
+  has a real CSV export if that pattern is wanted elsewhere.
+- Two screens still use `window.print()` — `admin/audit-log` and
+  `inventory/movements`. They are list screens rather than statements and have no
+  PDF endpoint; the toolbar hides the PDF actions when it is not given a `doc`
+  prop rather than offering an export that would produce nothing.
 
 ---
 
@@ -384,12 +555,17 @@ document and builds its lines from that document rather than a fixed array.
    live Neon password, the JWT signing key, two Cloudinary secrets and a Gmail
    app password — and they are in git history, so deleting the file does not
    undo it. Rotate all four.
-   **Note:** the JWT key now also signs the anonymous bill links
-   (`/sales/bill/{no}?k=`). Rotating it invalidates every link already sent to
-   a customer, which is the correct behaviour but worth knowing before you do it.
-2. **🔴 Cloudinary will not deliver PDFs.** One checkbox — Settings → Security →
-   Restricted media types → allow PDF. Until then the app shares its own link;
-   see 2026-08-29 above. Nothing in the code needs changing afterwards.
+   **Note:** the JWT key now also signs BOTH families of anonymous share link --
+   `/sales/bill/{invoiceNo}?k=` and `/documents/open/{kind}/{key}?k=`. Rotating
+   it invalidates every one already sent to a customer or supplier. That is the
+   correct behaviour and it is the point of signing them that way, but do it
+   knowing the WhatsApp links people are holding will stop opening.
+2. **🟢 Cloudinary PDF delivery — DONE.** It was off; it has been turned on in
+   the console and every stored link now serves. Nothing in the code changed:
+   `PdfStore` HEADs each URL after uploading, so the app switched from its own
+   fallback link to the Cloudinary one on its own. Left here as a note because a
+   NEW Cloudinary account will arrive in the same blocked state, and
+   `/admin/documents` is where that would show up.
 3. **`CLM` document series is not in the database.** Claims created through the
    app number `CLM-20260825174238` instead of `CLM-26-0143`. One `INSERT`,
    written out in `db_code_changes.txt` §5. **Not applied.** Note that even once
@@ -548,7 +724,11 @@ of the whole folder reverts his work. Two further traps that recipe avoids:
     schema. Any new timestamp column needs
     `.HasColumnType("timestamp without time zone")` declaring, the way the
     scaffolder does for `LoggedAt` and `VisitedAt`.
-13. **Never run `next build` while `next dev` is up** — they share `.next` and
+13. **A footer cannot say "Page 1 of 3" while page 1 is being drawn.** A table
+    that overflows makes its own pages as it goes, so the count is not known
+    until the body is finished. Draw the body first, then stamp the footers --
+    `PdfCanvas.SelectPage` exists for exactly this.
+14. **Never run `next build` while `next dev` is up** — they share `.next` and
    the cache corrupts into a blanket HTTP 500.
 
 ### Reference
@@ -557,7 +737,11 @@ of the whole folder reverts his work. Two further traps that recipe avoids:
 |---|---|
 | `backend/database/08_sales_documents.sql` | Invoice PDF columns, walk-in identity, return decision. **Applied.** |
 | `backend/database/09_document_series_catchup.sql` | Winds `DocumentSeries.NextNumber` past the data. **Applied. Re-run after any import with explicit document numbers.** |
-| `backend/vizo-backend/Documents/` | `PdfCanvas` (a small PDF writer, no dependency), `InvoicePdf` (the bill), `PdfStore` (Cloudinary + delivery check) |
+| `backend/database/10_document_files.sql` | `DocumentFile` — one row per generated PDF and its Cloudinary link. **Applied.** |
+| `backend/vizo-backend/Documents/` | `PdfCanvas` (a small PDF writer, no dependency), `InvoicePdf` (the bill), `DocumentPdf` (every other document and report), `PdfStore` (Cloudinary + delivery check), `DocumentArchive` (render, upload, record) |
+| **`/admin/documents`** (Setup → Document Store) | **Every PDF the system has generated and its real Cloudinary link.** Open this first when somebody asks where the documents go. |
+| `vizo-erp/src/components/widgets/document-actions.tsx` | Print / Download / Save-to-store for one document. Used by all ten document screens |
+| `vizo-erp/src/components/widgets/report-toolbar.tsx` | Shared by 13 report and statement screens. Give it a `doc` prop and it renders the real PDF; without one it falls back to the browser print dialog |
 | `backend/database/db_code_changes.txt` | **Every DB change, applied or not, with rollbacks.** §9–12 are the newest |
 | `backend/SETUP.md` | NuGet packages, configuration, how to run |
 | `backend/API_CONTRACT.md` | endpoint request/response shapes |

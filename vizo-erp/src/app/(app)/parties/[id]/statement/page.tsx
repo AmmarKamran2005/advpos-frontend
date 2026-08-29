@@ -4,10 +4,11 @@ import * as React from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import axios from "axios";
-import { AlertCircle, Printer, RefreshCw, ArrowLeft } from "lucide-react";
+import { AlertCircle, RefreshCw, ArrowLeft } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardBody } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { DocumentActions } from "@/components/widgets/document-actions";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -117,9 +118,7 @@ export default function PartyStatementPage() {
             <Button variant="ghost" className="gap-1.5" onClick={() => { setLoading(true); void load(); }}>
               <RefreshCw className="size-4" />Refresh
             </Button>
-            <Button variant="accent" className="gap-1.5 print:hidden" onClick={() => window.print()}>
-              <Printer />Print
-            </Button>
+            <DocumentActions kind="party-statement" id={id} label="statement" />
           </>
         }
       />

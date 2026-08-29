@@ -3,10 +3,11 @@
 import * as React from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ArrowLeft, Edit3, Printer, AlertCircle, Trash2, FileText, Receipt, Calendar, Building2, Tag, Banknote, Download } from "lucide-react";
+import { ArrowLeft, Edit3, AlertCircle, Trash2, FileText, Receipt, Calendar, Building2, Tag, Banknote, Download } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardBody } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { DocumentActions } from "@/components/widgets/document-actions";
 import { Badge, StatusPill } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ConfirmDialog } from "@/components/dialogs/confirm-dialog";
@@ -40,7 +41,7 @@ export default function ExpenseDetailPage() {
         actions={
           <>
             <Button variant="ghost" asChild><Link href="/accounting/expenses"><ArrowLeft />Back</Link></Button>
-            <Button variant="ghost" className="gap-1.5" onClick={() => toast.info("Printing receipt…")}><Printer />Print</Button>
+            <DocumentActions kind="expense" id={id} label="expense voucher" />
             <Button variant="secondary" className="gap-1.5" asChild><Link href={`/accounting/expenses/new?id=${e.id}`}><Edit3 />Edit</Link></Button>
             {e.status === "POSTED" && (
               <Button variant="ghost" className="text-danger" onClick={() => setDeleteConfirm(true)}><Trash2 />Delete</Button>

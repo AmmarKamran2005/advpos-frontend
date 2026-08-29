@@ -4,10 +4,11 @@ import * as React from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import axios from "axios";
-import { AlertCircle, Printer, RefreshCw, Truck, PackageCheck, PackageX } from "lucide-react";
+import { AlertCircle, RefreshCw, Truck, PackageCheck, PackageX } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardBody } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { DocumentActions } from "@/components/widgets/document-actions";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge, StatusPill } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -129,7 +130,7 @@ export default function GrnDetailPage() {
         subtitle={`Received ${formatDate(grn.receiptDate)} into ${grn.location}${grn.receivedBy ? ` by ${grn.receivedBy}` : ""}`}
         actions={
           <>
-            <Button variant="ghost" className="gap-1.5" onClick={() => window.print()}><Printer />Print</Button>
+            <DocumentActions kind="goods-receipt" id={id} label="goods receipt" />
             <Button variant="ghost" className="gap-1.5" onClick={() => void load()}><RefreshCw className="size-4" />Refresh</Button>
           </>
         }
