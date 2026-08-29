@@ -14,48 +14,197 @@ day to day.
 
 | | |
 |---|---|
-| **Frontend** | `AmmarKamran2005/advpos-frontend` @ `main` = **`69afbe6`** (2026-08-27, **Talha's**) + this handoff on top. |
-| **Backend** | `muhammadtalhabinsuhail/vizo-backend` @ `master` = **`aa510f1`** (2026-08-27, **Talha's**). My last was `f6dcbc5`. |
-| **Database** | Neon PostgreSQL 18, Singapore. PascalCase columns. Real data, shared with Talha. |
-| **API** | 176 actions across 26 controllers. **176 try / 177 catch** — every action wrapped. |
-| **Screens** | 97 pages. **82 on live data, 15 still on mock** (one of those 15 is half-done — see 2026-08-27). All are sales + accounting forms. |
-| **Gate** | `tsc` clean · eslint **0 errors**, 83 warnings · `next build` 82 routes |
+| **Frontend** | `AmmarKamran2005/advpos-frontend` @ `main` |
+| **Backend** | `muhammadtalhabinsuhail/vizo-backend` @ `master`. Talha's last was `aa510f1` (2026-08-27). |
+| **Database** | Neon PostgreSQL 18, Singapore. PascalCase columns. Real data, shared with Talha. Migrations **08** and **09** are applied. |
+| **API** | 26 controllers. Sales now carries 22 actions. Every action wrapped in try/catch. |
+| **Screens** | 98 pages. **90 on live data, 8 still on mock** — all eight are accounting forms. |
+| **Gate** | `tsc` clean · eslint **0 errors, 73 warnings** (was 83) · `next build` **83 routes** |
 
 ### ⚠️ Read before touching ANY repo
 
-**Talha now pushes to BOTH repos, not just the backend.** Between 2026-08-26
-and 2026-08-27 he pushed **nine commits to the frontend** and one to the
-backend, and both landed after my last push. Local was behind on both.
+**Talha pushes to BOTH repos, not just the backend.** Between 2026-08-26 and
+2026-08-27 he pushed nine commits to the frontend and one to the backend.
 
 **Always `git fetch` before staging — on the frontend as well as the backend.**
-A `--force` here would delete a day of his work.
-
-His backend change was a real fix: `POST /inventory/categories` was writing
-`ParentCategoryId = 0` when "Top level" was chosen, which fails the foreign
-key. He made it `body.ParentId == 0 ? null : body.ParentId`. Pulled into the
-local copy on 2026-08-29.
-
-His change was a real fix: `POST /inventory/categories` was writing
-`ParentCategoryId = 0` when "Top level" was chosen, which fails the foreign
-key. He made it `body.ParentId == 0 ? null : body.ParentId`.
-
-**He fixed the create path but not the update path.** `UpdateCategory` still
-reads:
-
-```csharp
-c.ParentCategoryId = body.ParentId;      // InventoryController.cs:346
-```
-
-so editing a category to "Top level" still throws the same FK error. Left as
-he has it rather than changing code he is actively working in — worth a word
-with him.
+A `--force` here would delete a day of his work. Both remotes were unchanged
+when this session pushed (`32fd4a2` / `aa510f1`).
 
 ---
 
-## 2026-08-29 — this handoff
+## 2026-08-29 (later) — the sales module, end to end
+
+Ten screens, twelve new endpoints, two migrations, and a bill that is a real
+PDF rather than a toast.
+
+### What was actually wrong
+
+Every one of these screens *looked* finished. That was the problem: the buttons
+were there, they produced a toast, and nothing reached the database.
+
+| Screen | What it did before |
+|---|---|
+| `sales/orders/new` | Read `@/data/parties` and `@/data/products`. Submit slept 800 ms and toasted **"Order ORD-26-0143 created"** — a number typed into the source. "Save as Draft" toasted and did nothing. |
+| `sales/orders/[id]` | Rendered three hard-coded line items and a seven-entry activity feed claiming *"System emailed PO to supplier"* on every order in the system. Confirm / Pack / Dispatch / Cancel were toasts. |
+| `sales/direct` | Frozen catalogue, **sales tax hard-coded at 18%**, "Take payment" toasted `INV-26-8869` and cleared the basket. Print and Send toasted. |
+| `sales/invoices/new` | Frozen catalogue. Submit toasted `INV-26-0143`. |
+| `sales/invoices/[id]` | Live, but the letterhead was a constant — **NTN 0123456-7, STRN 32-77-8901-234-56, phone 0300 7287607**. None of those are the company's real numbers. Under it sat 200 lines of the old mock version, commented out. |
+| `sales/returns/new` | Whatever invoice you picked, you were offered the same three products from `SAMPLE_INVOICE_LINES`. |
+| `sales/returns/[id]` | Two hard-coded lines. **Approve and Reject were toasts** — the reported "rejecting does not reject". |
+| `sales/credit-holds` | The list was live; Override and Cancel did nothing at all. |
+| Sidebar | "Limit Alerts" carried a **typed `3`**. The queue held one. |
+
+### Two bugs underneath, both pre-existing
+
+**1. Orders could not be created at all.** `CreateOrder` called
+`NextNumber("SO")`. There is no `SO` series — the sales-order prefix is `ORD`.
+`NextNumber` does not throw on a miss, it falls back to a timestamp, so orders
+would have numbered `SO-20260829174238`.
+
+**2. And once that was fixed, the insert threw `23505 duplicate key`.**
+`DocumentSeries.NextNumber` for `ORD` said 143 while `SalesOrder` already held
+`ORD-26-0144`. Same class of bug as the identity sequences in
+`07_neon_sequence_reset.sql`, one layer up, and nobody had hit it because
+nobody had ever successfully created an order. `GRN` (90 vs 90), `PR` (9 vs 10)
+and `ADJ` (27 vs 35) were in the same state and would have failed the same way
+on the first document created from those screens.
+
+Fixed by **`09_document_series_catchup.sql`** — idempotent. **Re-run it after
+any import that carries explicit document numbers**, for the same reason 07 has
+to be re-run.
+
+### The bill
+
+`Documents/PdfCanvas.cs` + `Documents/InvoicePdf.cs` render a real A4 sales tax
+invoice: navy and yellow letterhead, seller and buyer blocks, a line table,
+totals, amount in words in lakh/crore, and a footer. Around 7 KB per bill,
+paginating when the lines run over.
+
+**There is no PDF library, on purpose.** Every printable-PDF package on NuGet
+costs something this project should not pay — QuestPDF pulls SkiaSharp native
+binaries and a revenue-tested licence, PDFsharp wants a font resolver per
+platform, the HTML ones shell out to a headless browser. A bill is text, rules
+and filled rectangles: about 200 lines of the PDF spec, written once, using the
+two standard Helvetica faces so nothing is embedded and nothing needs keeping
+current.
+
+Every invoice raised anywhere — order, direct invoice, counter sale, credit
+override — is rendered, pushed to the documents Cloudinary account and the link
+stored on the row. If Cloudinary is unreachable the sale still completes: a
+re-buildable PDF is not worth failing a sale where the cash is already in the
+drawer and the stock has left the building.
+
+### 🔴 Cloudinary will not serve a PDF, and the fix is one checkbox
+
+Both configured accounts **refuse to deliver PDFs**. The upload succeeds, a
+perfectly ordinary `secure_url` comes back, and every request to it answers
+`401` with `x-cld-error: deny or ACL failure`.
+
+Proved rather than guessed: the same bytes uploaded as `.txt` deliver `200`; as
+`.pdf`, `401` — in both `raw` and `image` resource types, on **both** accounts
+(`dve3ucdo` and `dzzuoem1w`). It is the default for Cloudinary accounts created
+since 2023.
+
+**The fix is in the Cloudinary console, not in this code:**
+
+> Settings → Security → Restricted media types → allow **PDF and ZIP** delivery.
+
+Until somebody ticks it the app does not hand a customer a broken link.
+`PdfStore` HEADs the URL after uploading, and when it is not deliverable the API
+gives out its own link instead:
+
+```
+GET /api/sales/bill/INV-26-8872?k=<hmac>        (anonymous)
+```
+
+`k` is an HMAC of the invoice number under the JWT signing secret, compared in
+constant time. Unguessable, needs no new column, and rotating that secret
+revokes every link at once — which is on the list anyway, because the secret is
+committed to a public repo.
+
+**The moment the checkbox is ticked, Cloudinary takes over automatically.**
+Nothing in the code needs changing.
+
+### WhatsApp
+
+`lib/whatsapp.ts` is the one place that turns `0300 4567890`,
+`+92 300 4567890`, `0092-300-4567890` and `3004567890` into the `923004567890`
+that wa.me actually accepts.
+
+`WhatsAppShareDialog` now opens the chat with the message already in it. It does
+**not** send — the operator presses Send inside WhatsApp. Anything that goes to
+a customer under the shop's name gets a person's eyes on it first.
+
+Reachable from the counter receipt strip, the invoice screen, the invoice list,
+the order screen, the walk-in list, and as **Remind** on Limit Alerts, which
+composes a payment reminder carrying the outstanding balance, the limit, and the
+order stuck behind it.
+
+### Walk-in versus shop account
+
+`SalesInvoice` gained `IsWalkIn` / `WalkInName` / `WalkInPhone`, plus a shared
+`VZ-C-WALKIN` party — `CustomerUserId` is NOT NULL, so a cash sale still needs
+one to hang off. Migration **`08_sales_documents.sql`**, applied.
+
+- **Walk-in** → `/sales/direct/walkin`, server-paged and searchable, every row
+  printable and shareable.
+- **Existing shop** → an ordinary invoice in the Sale Invoices ledger.
+
+Walk-ins are excluded from `/sales/invoices` by default (`?walkIn=true|all`
+changes that). They never age and nobody chases them; mixing them in buries the
+shop invoices that do need chasing.
+
+### Sales tax is asked for now
+
+The counter screen has a **Sales tax rate** field. It seeds from the catalogue
+(`defaultTaxPercent` — the rate most items actually carry, currently 18) and the
+operator can change it for the sale, with a one-click reset. It used to be the
+literal `18` written into the markup, which made a change of rate a code change
+and a redeploy.
+
+Per-line tax on the order, invoice and return forms was already editable and
+still is.
+
+### Also fixed while in there
+
+- **Money is rounded to the paisa on the way in.** A 5% discount on 390 came out
+  `1626.885`; the database stored `1626.89` while the JSON already said
+  `1626.885`, so the receipt on screen and the row in the ledger disagreed.
+- **`/sales/direct` defaulted to "Claim Stock"** — damaged goods — because the
+  location list was alphabetical. Locations now come back sellable-first, and
+  the counter prefers the operator's own `primaryLocationId`.
+- **The Export button on `/sales/invoices` did nothing.** It writes a CSV of
+  what is on screen, filters and all.
+- **Two more invented badges** removed from the sidebar: "Stock Received" `2`
+  and "Confirm Collections" `2`. No endpoint backs either, and an invented count
+  beside a real one makes the real one look invented too. The mechanism is
+  generic now — `liveBadge: "creditHolds"` in `nav-config.ts`.
+- `sales/invoices/[id]` and `sales/invoices/page.tsx` each carried the whole
+  previous mock version commented out above the live one. Deleted.
+
+### Test rows this session left in the live database
+
+Real transactions through the app, kept because they demonstrate the features.
+Safe to delete for a clean demo — but the counter sales moved stock, so correct
+`StockBalance` if you delete those two.
+
+| Doc | What |
+|---|---|
+| `ORD-26-0145` / `INV-26-8868` | Walk-in counter sale, "Ammar Kamran", 03123670670 |
+| `ORD-26-0150` / `INV-26-8872` | Walk-in counter sale, "Ahmed Raza", tax overridden to 16% |
+| `ORD-26-0146` / `INV-26-8869` | Counter sale to a shop account |
+| `ORD-26-0148` / `INV-26-8870` | Order with the invoice raised alongside it |
+| `ORD-26-0149` / `INV-26-8871` | Credit hold, then released by override |
+| `ORD-26-0147` | Draft, then cancelled |
+| `SR-26-0041` | Return, **rejected** — proves the stock reversal (928 → 926) |
+| `SR-26-0042` | Return, approved |
+
+---
+
+## 2026-08-29 (earlier) — pulled Talha's work, counted the real state
 
 No code written beyond pulling Talha's `aa510f1` into the local working copy.
-Counted the real state (above) rather than trusting the previous handoff.
+Counted the real state rather than trusting the previous handoff.
 
 ---
 
@@ -213,18 +362,20 @@ Ten of eleven accounts also could not sign in: rows 2–11 carried a literal
 
 ## What is left
 
-### 15 screens still on mock data
+### 8 screens still on mock data
 
-All have working endpoints. This is frontend wiring, not API work.
+All eight are accounting forms. All have working endpoints — this is frontend
+wiring, not API work.
 
 | Area | Files |
 |---|---|
-| `sales/*` | `orders/[id]`, `orders/new`, `orders` (channel helper only), **`invoices/[id]` — half-done, see 2026-08-27**, `invoices/new`, `returns/[id]`, `returns/new`, `direct` |
 | `accounting/*` | `expenses/[id]`, `expenses/new`, `journal-entries/[id]`, `journal-entries/new`, `vouchers/[id]`, `vouchers/new` |
+| `sales/orders` | list is live; one channel-label helper still reads `@/data/sales` |
 | `login` | pulls one presentational constant from `@/data/settings` |
 
-`sales/direct` is the biggest of them. The four purchases create forms
-(`purchases/*/new`) are the closest worked examples — copy their shape.
+The sales screens finished on 2026-08-29 are the closest worked examples for
+the accounting ones — `sales/returns/new` in particular, which loads a parent
+document and builds its lines from that document rather than a fixed array.
 
 ### Needs a decision, not code
 
@@ -233,29 +384,47 @@ All have working endpoints. This is frontend wiring, not API work.
    live Neon password, the JWT signing key, two Cloudinary secrets and a Gmail
    app password — and they are in git history, so deleting the file does not
    undo it. Rotate all four.
-2. **`CLM` document series is not in the database.** Claims created through the
+   **Note:** the JWT key now also signs the anonymous bill links
+   (`/sales/bill/{no}?k=`). Rotating it invalidates every link already sent to
+   a customer, which is the correct behaviour but worth knowing before you do it.
+2. **🔴 Cloudinary will not deliver PDFs.** One checkbox — Settings → Security →
+   Restricted media types → allow PDF. Until then the app shares its own link;
+   see 2026-08-29 above. Nothing in the code needs changing afterwards.
+3. **`CLM` document series is not in the database.** Claims created through the
    app number `CLM-20260825174238` instead of `CLM-26-0143`. One `INSERT`,
-   written out in `db_code_changes.txt` §5. **Not applied.**
-3. **Trial balance does not balance — and that is the data.** Posted movement
+   written out in `db_code_changes.txt` §5. **Not applied.** Note that even once
+   it is, `09_document_series_catchup.sql` should be re-run so the counter
+   starts past whatever is already there.
+4. **Trial balance does not balance — and that is the data.** Posted movement
    ties to the cent; the seeded *opening balances* are 51,256,709 out. The
    endpoint reports the two separately so nobody hunts through journal entries
    that were never at fault.
-4. **Document numbers can collide.** `NextNumber()` reads and increments
-   `DocumentSeries.NextNumber` non-atomically. Fix is one Postgres sequence per
-   series — `db_code_changes.txt` §3.1, not applied.
-5. **`system@advpos.pk` (user 11) is a super-admin service account** sharing a
+5. **Document numbers can still collide under concurrency.** `NextNumber()`
+   reads and increments `DocumentSeries.NextNumber` non-atomically. Migration 09
+   fixed the counters being *behind the data*; it does not fix two requests in
+   the same instant taking the same number. The proper fix is one Postgres
+   sequence per series — `db_code_changes.txt` §3.1, not applied.
+6. **`UpdateCategory` still writes `ParentCategoryId = 0`.** Talha fixed the
+   create path (`InventoryController.cs`) but not the update path, so editing a
+   category to "Top level" throws the same FK error. Left as he has it rather
+   than changing code he is actively working in — worth a word with him.
+7. **`system@advpos.pk` (user 11) is a super-admin service account** sharing a
    working password with five other accounts. Consider `IsActive = false`.
 
 ### Test rows in the live database
 
+Products:
+
 | id | SKU | State |
 |---|---|---|
-| 34 | `ZZ-WIRING-TEST-01` | inactive — mine, safe to delete |
-| 36 | `ZZ-DROPDOWN-TEST` | inactive — mine, safe to delete |
+| 34 | `ZZ-WIRING-TEST-01` | inactive — safe to delete |
+| 36 | `ZZ-DROPDOWN-TEST` | inactive — safe to delete |
 | **35** | `VZ-123-ER` | **Talha's. Leave alone.** |
 
-Removal SQL is in `db_code_changes.txt` §12. Both of mine are `IsActive = false`,
-so they cannot reach an order, invoice or packing screen.
+Removal SQL is in `db_code_changes.txt` §12. Both of the deletable ones are
+`IsActive = false`, so they cannot reach an order, invoice or packing screen.
+
+Sales documents from the 2026-08-29 session are listed in that day's entry above.
 
 ---
 
@@ -359,13 +528,36 @@ of the whole folder reverts his work. Two further traps that recipe avoids:
    Wrong order and pre-flight `OPTIONS` gets a 401 before CORS headers are
    written, which looks exactly like a CORS bug and is not one.
 8. **`DataTable` requires an `id` field** on every row type.
-9. **Never run `next build` while `next dev` is up** — they share `.next` and
+9. **A document series prefix is not the table name.** Sales orders are
+   `ORD`, not `SO`. `NextNumber()` does not throw when the prefix does not
+   exist — it silently falls back to `PREFIX-yyyyMMddHHmmss`, so the only
+   symptom is document numbers that look wrong days later. The real prefixes:
+   ```bash
+   psql "$NEON_URL" -c 'SELECT "Prefix", "NextNumber" FROM "DocumentSeries" ORDER BY "Prefix";'
+   ```
+10. **A series counter parked behind the data throws `23505` on the FIRST
+    insert.** Exactly like the identity sequences. Run
+    `09_document_series_catchup.sql` after importing anything with explicit
+    document numbers.
+11. **Cloudinary refuses to DELIVER a PDF by default** on accounts created
+    since 2023. The upload succeeds and the URL 401s. It is an account setting,
+    not a code bug — see the 2026-08-29 entry.
+12. **Npgsql maps a bare `DateTime` property to `timestamp WITH time zone`**
+    and then refuses to write one whose `Kind` is `Unspecified` — which is
+    what `Now()` produces, deliberately, for every other timestamp in this
+    schema. Any new timestamp column needs
+    `.HasColumnType("timestamp without time zone")` declaring, the way the
+    scaffolder does for `LoggedAt` and `VisitedAt`.
+13. **Never run `next build` while `next dev` is up** — they share `.next` and
    the cache corrupts into a blanket HTTP 500.
 
 ### Reference
 
 | File | What it holds |
 |---|---|
+| `backend/database/08_sales_documents.sql` | Invoice PDF columns, walk-in identity, return decision. **Applied.** |
+| `backend/database/09_document_series_catchup.sql` | Winds `DocumentSeries.NextNumber` past the data. **Applied. Re-run after any import with explicit document numbers.** |
+| `backend/vizo-backend/Documents/` | `PdfCanvas` (a small PDF writer, no dependency), `InvoicePdf` (the bill), `PdfStore` (Cloudinary + delivery check) |
 | `backend/database/db_code_changes.txt` | **Every DB change, applied or not, with rollbacks.** §9–12 are the newest |
 | `backend/SETUP.md` | NuGet packages, configuration, how to run |
 | `backend/API_CONTRACT.md` | endpoint request/response shapes |

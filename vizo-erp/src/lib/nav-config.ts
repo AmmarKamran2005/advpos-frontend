@@ -18,11 +18,25 @@ export type NavBadge = {
   variant: "success" | "warning" | "danger" | "info" | "accent" | "muted";
 };
 
+/**
+ * Names a count the sidebar fetches at runtime.
+ *
+ * The alternative -- and what was here -- is a number typed into this file.
+ * "Limit Alerts" carried a hard-coded 3 whether the queue held three orders,
+ * none, or thirty. A badge that is always wrong is worse than no badge: people
+ * stop believing the ones that are right.
+ *
+ * A live badge shows nothing at all while it is loading and nothing when the
+ * count is zero, so it never claims work that is not there.
+ */
+export type LiveBadgeKey = "creditHolds";
+
 export type NavChild = {
   label: string;
   href: string;
   match: string;
   badge?: NavBadge;
+  liveBadge?: LiveBadgeKey;
   /** Hidden unless the signed-in role holds at least one of these. */
   perms?: string[];
 };
@@ -36,6 +50,7 @@ export type NavNode =
       href: string;
       match: string;
       badge?: NavBadge;
+      liveBadge?: LiveBadgeKey;
       perms?: string[];
     }
   | {
@@ -91,7 +106,7 @@ export const navigation: NavNode[] = [
       { label: "Sale Invoices",   href: "/sales/invoices",     match: "sales.invoices", perms: ["invoices.view"] },
       { label: "Counter Sale",    href: "/sales/direct",       match: "sales.direct",   perms: ["sales.direct"] },
       { label: "Sales Returns",   href: "/sales/returns",      match: "sales.returns",  perms: ["returns.sales"] },
-      { label: "Limit Alerts",    href: "/sales/credit-holds", match: "sales.credit-holds", perms: ["limits.manage"], badge: { text: "3", variant: "warning" } },
+      { label: "Limit Alerts",    href: "/sales/credit-holds", match: "sales.credit-holds", perms: ["limits.manage"], liveBadge: "creditHolds" },
     ],
   },
   {
@@ -101,7 +116,7 @@ export const navigation: NavNode[] = [
     match: "purchases",
     children: [
       { label: "Orders to Supplier", href: "/purchases/orders",   match: "purchases.orders",   perms: ["purchases.view"] },
-      { label: "Stock Received",     href: "/purchases/grns",     match: "purchases.grns",     perms: ["receipts.stock", "purchases.view"], badge: { text: "2", variant: "info" } },
+      { label: "Stock Received",     href: "/purchases/grns",     match: "purchases.grns",     perms: ["receipts.stock", "purchases.view"] },
       { label: "Purchase Invoices",  href: "/purchases/invoices", match: "purchases.invoices", perms: ["purchases.view"] },
       { label: "Purchase Returns",   href: "/purchases/returns",  match: "purchases.returns",  perms: ["purchases.view"] },
     ],
@@ -161,7 +176,7 @@ export const navigation: NavNode[] = [
     icon: Wallet,
     match: "accounting",
     children: [
-      { label: "Confirm Collections", href: "/accounting/collections",  match: "accounting.collections", perms: ["money.manage"], badge: { text: "2", variant: "warning" } },
+      { label: "Confirm Collections", href: "/accounting/collections",  match: "accounting.collections", perms: ["money.manage"] },
       { label: "Vouchers",         href: "/accounting/vouchers",        match: "accounting.vouchers", perms: ["money.view"] },
       { label: "Expenses",         href: "/accounting/expenses",        match: "accounting.expenses", perms: ["expenses.manage"] },
       { label: "Account List",     href: "/accounting/coa",             match: "accounting.coa",      perms: ["ledger.view"] },
@@ -255,6 +270,7 @@ export function navigationFor(can: (permission: string) => boolean): NavNode[] {
             href: child.href,
             match: child.match,
             badge: child.badge,
+            liveBadge: child.liveBadge,
           });
         }
       } else {
