@@ -85,6 +85,7 @@ export default function CashFlowPage() {
             onRangeChange={(f, t) => { setFrom(f); setTo(t); }}
             locationId={locationId}
             onLocationChange={setLocationId}
+            doc={{ family: "statement", key: "cash-flow" }}
           />
         }
       />

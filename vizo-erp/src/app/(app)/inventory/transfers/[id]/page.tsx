@@ -5,11 +5,12 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import axios from "axios";
 import {
-  AlertCircle, Printer, RefreshCw, ArrowRight, PackageCheck, Loader2, Truck,
+  AlertCircle, RefreshCw, ArrowRight, PackageCheck, Loader2, Truck,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardBody } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { DocumentActions } from "@/components/widgets/document-actions";
 import { StatusPill } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -158,7 +159,7 @@ export default function TransferDetailPage() {
         subtitle={`${transfer.fromLocation} → ${transfer.toLocation} · raised ${formatDate(transfer.transferDate)}`}
         actions={
           <>
-            <Button variant="ghost" className="gap-1.5" onClick={() => window.print()}><Printer />Print</Button>
+            <DocumentActions kind="stock-transfer" id={id} label="stock transfer" />
             <Button variant="ghost" className="gap-1.5" onClick={() => void load()}><RefreshCw className="size-4" />Refresh</Button>
             {canReceive && (
               <Button variant="accent" className="gap-1.5" onClick={() => void receive()} disabled={receiving}>

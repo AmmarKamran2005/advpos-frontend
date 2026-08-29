@@ -123,6 +123,7 @@ export default function SalesSummaryPage() {
             onRangeChange={(f, t) => { setFrom(f); setTo(t); }}
             locationId={locationId}
             onLocationChange={setLocationId}
+            doc={{ family: "report", key: "sales-summary" }}
           />
         }
       />

@@ -89,6 +89,7 @@ export default function ProfitLossPage() {
             onRangeChange={(f, t) => { setFrom(f); setTo(t); }}
             locationId={locationId}
             onLocationChange={setLocationId}
+            doc={{ family: "statement", key: "profit-loss" }}
           />
         }
       />

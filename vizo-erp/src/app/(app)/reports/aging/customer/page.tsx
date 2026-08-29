@@ -126,6 +126,7 @@ export default function CustomerAgingPage() {
               onAsOfChange={setAsOf}
               locationId={locationId}
               onLocationChange={setLocationId}
+              doc={{ family: "report", key: "aging-customer" }}
             />
           </>
         }

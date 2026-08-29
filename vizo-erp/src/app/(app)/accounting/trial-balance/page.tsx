@@ -106,6 +106,7 @@ export default function TrialBalancePage() {
             onAsOfChange={setAsOf}
             locationId={locationId}
             onLocationChange={setLocationId}
+            doc={{ family: "statement", key: "trial-balance" }}
           />
         }
       />

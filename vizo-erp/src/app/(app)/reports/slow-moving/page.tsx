@@ -126,7 +126,8 @@ export default function SlowMovingPage() {
               <option value="180">180+ days cover</option>
               <option value="365">1 year+ cover</option>
             </SelectNative>
-            <ReportToolbar mode="asOf" reportName="Slow Moving" locationId={locationId} onLocationChange={setLocationId} />
+            <ReportToolbar mode="asOf" reportName="Slow Moving" locationId={locationId} onLocationChange={setLocationId}
+              doc={{ family: "report", key: "slow-moving" }} docParams={{ days, minCoverDays: minCover }} />
           </>
         }
       />

@@ -157,6 +157,8 @@ export default function LedgerPage() {
             fromDate={from}
             toDate={to}
             onRangeChange={(f, t) => { setLoadingLedger(true); setFrom(f); setTo(t); }}
+            doc={{ family: "statement", key: "ledger" }}
+            docParams={{ accountId }}
           />
         }
       />

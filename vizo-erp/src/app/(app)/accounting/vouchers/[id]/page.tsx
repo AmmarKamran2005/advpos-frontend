@@ -3,10 +3,11 @@
 import * as React from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ArrowLeft, Printer, AlertCircle, ArrowDownToLine, ArrowUpFromLine, FileText, CheckCircle2, X } from "lucide-react";
+import { ArrowLeft, AlertCircle, ArrowDownToLine, ArrowUpFromLine, FileText, CheckCircle2, X } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardBody } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { DocumentActions } from "@/components/widgets/document-actions";
 import { Badge, StatusPill } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ConfirmDialog } from "@/components/dialogs/confirm-dialog";
@@ -42,7 +43,7 @@ export default function VoucherDetailPage() {
         actions={
           <>
             <Button variant="ghost" asChild><Link href="/accounting/vouchers"><ArrowLeft />Back</Link></Button>
-            <Button variant="ghost" className="gap-1.5"><Printer />Print</Button>
+            <DocumentActions kind="voucher" id={id} label="voucher" />
             {v.status === "POSTED" && (v.type === "BR" || v.type === "BP" || v.type === "WR" || v.type === "WP") && (
               <Button variant="accent" onClick={() => setReconcile(true)} className="gap-1.5">
                 <CheckCircle2 />Reconcile

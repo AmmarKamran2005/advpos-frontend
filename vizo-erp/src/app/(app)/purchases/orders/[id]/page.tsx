@@ -5,12 +5,13 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import axios from "axios";
 import {
-  AlertCircle, CheckCircle2, Printer, Phone, MapPin, Plus,
+  AlertCircle, CheckCircle2, Phone, MapPin, Plus,
   RefreshCw, Loader2,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardBody } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { DocumentActions } from "@/components/widgets/document-actions";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge, StatusPill } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -176,7 +177,7 @@ export default function PODetailPage() {
         subtitle={`Created ${formatDate(po.poDate)}${po.expectedDate ? ` · Expected ${formatDate(po.expectedDate)}` : ""} · ${po.location}`}
         actions={
           <>
-            <Button variant="ghost" className="gap-1.5" onClick={() => window.print()}><Printer />Print</Button>
+            <DocumentActions kind="purchase-order" id={id} label="purchase order" />
             <Button variant="ghost" className="gap-1.5" onClick={() => void load()}><RefreshCw className="size-4" />Refresh</Button>
             {(po.status === "PENDING_APPROVAL" || po.status === "DRAFT") && (
               <Button variant="accent" className="gap-1.5" onClick={() => void approve()} disabled={approving}>

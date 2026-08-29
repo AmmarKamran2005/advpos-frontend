@@ -94,6 +94,7 @@ export default function BalanceSheetPage() {
             onAsOfChange={setAsOf}
             locationId={locationId}
             onLocationChange={setLocationId}
+            doc={{ family: "statement", key: "balance-sheet" }}
           />
         }
       />
