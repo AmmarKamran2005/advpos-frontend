@@ -6,10 +6,18 @@ import Image from "next/image";
 import { usePathname } from "next/navigation";
 import * as Collapsible from "@radix-ui/react-collapsible";
 import { ChevronDown, PanelLeftClose, PanelLeft } from "lucide-react";
-import { navigationFor, isActiveMatch, type NavNode } from "@/lib/nav-config";
-import { useSession } from "@/components/providers/session-provider";
+import axios from "axios";
+import { navigationFor, isActiveMatch, type NavNode, type LiveBadgeKey } from "@/lib/nav-config";
+import { useSession, API_BASE_URL, authHeader } from "@/components/providers/session-provider";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+
+/**
+ * The counts a nav badge can show, read from the API rather than typed into
+ * nav-config. Zero and "not loaded yet" both render nothing -- a badge only
+ * ever appears when there is genuinely something waiting.
+ */
+type LiveCounts = Partial<Record<LiveBadgeKey, number>>;
 
 /* Resolve which match key is active based on current pathname */
 function resolveActiveMatch(nodes: NavNode[], pathname: string): string {
@@ -56,6 +64,23 @@ export function Sidebar({
 
   const navigation = React.useMemo(() => navigationFor(can), [can]);
   const activeMatch = resolveActiveMatch(navigation, pathname);
+
+  const [counts, setCounts] = React.useState<LiveCounts>({});
+  const canSeeHolds = can("limits.manage");
+
+  /* Refetched whenever the route changes, which is the cheapest honest signal
+     that something might have moved: releasing a hold navigates, and the badge
+     has to drop by one without a reload. Failure is silent -- a sidebar is not
+     the place to report that a count could not be read. */
+  React.useEffect(() => {
+    if (!canSeeHolds) return;
+    let live = true;
+    axios
+      .get<{ count: number }>(`${API_BASE_URL}/sales/credit-holds/count`, { headers: authHeader() })
+      .then((r) => { if (live) setCounts((c) => ({ ...c, creditHolds: r.data.count })); })
+      .catch(() => undefined);
+    return () => { live = false; };
+  }, [canSeeHolds, pathname]);
 
   return (
     <>
@@ -118,6 +143,7 @@ export function Sidebar({
               node={node}
               activeMatch={activeMatch}
               collapsed={collapsed}
+              counts={counts}
             />
           ))}
         </nav>
@@ -145,14 +171,30 @@ export function Sidebar({
 }
 
 /* ───────────── Single nav node renderer (item / group / section) ───────────── */
+/** A badge for a nav entry: the live count if it has one, otherwise whatever
+    nav-config declared. Renders nothing for a live count of zero. */
+function badgeFor(
+  entry: { badge?: { text: string; variant: "success" | "warning" | "danger" | "info" | "accent" | "muted" }; liveBadge?: LiveBadgeKey },
+  counts: LiveCounts
+) {
+  if (entry.liveBadge) {
+    const n = counts[entry.liveBadge];
+    if (!n) return null;
+    return <Badge variant="warning">{n}</Badge>;
+  }
+  return entry.badge ? <Badge variant={entry.badge.variant}>{entry.badge.text}</Badge> : null;
+}
+
 function NavRenderer({
   node,
   activeMatch,
   collapsed,
+  counts,
 }: {
   node: NavNode;
   activeMatch: string;
   collapsed: boolean;
+  counts: LiveCounts;
 }) {
   if (node.type === "section") {
     if (collapsed) {
@@ -190,7 +232,7 @@ function NavRenderer({
         {!collapsed && (
           <>
             <span className="flex-1 truncate">{node.label}</span>
-            {node.badge && <Badge variant={node.badge.variant}>{node.badge.text}</Badge>}
+            {badgeFor(node, counts)}
           </>
         )}
       </Link>
@@ -252,7 +294,7 @@ function NavRenderer({
                 )}
               >
                 <span className="flex-1 truncate">{child.label}</span>
-                {child.badge && <Badge variant={child.badge.variant}>{child.badge.text}</Badge>}
+                {badgeFor(child, counts)}
               </Link>
             );
           })}

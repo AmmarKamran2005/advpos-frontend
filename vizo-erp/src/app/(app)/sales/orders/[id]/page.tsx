@@ -3,9 +3,11 @@
 import * as React from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import axios from "axios";
 import {
-  Edit3, MoreHorizontal, AlertCircle, CheckCircle2, Truck, Package,
-  FileText, Clock, MapPin, Phone, AlertTriangle, ArrowRight, Printer, Mail, MessageCircle, Send,
+  MoreHorizontal, AlertCircle, CheckCircle2, Truck, Package,
+  FileText, Clock, MapPin, Phone, AlertTriangle, ArrowRight, Printer,
+  MessageCircle, Send, Download, RefreshCw, ShieldCheck, XCircle, Loader2, User as UserIcon,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardBody } from "@/components/ui/card";
@@ -13,50 +15,213 @@ import { Button } from "@/components/ui/button";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge, StatusPill } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuLabel,
 } from "@/components/ui/dropdown";
 import { ConfirmDialog } from "@/components/dialogs/confirm-dialog";
 import { WhatsAppShareDialog } from "@/components/dialogs/whatsapp-share-dialog";
-import { useSession } from "@/components/providers/session-provider";
-import { OrderDeliveryCard } from "@/components/widgets/order-delivery-card";
-import { OrderPaymentCard } from "@/components/widgets/order-payment-card";
-import { getOrder, getStatusVariant } from "@/data/sales";
-import { formatMoney, formatDate, formatNumber } from "@/lib/format";
+import { useSession, API_BASE_URL, authHeader } from "@/components/providers/session-provider";
+import { formatMoney, formatDate, formatNumber, formatRelative } from "@/lib/format";
 import { toast } from "@/components/ui/toaster";
 import { cn } from "@/lib/utils";
 import { statusLabel } from "@/lib/labels";
 
+/* GET /sales/orders/{id} -- one call carries the header, the real line items,
+   what has been paid, where the delivery got to, the invoice if one exists and
+   the activity trail. The activity used to be a hard-coded array in this file
+   that claimed "System emailed PO to supplier" on every order in the system. */
+type OrderLine = {
+  id: number; lineNo: number; productId: number; name: string; sku: string;
+  packing: number; qty: number; rate: number;
+  discountPercent: number; taxPercent: number; lineTotal: number;
+};
+
+type Activity = {
+  id: number; action: string; entityType: string; detail: string | null;
+  at: string; severity: string; user: string;
+};
+
+type OrderDetail = {
+  id: number; orderNo: string;
+  customerId: number; customerName: string; customerInitials: string;
+  customerCode: string; customerPhone: string | null; customerAltPhone: string | null;
+  customerAddress: string | null; customerType: string; city: string;
+  creditLimit: number; creditDays: number; holdPolicy: string;
+  locationId: number; location: string; salesPerson: string | null;
+  orderDate: string; deliveryDate: string | null;
+  status: string; statusName: string;
+  subtotal: number; discount: number; tax: number; total: number;
+  methodId: number; paymentMethod: string; paymentMethodName: string;
+  creditHoldReason: string | null; notes: string | null;
+  createdBy: string; createdAt: string;
+  invoiceId: number | null; invoiceNo: string | null;
+  invoicePdfUrl: string | null; invoiceShareUrl: string | null;
+  paidAmount: number; balance: number; paymentStatus: string; outstanding: number;
+  channel: string | null; carrier: string | null; trackingNo: string | null;
+  deliveryState: string | null; dispatchedOn: string | null; deliveredOn: string | null;
+  lines: OrderLine[];
+  activity: Activity[];
+};
+
 const STATE_FLOW = ["DRAFT", "SUBMITTED", "CONFIRMED", "PACKED", "DISPATCHED", "DELIVERED"];
 
-const MOCK_ITEMS = [
-  { id: 1, sku: "VZ-TIT-T9-BLK",  name: "VIZO Titan T9 Wireless Earbuds — Black",  qty: 50, unitPrice: 980,  discount: 0, taxPercent: 18, lineTotal: 57820 },
-  { id: 2, sku: "VZ-VLT-65W-PD",  name: "VIZO VOLT 65W GaN Type-C Charger (PD)",   qty: 20, unitPrice: 2480, discount: 0, taxPercent: 18, lineTotal: 58528 },
-  { id: 3, sku: "VZ-VR-TC-1.5M",  name: "VIZO VR Type-C Data Cable 1.5m",          qty: 100,unitPrice: 195,  discount: 5, taxPercent: 18, lineTotal: 21859 },
-];
+const ORDER_STATUS_VARIANT: Record<string, "success" | "warning" | "danger" | "info" | "muted"> = {
+  DRAFT: "muted", SUBMITTED: "info", CREDIT_HOLD: "warning", CONFIRMED: "info",
+  PROCESSING: "info", PACKED: "info", DISPATCHED: "info", INVOICED: "success",
+  DELIVERED: "success", CANCELLED: "danger", RETURNED: "warning",
+};
 
-const ACTIVITY = [
-  { id: 1, user: "Zara Malik",  action: "created order",                     time: "13 Aug · 9:15 AM",  variant: "info" as const,    icon: FileText },
-  { id: 2, user: "Zara Malik",  action: "sent it to the order department",   time: "13 Aug · 9:16 AM",  variant: "info" as const,    icon: ArrowRight },
-  { id: 3, user: "Bilal Ahmed", action: "checked stock and confirmed",       time: "13 Aug · 10:42 AM", variant: "info" as const,    icon: CheckCircle2 },
-  { id: 4, user: "Bilal Ahmed", action: "packed the order",                  time: "13 Aug · 11:30 AM", variant: "info" as const,    icon: Package },
-  { id: 5, user: "Bilal Ahmed", action: "handed it to the Karachi rep",      time: "13 Aug · 11:42 AM", variant: "success" as const, icon: Truck },
-  { id: 6, user: "System",      action: "generated invoice INV-26-8867",     time: "13 Aug · 11:42 AM", variant: "success" as const, icon: FileText },
-  { id: 7, user: "System",      action: "asked for delivery confirmation",   time: "14 Aug · 9:00 AM",  variant: "warning" as const, icon: Clock },
-];
+/** What each activity row should look like. Unknown actions still render. */
+const ACTIVITY_LOOK: Record<string, { icon: typeof FileText; tone: "info" | "success" | "warning" | "danger" }> = {
+  ORDER_CREATED: { icon: FileText, tone: "info" },
+  ORDER_DRAFTED: { icon: FileText, tone: "info" },
+  ORDER_CREATED_ON_HOLD: { icon: AlertTriangle, tone: "warning" },
+  CREDIT_HOLD_OVERRIDDEN: { icon: ShieldCheck, tone: "warning" },
+  ORDER_STATUS_CHANGED: { icon: ArrowRight, tone: "info" },
+  ORDER_CANCELLED: { icon: XCircle, tone: "danger" },
+  ORDER_INVOICED: { icon: FileText, tone: "success" },
+  INVOICE_CREATED: { icon: FileText, tone: "success" },
+  INVOICE_PDF_BUILT: { icon: Download, tone: "info" },
+  COUNTER_SALE: { icon: CheckCircle2, tone: "success" },
+};
+
+/** Every failure comes back as { message } -- show the wording the API chose. */
+function apiMessage(e: unknown, fallback: string) {
+  if (axios.isAxiosError(e) && e.response) {
+    return (e.response.data as { message?: string })?.message ?? fallback;
+  }
+  return "Cannot reach the server.";
+}
+
+/** Turns ORDER_STATUS_CHANGED into "order status changed". */
+const humanAction = (a: string) => a.toLowerCase().replace(/_/g, " ");
 
 export default function OrderDetailPage() {
   const params = useParams<{ id: string }>();
-  const id = parseInt(params.id ?? "1", 10);
-  const order = getOrder(id);
+  const id = parseInt(params.id ?? "", 10);
+  const { can } = useSession();
 
-  /* Action modals — declared before any early return so the hook order is
-     the same on every render. */
+  const [order, setOrder] = React.useState<OrderDetail | null>(null);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+  const [busy, setBusy] = React.useState(false);
+
+  /* Declared before any early return so the hook order never changes. */
   const [override, setOverride] = React.useState(false);
   const [cancel, setCancel] = React.useState(false);
   const [shareOpen, setShareOpen] = React.useState(false);
-  const { can } = useSession();
+
+  const load = React.useCallback(async () => {
+    if (!Number.isFinite(id)) { setLoading(false); return; }
+    try {
+      const res = await axios.get<OrderDetail>(`${API_BASE_URL}/sales/orders/${id}`, { headers: authHeader() });
+      setOrder(res.data);
+      setError(null);
+    } catch (e) {
+      if (axios.isAxiosError(e) && e.response?.status === 404) {
+        setOrder(null);
+        setError(null);
+      } else {
+        setError(apiMessage(e, "Could not load this order."));
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [id]);
+
+  React.useEffect(() => {
+    /* eslint-disable-next-line react-hooks/set-state-in-effect --
+       axios inside the page is the brief for this project. */
+    void load();
+  }, [load]);
+
+  /* One helper for every button that moves the order along. Each reloads the
+     whole order afterwards rather than patching state locally: the status
+     change can pull the invoice, the paid figure and the activity trail with
+     it, and a screen that only updates the pill lies about the rest. */
+  const setStatus = React.useCallback(async (statusKey: string, reason?: string) => {
+    setBusy(true);
+    try {
+      const res = await axios.patch<{ message: string }>(
+        `${API_BASE_URL}/sales/orders/${id}/status`,
+        { statusKey, reason: reason ?? null },
+        { headers: authHeader() });
+      toast.success("Order updated", { description: res.data.message });
+      await load();
+    } catch (e) {
+      toast.error("Could not update the order", { description: apiMessage(e, "Please try again.") });
+    } finally {
+      setBusy(false);
+    }
+  }, [id, load]);
+
+  async function raiseInvoice() {
+    setBusy(true);
+    try {
+      const res = await axios.post<{ invoiceNo: string; message: string }>(
+        `${API_BASE_URL}/sales/orders/${id}/invoice`, {}, { headers: authHeader() });
+      toast.success(`Invoice ${res.data.invoiceNo} raised`, { description: res.data.message });
+      await load();
+    } catch (e) {
+      toast.error("Invoice not raised", { description: apiMessage(e, "Please try again.") });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function overrideHold(reason?: string) {
+    setBusy(true);
+    try {
+      const res = await axios.post<{ message: string }>(
+        `${API_BASE_URL}/sales/credit-holds/${id}/override`,
+        { reason: reason ?? "", raiseInvoice: true },
+        { headers: authHeader() });
+      toast.success("Credit hold released", { description: res.data.message });
+      setOverride(false);
+      await load();
+    } catch (e) {
+      toast.error("Could not release the hold", { description: apiMessage(e, "Please try again.") });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function openBill() {
+    if (!order?.invoiceId) return;
+    /* Straight from the API rather than the Cloudinary copy: this always
+       reflects the row as it stands right now, and it works even when the
+       document store is unreachable. */
+    window.open(`${API_BASE_URL}/sales/invoices/${order.invoiceId}/pdf`, "_blank", "noopener,noreferrer");
+  }
+
+  if (loading) {
+    return (
+      <div className="space-y-4">
+        <Skeleton className="h-20" />
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2 space-y-4">
+            {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-16" />)}
+          </div>
+          <div className="space-y-4">
+            {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-32" />)}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <EmptyState
+        icon={AlertCircle}
+        title="Could not load this order"
+        description={error}
+        action={<Button variant="accent" onClick={() => { setLoading(true); void load(); }}><RefreshCw />Try again</Button>}
+      />
+    );
+  }
 
   if (!order) {
     return (
@@ -71,6 +236,21 @@ export default function OrderDetailPage() {
   const isCreditHold = order.status === "CREDIT_HOLD";
   const currentStateIndex = STATE_FLOW.indexOf(order.status);
   const runsTheFloor = can("orders.approve");
+  const units = order.lines.reduce((s, l) => s + l.qty, 0);
+  const phone = order.customerPhone ?? order.customerAltPhone ?? "";
+
+  /* The next step, worked out from where the order actually is. */
+  const nextAction = (() => {
+    if (order.status === "DRAFT") {
+      return { key: "SUBMITTED", label: "Send to Order Dept", icon: Send, forEveryone: true };
+    }
+    if (!runsTheFloor) return null;
+    if (order.status === "SUBMITTED") return { key: "CONFIRMED", label: "Confirm", icon: CheckCircle2 };
+    if (order.status === "CONFIRMED") return { key: "PACKED", label: "Pack", icon: Package };
+    if (order.status === "PACKED") return { key: "DISPATCHED", label: "Dispatch", icon: Truck };
+    if (order.status === "DISPATCHED") return { key: "DELIVERED", label: "Mark delivered", icon: CheckCircle2 };
+    return null;
+  })();
 
   return (
     <>
@@ -81,47 +261,34 @@ export default function OrderDetailPage() {
           { label: order.orderNo },
         ]}
         title={
-          <div>
-            <div className="flex items-center gap-3 flex-wrap">
-              <span>{order.orderNo}</span>
-              <StatusPill variant={getStatusVariant(order.status)}>{statusLabel(order.status)}</StatusPill>
-            </div>
+          <div className="flex items-center gap-3 flex-wrap">
+            <span>{order.orderNo}</span>
+            <StatusPill variant={ORDER_STATUS_VARIANT[order.status] ?? "muted"}>{statusLabel(order.status)}</StatusPill>
           </div>
         }
-        subtitle={`Created ${formatDate(order.orderDate)} · ${order.salesPerson} · ${order.location}`}
+        subtitle={`Created ${formatDate(order.orderDate)} by ${order.createdBy}${order.salesPerson ? ` · rep ${order.salesPerson}` : ""} · ${order.location}`}
         actions={
           <>
-            <Button variant="ghost" size="md" className="gap-1.5" onClick={() => toast.info("Printing order…")}>
+            <Button variant="ghost" size="md" className="gap-1.5" onClick={openBill} disabled={!order.invoiceId}>
               <Printer />
-              <span className="hidden sm:inline">Print</span>
+              <span className="hidden sm:inline">Print bill</span>
             </Button>
-            {order.status === "DRAFT" ? (
-              <Button variant="accent" size="md" className="gap-1.5"
-                onClick={() => toast.success("Sent to Order Department", { description: "They will pick it up from their queue." })}>
-                <Send />
-                Send to Order Dept
+
+            {isCreditHold && runsTheFloor ? (
+              <Button variant="accent" size="md" className="gap-1.5" onClick={() => setOverride(true)} disabled={busy}>
+                <ShieldCheck />Release hold
               </Button>
-            ) : !runsTheFloor ? null : isCreditHold ? (
-              <Button variant="accent" size="md" className="gap-1.5" onClick={() => setOverride(true)}>
-                <AlertTriangle />
-                Override Limit Cross
+            ) : !order.invoiceId && !isCreditHold && order.status !== "DRAFT" && order.status !== "CANCELLED" && runsTheFloor ? (
+              <Button variant="accent" size="md" className="gap-1.5" onClick={raiseInvoice} disabled={busy}>
+                {busy ? <Loader2 className="size-4 animate-spin" /> : <FileText />}Raise invoice
               </Button>
-            ) : order.status === "PACKED" ? (
-              <Button variant="accent" size="md" className="gap-1.5" onClick={() => toast.success("Order dispatched", { description: "Invoice generated. Pick the delivery route next." })}>
-                <Truck />
-                Dispatch
-              </Button>
-            ) : order.status === "CONFIRMED" ? (
-              <Button variant="accent" size="md" className="gap-1.5" onClick={() => toast.success("Order moved to Packed", { description: "Items will be picked now." })}>
-                <Package />
-                Pack
-              </Button>
-            ) : order.status === "SUBMITTED" ? (
-              <Button variant="accent" size="md" className="gap-1.5" onClick={() => toast.success("Order confirmed", { description: "Moved to the Order Department queue." })}>
-                <CheckCircle2 />
-                Confirm
+            ) : nextAction ? (
+              <Button variant="accent" size="md" className="gap-1.5" onClick={() => void setStatus(nextAction.key)} disabled={busy}>
+                {busy ? <Loader2 className="size-4 animate-spin" /> : <nextAction.icon />}
+                {nextAction.label}
               </Button>
             ) : null}
+
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon" aria-label="More actions"><MoreHorizontal /></Button>
@@ -129,17 +296,30 @@ export default function OrderDetailPage() {
               <DropdownMenuContent align="end" className="w-56">
                 <DropdownMenuLabel>Order actions</DropdownMenuLabel>
                 <DropdownMenuItem onClick={() => setShareOpen(true)}><MessageCircle />Share on WhatsApp</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => toast.success("Invoice emailed to customer")}><Mail />Email invoice</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => toast.info("Duplicating order…")}><FileText />Duplicate order</DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem danger onClick={() => setCancel(true)}><AlertCircle />Cancel order</DropdownMenuItem>
+                {order.invoiceId && (
+                  <>
+                    <DropdownMenuItem onClick={openBill}><Download />Download bill</DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link href={`/sales/invoices/${order.invoiceId}`}><FileText />Open invoice {order.invoiceNo}</Link>
+                    </DropdownMenuItem>
+                  </>
+                )}
+                <DropdownMenuItem asChild>
+                  <Link href={`/parties/${order.customerId}`}><UserIcon />Customer profile</Link>
+                </DropdownMenuItem>
+                {order.status !== "CANCELLED" && !order.invoiceId && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem danger onClick={() => setCancel(true)}><XCircle />Cancel order</DropdownMenuItem>
+                  </>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
           </>
         }
       />
 
-      {/* Credit Hold Warning */}
+      {/* Credit hold */}
       {isCreditHold && (
         <Card className="mb-6 bg-warning/5 border-warning/30">
           <CardBody>
@@ -148,14 +328,19 @@ export default function OrderDetailPage() {
                 <AlertTriangle className="size-5 text-warning" />
               </div>
               <div className="flex-1">
-                <h3 className="text-base font-semibold text-warning-dark dark:text-warning-light">Credit Hold</h3>
+                <h3 className="text-base font-semibold text-warning-dark dark:text-warning-light">On credit hold</h3>
                 <p className="text-sm text-warning-dark/80 dark:text-warning-light/80 mt-1">
-                  {order.creditHoldReason ?? "Customer credit limit exceeded."}
+                  {order.creditHoldReason ?? "This order takes the customer past their credit limit."}
                 </p>
-                <div className="mt-3 flex items-center gap-2">
-                  <Button variant="accent" size="sm" onClick={() => setOverride(true)}>Override (with reason)</Button>
-                  <Button variant="ghost" size="sm" onClick={() => setCancel(true)}>Cancel order</Button>
-                </div>
+                <p className="text-xs text-warning-dark/70 dark:text-warning-light/70 mt-1.5 tabular">
+                  Outstanding {formatMoney(order.outstanding)} · limit {formatMoney(order.creditLimit)} · this order {formatMoney(order.total)}
+                </p>
+                {runsTheFloor && (
+                  <div className="mt-3 flex items-center gap-2">
+                    <Button variant="accent" size="sm" onClick={() => setOverride(true)} disabled={busy}>Release with a reason</Button>
+                    <Button variant="ghost" size="sm" onClick={() => setCancel(true)} disabled={busy}>Cancel order</Button>
+                  </div>
+                )}
               </div>
             </div>
           </CardBody>
@@ -163,13 +348,16 @@ export default function OrderDetailPage() {
       )}
 
       {/* State pipeline */}
-      {!["DRAFT", "CANCELLED"].includes(order.status) && (
+      {!["DRAFT", "CANCELLED", "CREDIT_HOLD"].includes(order.status) && (
         <Card className="mb-6">
           <CardBody>
             <div className="flex items-center justify-between gap-2">
               {STATE_FLOW.map((s, i) => {
-                const passed = i <= currentStateIndex;
-                const current = i === currentStateIndex;
+                /* INVOICED sits off the main line -- an invoiced order has
+                   passed confirmation but has not necessarily shipped. */
+                const idx = order.status === "INVOICED" ? STATE_FLOW.indexOf("CONFIRMED") : currentStateIndex;
+                const passed = i <= idx;
+                const current = i === idx;
                 return (
                   <React.Fragment key={s}>
                     <div className="flex flex-col items-center gap-1.5 flex-1">
@@ -192,7 +380,7 @@ export default function OrderDetailPage() {
                     </div>
                     {i < STATE_FLOW.length - 1 && (
                       <div className={cn("flex-1 h-0.5 -mt-6",
-                        i < currentStateIndex ? "bg-success" : "bg-slate-200 dark:bg-navy-700"
+                        i < idx ? "bg-success" : "bg-slate-200 dark:bg-navy-700"
                       )} />
                     )}
                   </React.Fragment>
@@ -203,48 +391,48 @@ export default function OrderDetailPage() {
         </Card>
       )}
 
-      {/* Main grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Items + Totals */}
         <div className="lg:col-span-2 space-y-6">
           <Card className="p-0 overflow-hidden">
             <div className="px-5 py-4 border-b border-slate-200 dark:border-navy-700 flex items-center justify-between">
               <h3 className="text-base font-semibold text-navy-900 dark:text-white">Order Items</h3>
-              <Badge variant="muted">{MOCK_ITEMS.length} items · {formatNumber(MOCK_ITEMS.reduce((s, i) => s + i.qty, 0))} units</Badge>
+              <Badge variant="muted">{order.lines.length} items · {formatNumber(units)} units</Badge>
             </div>
-            <table className="w-full">
-              <thead>
-                <tr className="bg-slate-50 dark:bg-navy-700/50 text-left">
-                  <th className="text-2xs uppercase font-semibold text-slate-500 dark:text-slate-400 px-4 py-2">Product</th>
-                  <th className="text-2xs uppercase font-semibold text-slate-500 dark:text-slate-400 px-4 py-2 text-right">Qty</th>
-                  <th className="text-2xs uppercase font-semibold text-slate-500 dark:text-slate-400 px-4 py-2 text-right">Price</th>
-                  <th className="text-2xs uppercase font-semibold text-slate-500 dark:text-slate-400 px-4 py-2 text-right">Disc%</th>
-                  <th className="text-2xs uppercase font-semibold text-slate-500 dark:text-slate-400 px-4 py-2 text-right">Tax%</th>
-                  <th className="text-2xs uppercase font-semibold text-slate-500 dark:text-slate-400 px-4 py-2 text-right">Total</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-navy-700">
-                {MOCK_ITEMS.map((item) => (
-                  <tr key={item.id}>
-                    <td className="px-4 py-3">
-                      <div className="text-sm font-medium text-navy-900 dark:text-white">{item.name}</div>
-                      <div className="text-2xs tabular text-slate-500 dark:text-slate-400 mt-0.5">{item.sku}</div>
-                    </td>
-                    <td className="px-4 py-3 text-right tabular text-sm text-navy-900 dark:text-white">{item.qty}</td>
-                    <td className="px-4 py-3 text-right tabular text-sm text-slate-700 dark:text-slate-300">{formatMoney(item.unitPrice)}</td>
-                    <td className="px-4 py-3 text-right tabular text-xs text-slate-500 dark:text-slate-400">{item.discount}%</td>
-                    <td className="px-4 py-3 text-right tabular text-xs text-slate-500 dark:text-slate-400">{item.taxPercent}%</td>
-                    <td className="px-4 py-3 text-right tabular text-sm font-semibold text-navy-900 dark:text-white">{formatMoney(item.lineTotal)}</td>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[640px]">
+                <thead>
+                  <tr className="bg-slate-50 dark:bg-navy-700/50 text-left">
+                    <th className="text-2xs uppercase font-semibold text-slate-500 dark:text-slate-400 px-4 py-2">Product</th>
+                    <th className="text-2xs uppercase font-semibold text-slate-500 dark:text-slate-400 px-4 py-2 text-right">Qty</th>
+                    <th className="text-2xs uppercase font-semibold text-slate-500 dark:text-slate-400 px-4 py-2 text-right">Rate</th>
+                    <th className="text-2xs uppercase font-semibold text-slate-500 dark:text-slate-400 px-4 py-2 text-right">Disc%</th>
+                    <th className="text-2xs uppercase font-semibold text-slate-500 dark:text-slate-400 px-4 py-2 text-right">Tax%</th>
+                    <th className="text-2xs uppercase font-semibold text-slate-500 dark:text-slate-400 px-4 py-2 text-right">Total</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-            {/* Totals */}
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-navy-700">
+                  {order.lines.map((item) => (
+                    <tr key={item.id}>
+                      <td className="px-4 py-3">
+                        <div className="text-sm font-medium text-navy-900 dark:text-white">{item.name}</div>
+                        <div className="text-2xs tabular text-slate-500 dark:text-slate-400 mt-0.5">{item.sku}</div>
+                      </td>
+                      <td className="px-4 py-3 text-right tabular text-sm text-navy-900 dark:text-white">{item.qty}</td>
+                      <td className="px-4 py-3 text-right tabular text-sm text-slate-700 dark:text-slate-300">{formatMoney(item.rate)}</td>
+                      <td className="px-4 py-3 text-right tabular text-xs text-slate-500 dark:text-slate-400">{item.discountPercent}%</td>
+                      <td className="px-4 py-3 text-right tabular text-xs text-slate-500 dark:text-slate-400">{item.taxPercent}%</td>
+                      <td className="px-4 py-3 text-right tabular text-sm font-semibold text-navy-900 dark:text-white">{formatMoney(item.lineTotal)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
             <div className="px-5 py-4 border-t border-slate-200 dark:border-navy-700 bg-slate-50 dark:bg-navy-900/40">
               <div className="ml-auto max-w-xs space-y-1.5">
                 <Row label="Subtotal" value={formatMoney(order.subtotal)} />
-                <Row label="Discount"  value={`- ${formatMoney(order.discount)}`} />
-                <Row label="Sales Tax (18%)" value={formatMoney(order.tax)} />
+                {order.discount > 0 && <Row label="Discount" value={`- ${formatMoney(order.discount)}`} />}
+                <Row label="Sales tax" value={formatMoney(order.tax)} />
                 <div className="border-t border-slate-200 dark:border-navy-700 pt-2 mt-2">
                   <Row label="Total" value={formatMoney(order.total)} bold />
                 </div>
@@ -252,59 +440,81 @@ export default function OrderDetailPage() {
             </div>
           </Card>
 
-          {/* Activity timeline */}
+          {order.notes && (
+            <Card>
+              <CardBody>
+                <h3 className="text-sm font-semibold text-navy-900 dark:text-white mb-1.5">Notes</h3>
+                <p className="text-sm text-slate-600 dark:text-slate-300">{order.notes}</p>
+              </CardBody>
+            </Card>
+          )}
+
+          {/* Activity — real rows off ActivityLog */}
           <Card>
             <CardBody>
-              <h3 className="text-base font-semibold text-navy-900 dark:text-white mb-4">Activity</h3>
+              <h3 className="text-base font-semibold text-navy-900 dark:text-white mb-4">History</h3>
               <Tabs defaultValue="activity">
                 <TabsList>
-                  <TabsTrigger value="activity">Activity ({ACTIVITY.length})</TabsTrigger>
+                  <TabsTrigger value="activity">Activity ({order.activity.length})</TabsTrigger>
                   <TabsTrigger value="documents">Documents</TabsTrigger>
                 </TabsList>
                 <TabsContent value="activity">
-                  <div className="space-y-4">
-                    {ACTIVITY.map((a, i) => {
-                      const Icon = a.icon;
-                      const isLast = i === ACTIVITY.length - 1;
-                      return (
-                        <div key={a.id} className="flex gap-3">
-                          <div className="relative flex-shrink-0">
-                            <div className={cn("size-8 rounded-full flex items-center justify-center",
-                              a.variant === "success" && "bg-success/10 text-success",
-                              a.variant === "info" && "bg-info/10 text-info"
-                            )}>
-                              <Icon className="size-3.5" />
+                  {order.activity.length === 0 ? (
+                    <p className="text-sm text-slate-500 dark:text-slate-400 py-6 text-center">
+                      Nothing has happened to this order yet.
+                    </p>
+                  ) : (
+                    <div className="space-y-4">
+                      {order.activity.map((a, i) => {
+                        const look = ACTIVITY_LOOK[a.action] ?? { icon: Clock, tone: "info" as const };
+                        const Icon = look.icon;
+                        const isLast = i === order.activity.length - 1;
+                        return (
+                          <div key={a.id} className="flex gap-3">
+                            <div className="relative flex-shrink-0">
+                              <div className={cn("size-8 rounded-full flex items-center justify-center",
+                                look.tone === "success" && "bg-success/10 text-success",
+                                look.tone === "info" && "bg-info/10 text-info",
+                                look.tone === "warning" && "bg-warning/10 text-warning",
+                                look.tone === "danger" && "bg-danger/10 text-danger"
+                              )}>
+                                <Icon className="size-3.5" />
+                              </div>
+                              {!isLast && <div className="absolute top-8 left-1/2 -translate-x-1/2 w-px h-full bg-slate-200 dark:bg-navy-700" />}
                             </div>
-                            {!isLast && <div className="absolute top-8 left-1/2 -translate-x-1/2 w-px h-full bg-slate-200 dark:bg-navy-700" />}
-                          </div>
-                          <div className="flex-1 min-w-0 pb-4">
-                            <div className="text-sm text-navy-900 dark:text-white">
-                              <span className="font-semibold">{a.user}</span> {a.action}
+                            <div className="flex-1 min-w-0 pb-4">
+                              <div className="text-sm text-navy-900 dark:text-white">
+                                <span className="font-semibold">{a.user}</span>{" "}
+                                <span className="text-slate-600 dark:text-slate-300">{humanAction(a.action)}</span>
+                              </div>
+                              {a.detail && <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{a.detail}</div>}
+                              <div className="text-2xs text-slate-400 dark:text-slate-500 mt-0.5">
+                                {formatDate(a.at)} · {formatRelative(a.at)}
+                              </div>
                             </div>
-                            <div className="text-2xs text-slate-500 dark:text-slate-400 mt-0.5">{a.time}</div>
                           </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </TabsContent>
                 <TabsContent value="documents">
-                  <div className="space-y-2">
-                    {[
-                      { name: "Invoice INV-26-0142.pdf", size: "84 KB", date: "30 Apr 2026" },
-                      { name: "Picking Slip.pdf",             size: "32 KB", date: "30 Apr 2026" },
-                      { name: "Delivery Challan.pdf",         size: "28 KB", date: "30 Apr 2026" },
-                    ].map((d, i) => (
-                      <div key={i} className="flex items-center gap-3 p-3 border border-slate-200 dark:border-navy-700 rounded-lg hover:bg-slate-50 dark:hover:bg-navy-800 cursor-pointer">
-                        <FileText className="size-5 text-info" />
-                        <div className="flex-1">
-                          <div className="text-sm font-medium text-navy-900 dark:text-white">{d.name}</div>
-                          <div className="text-2xs text-slate-500 dark:text-slate-400">{d.size} · {d.date}</div>
+                  {order.invoiceId ? (
+                    <div className="flex items-center gap-3 p-3 border border-slate-200 dark:border-navy-700 rounded-lg">
+                      <FileText className="size-5 text-info" />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium text-navy-900 dark:text-white">{order.invoiceNo}.pdf</div>
+                        <div className="text-2xs text-slate-500 dark:text-slate-400">
+                          Sale invoice · {order.invoicePdfUrl ? "archived to the document store" : "generated on request"}
                         </div>
-                        <Button variant="ghost" size="sm">Download</Button>
                       </div>
-                    ))}
-                  </div>
+                      <Button variant="ghost" size="sm" onClick={openBill}><Download />Open</Button>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-slate-500 dark:text-slate-400 py-6 text-center">
+                      No documents yet. The bill appears here once the order is invoiced.
+                    </p>
+                  )}
                 </TabsContent>
               </Tabs>
             </CardBody>
@@ -313,8 +523,53 @@ export default function OrderDetailPage() {
 
         {/* Sidebar */}
         <div className="space-y-6">
-          <OrderPaymentCard order={order} />
-          <OrderDeliveryCard order={order} />
+          {/* Payment */}
+          <Card>
+            <CardBody>
+              <h3 className="text-sm font-semibold text-navy-900 dark:text-white mb-3">Payment</h3>
+              <dl className="space-y-2.5 text-sm">
+                <Meta label="Method" value={order.paymentMethodName} />
+                <Meta label="Invoice" value={
+                  order.invoiceId
+                    ? <Link href={`/sales/invoices/${order.invoiceId}`} className="text-brand-yellow hover:underline tabular">{order.invoiceNo}</Link>
+                    : <span className="text-slate-400">Not raised</span>
+                } />
+                <Meta label="Order value" value={<span className="tabular">{formatMoney(order.total)}</span>} />
+                <Meta label="Received" value={<span className="tabular text-success">{formatMoney(order.paidAmount)}</span>} />
+                <Meta label="Balance" value={
+                  <span className={cn("tabular font-semibold", order.balance > 0 ? "text-danger" : "text-success")}>
+                    {formatMoney(order.balance)}
+                  </span>
+                } />
+                <Meta label="Status" value={
+                  <Badge variant={order.paymentStatus === "PAID" ? "success" : order.paymentStatus === "PARTIAL" ? "warning" : "muted"}>
+                    {order.paymentStatus}
+                  </Badge>
+                } />
+              </dl>
+            </CardBody>
+          </Card>
+
+          {/* Delivery */}
+          <Card>
+            <CardBody>
+              <h3 className="text-sm font-semibold text-navy-900 dark:text-white mb-3">Delivery</h3>
+              {order.deliveryState ? (
+                <dl className="space-y-2.5 text-sm">
+                  <Meta label="State" value={<Badge variant="info">{statusLabel(order.deliveryState)}</Badge>} />
+                  {order.channel && <Meta label="Channel" value={statusLabel(order.channel)} />}
+                  {order.carrier && <Meta label="Carrier" value={order.carrier} />}
+                  {order.trackingNo && <Meta label="Tracking" value={<span className="tabular">{order.trackingNo}</span>} />}
+                  {order.dispatchedOn && <Meta label="Dispatched" value={formatDate(order.dispatchedOn)} />}
+                  {order.deliveredOn && <Meta label="Delivered" value={formatDate(order.deliveredOn)} />}
+                </dl>
+              ) : (
+                <p className="text-sm text-slate-500 dark:text-slate-400">
+                  Nothing booked yet. {order.deliveryDate ? `Wanted by ${formatDate(order.deliveryDate)}.` : ""}
+                </p>
+              )}
+            </CardBody>
+          </Card>
 
           {/* Customer */}
           <Card>
@@ -327,18 +582,23 @@ export default function OrderDetailPage() {
                 <Avatar initials={order.customerInitials} size="lg" />
                 <div className="min-w-0">
                   <div className="font-semibold text-navy-900 dark:text-white truncate">{order.customerName}</div>
-                  <div className="text-xs text-slate-500 dark:text-slate-400">{order.customerType}</div>
+                  <div className="text-xs text-slate-500 dark:text-slate-400">{order.customerCode} · {order.customerType}</div>
                 </div>
               </div>
               <div className="space-y-1.5 text-xs text-slate-600 dark:text-slate-300">
-                <div className="inline-flex items-center gap-1.5">
-                  <Phone className="size-3 text-slate-400" />
-                  0300 4567890
+                {phone && (
+                  <div className="inline-flex items-center gap-1.5">
+                    <Phone className="size-3 text-slate-400" />{phone}
+                  </div>
+                )}
+                <div className="flex items-start gap-1.5">
+                  <MapPin className="size-3 text-slate-400 mt-0.5 shrink-0" />
+                  <span>{[order.customerAddress, order.city].filter(Boolean).join(", ")}</span>
                 </div>
-                <div className="inline-flex items-center gap-1.5">
-                  <MapPin className="size-3 text-slate-400" />
-                  {order.location}, Pakistan
-                </div>
+              </div>
+              <div className="mt-3 pt-3 border-t border-slate-100 dark:border-navy-700 space-y-2 text-sm">
+                <Row label="Credit limit" value={order.creditLimit > 0 ? formatMoney(order.creditLimit) : "No limit"} />
+                <Row label="Outstanding" value={formatMoney(order.outstanding)} valueClass={order.outstanding > 0 ? "text-warning" : undefined} />
               </div>
             </CardBody>
           </Card>
@@ -348,10 +608,21 @@ export default function OrderDetailPage() {
             <CardBody>
               <h3 className="text-sm font-semibold text-navy-900 dark:text-white mb-3">Quick Actions</h3>
               <div className="space-y-2">
-                <Button variant="secondary" size="md" className="w-full justify-start gap-2" onClick={() => toast.info("Printing order…")}><Printer />Print Order</Button>
-                <Button variant="secondary" size="md" className="w-full justify-start gap-2" onClick={() => toast.success("Invoice emailed", { description: order.customerName })}><Mail />Email Invoice</Button>
-                <Button variant="secondary" size="md" className="w-full justify-start gap-2" onClick={() => setShareOpen(true)}><MessageCircle />Share on WhatsApp</Button>
+                <Button variant="secondary" size="md" className="w-full justify-start gap-2" onClick={openBill} disabled={!order.invoiceId}>
+                  <Printer />Print bill
+                </Button>
+                <Button variant="secondary" size="md" className="w-full justify-start gap-2" onClick={openBill} disabled={!order.invoiceId}>
+                  <Download />Download bill
+                </Button>
+                <Button variant="secondary" size="md" className="w-full justify-start gap-2" onClick={() => setShareOpen(true)}>
+                  <MessageCircle />Share on WhatsApp
+                </Button>
               </div>
+              {!order.invoiceId && (
+                <p className="text-2xs text-slate-500 dark:text-slate-400 mt-2.5">
+                  The bill becomes available once this order is invoiced.
+                </p>
+              )}
             </CardBody>
           </Card>
 
@@ -361,16 +632,10 @@ export default function OrderDetailPage() {
               <h3 className="text-sm font-semibold text-navy-900 dark:text-white mb-3">Order Details</h3>
               <dl className="space-y-2.5 text-sm">
                 <Meta label="Location" value={order.location} />
-                <Meta label="Location" value={order.location} />
-                <Meta label="Sales Rep" value={order.salesPerson} />
-                <Meta label="Order Date" value={formatDate(order.orderDate)} />
-                <Meta label="Delivery Date" value={formatDate(order.deliveryDate)} />
-                <Meta label="Payment Method" value={order.paymentMethod} />
-                <Meta label="Payment Status" value={
-                  <Badge variant={order.paymentStatus === "PAID" ? "success" : order.paymentStatus === "PARTIAL" ? "warning" : "muted"}>
-                    {order.paymentStatus}
-                  </Badge>
-                } />
+                <Meta label="Sales rep" value={order.salesPerson ?? "—"} />
+                <Meta label="Order date" value={formatDate(order.orderDate)} />
+                <Meta label="Delivery date" value={order.deliveryDate ? formatDate(order.deliveryDate) : "—"} />
+                <Meta label="Raised by" value={order.createdBy} />
               </dl>
             </CardBody>
           </Card>
@@ -380,56 +645,55 @@ export default function OrderDetailPage() {
       <ConfirmDialog
         open={override}
         onOpenChange={setOverride}
-        title="Override credit hold?"
+        title="Release this credit hold?"
         description={
           <span>
-            This order ({order.orderNo}) is on hold because <strong>{order.customerName}</strong> exceeded their credit limit.
-            Override will allow it to proceed and require accountant approval.
+            {order.orderNo} is held because <strong>{order.customerName}</strong> is over their credit limit.
+            Releasing it confirms the order and raises the invoice. The reason is written to the audit trail
+            against your name.
           </span>
         }
         variant="warning"
-        confirmLabel="Override and continue"
+        confirmLabel="Release and invoice"
         requireReason
-        reasonLabel="Override reason (audit trail)"
-        reasonPlaceholder="e.g. Verbal commitment from customer to clear in 7 days"
-        onConfirm={(r) => {
-          toast.success("Credit hold overridden", { description: `Reason logged: "${r}"` });
-          setOverride(false);
-        }}
+        reasonLabel="Why is this being released?"
+        reasonPlaceholder="e.g. Cheque received, clears Monday. Owner approved on call."
+        loading={busy}
+        onConfirm={(r) => overrideHold(r)}
       />
       <ConfirmDialog
         open={cancel}
         onOpenChange={setCancel}
         title="Cancel this order?"
-        description={`Order ${order.orderNo} will be cancelled and reserved stock will be released.`}
+        description={`${order.orderNo} will be marked cancelled. An order that has already been invoiced cannot be cancelled — raise a sales return instead.`}
         variant="danger"
         confirmLabel="Yes, cancel order"
         requireReason
         reasonLabel="Cancellation reason"
-        onConfirm={(r) => {
-          toast.success("Order cancelled", { description: `Stock released. Reason: ${r}` });
-          setCancel(false);
-        }}
+        loading={busy}
+        onConfirm={async (r) => { await setStatus("CANCELLED", r); setCancel(false); }}
       />
       <WhatsAppShareDialog
         open={shareOpen}
         onOpenChange={setShareOpen}
-        docNo={order.orderNo}
-        docLabel="Order"
+        docNo={order.invoiceNo ?? order.orderNo}
+        docLabel={order.invoiceNo ? "Invoice" : "Order"}
         customerName={order.customerName}
-        customerPhone="0300 4567890"
+        customerPhone={phone}
         total={order.total}
-        note={`Order status: ${statusLabel(order.status)}`}
+        balance={order.balance}
+        billLink={order.invoiceId ? (order.invoiceShareUrl ?? order.invoicePdfUrl) : null}
+        note={order.invoiceNo ? undefined : `Order status: ${statusLabel(order.status)}`}
       />
     </>
   );
 }
 
-function Row({ label, value, bold }: { label: string; value: string; bold?: boolean }) {
+function Row({ label, value, bold, valueClass }: { label: string; value: string; bold?: boolean; valueClass?: string }) {
   return (
     <div className="flex items-center justify-between gap-6 text-sm">
       <span className={cn("text-slate-600 dark:text-slate-300", bold && "font-bold text-navy-900 dark:text-white")}>{label}</span>
-      <span className={cn("tabular text-navy-900 dark:text-white", bold && "font-bold text-base")}>{value}</span>
+      <span className={cn("tabular text-navy-900 dark:text-white", bold && "font-bold text-base", valueClass)}>{value}</span>
     </div>
   );
 }
