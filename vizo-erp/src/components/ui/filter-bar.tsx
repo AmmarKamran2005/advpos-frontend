@@ -35,11 +35,14 @@ export function FilterBar({
   return (
     <div
       className={cn(
-        "bg-white dark:bg-navy-800 border border-slate-200 dark:border-navy-700 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center gap-3 mb-4",
+        /* flex-wrap, because a page that supplies its own filter controls
+           plus a few active chips will otherwise crush the search box down to
+           its magnifier and wrap "Clear all" onto a line of its own. */
+        "bg-white dark:bg-navy-800 border border-slate-200 dark:border-navy-700 rounded-xl p-3 flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3 mb-4",
         className
       )}
     >
-      <div className="relative flex-1 min-w-0">
+      <div className="relative flex-1 min-w-0 sm:min-w-[15rem]">
         <Search className="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
         <Input
           type="text"
@@ -83,10 +86,16 @@ export function FilterBar({
       )}
 
       <div className="flex items-center gap-2 flex-shrink-0">
-        <Button variant="secondary" size="md" className="gap-1.5">
-          <Filter />
-          <span>Filters</span>
-        </Button>
+        {/* The placeholder Filters button opens nothing. Where a page hands in
+            real filter controls it is worse than useless -- a dead button sat
+            next to the working ones -- so it only renders when there is
+            nothing better to show. */}
+        {!extraActions && (
+          <Button variant="secondary" size="md" className="gap-1.5">
+            <Filter />
+            <span>Filters</span>
+          </Button>
+        )}
         {extraActions}
       </div>
     </div>
