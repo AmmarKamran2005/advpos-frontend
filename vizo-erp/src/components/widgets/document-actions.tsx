@@ -6,6 +6,7 @@ import { Printer, Download, CloudUpload, Check, Loader2, ExternalLink } from "lu
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toaster";
 import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
+import { openDocument, openDocumentWhenReady } from "@/lib/documents";
 
 /**
  * Print / Download / Save-to-store for one document.
@@ -15,11 +16,18 @@ import { API_BASE_URL, authHeader } from "@/components/providers/session-provide
  * chips and all -- at whatever width the window happens to be, and stores
  * nothing anywhere. A few had a Print button with no onClick at all.
  *
- * All three actions here go through the API, which renders a proper A4
- * document from the database:
+ * PRINT AND DOWNLOAD OPEN THE FILE IN THE CLOUDINARY STORE. The document is
+ * archived the moment it is created, so the link is usually already in hand --
+ * this component asks for it on mount. Only a document that predates archiving,
+ * or whose upload failed, needs one made on the spot, and then it is archived
+ * before it opens.
  *
- *   Print / Download  GET  /documents/{kind}/{id}/pdf   built on demand
- *   Save to store     POST /documents/{kind}/{id}/pdf   pushed to Cloudinary
+ * The bytes on screen are therefore the same bytes in the store and the same
+ * ones the customer was sent. One document, not three that can drift apart.
+ *
+ * It opens the Cloudinary URL rather than an API route on purpose: window.open
+ * is a plain navigation and carries no Authorization header, so pointing it at
+ * an authenticated endpoint opens a 401 page. See lib/documents.ts.
  *
  * Nothing is written to the API host's disk at any point.
  */
@@ -80,10 +88,28 @@ export function DocumentActions({
     return () => { live = false; };
   }, [kind, id]);
 
-  const pdfUrl = `${API_BASE_URL}/documents/${kind}/${id}/pdf`;
+  /** Archives the document if it has never been, and returns its stored URL. */
+  async function ensureStored(): Promise<string | null> {
+    const res = await axios.post<StoredFile>(
+      `${API_BASE_URL}/documents/${kind}/${id}/pdf`, {}, { headers: authHeader() });
+    setStored(res.data);
+    return res.data.pdfUrl ?? null;
+  }
 
-  function open() {
-    window.open(pdfUrl, "_blank", "noopener,noreferrer");
+  async function open(attachment = false) {
+    /* The common case: the link is already in hand, so the tab opens straight
+       away with no round trip. */
+    if (stored?.pdfUrl) {
+      openDocument(stored.pdfUrl, attachment);
+      return;
+    }
+
+    const opened = await openDocumentWhenReady(ensureStored, attachment);
+    if (!opened) {
+      toast.error("Could not open the document", {
+        description: "It could not be saved to the document store. Try Save to store.",
+      });
+    }
   }
 
   async function save() {
@@ -92,7 +118,7 @@ export function DocumentActions({
       const res = await axios.post<StoredFile>(
         `${API_BASE_URL}/documents/${kind}/${id}/pdf?force=true`, {}, { headers: authHeader() });
       setStored(res.data);
-      toast.success(`${label[0].toUpperCase()}${label.slice(1)} saved to the document store`, {
+      toast.success(`${label[0].toUpperCase()}${label.slice(1)} rebuilt in the document store`, {
         description: res.data.isDeliverable
           ? "The stored link opens for anybody you send it to."
           : "Stored, but the document store will not serve PDFs yet — see the Cloudinary setting.",
@@ -106,18 +132,25 @@ export function DocumentActions({
 
   return (
     <>
-      <Button variant="ghost" size="md" className="gap-1.5" onClick={open}>
+      <Button variant="ghost" size="md" className="gap-1.5" onClick={() => void open(false)}>
         <Printer />
         {!compact && <span className="hidden sm:inline">Print</span>}
       </Button>
-      <Button variant="ghost" size="md" className="gap-1.5" onClick={open}>
+      <Button variant="ghost" size="md" className="gap-1.5" onClick={() => void open(true)}>
         <Download />
         {!compact && <span className="hidden sm:inline">Download</span>}
       </Button>
-      <Button variant="ghost" size="md" className="gap-1.5" onClick={save} disabled={saving}>
+      <Button
+        variant="ghost"
+        size="md"
+        className="gap-1.5"
+        onClick={save}
+        disabled={saving}
+        title={stored ? "Rebuild the stored copy from the current data" : "Save a copy to the document store"}
+      >
         {saving ? <Loader2 className="size-4 animate-spin" /> : stored ? <Check /> : <CloudUpload />}
         {!compact && (
-          <span className="hidden sm:inline">{stored ? "Saved" : "Save to store"}</span>
+          <span className="hidden sm:inline">{stored ? "Stored" : "Save to store"}</span>
         )}
       </Button>
       {stored?.pdfUrl && (

@@ -6,6 +6,7 @@ import axios from "axios";
 import {
   Users, ArrowLeft, Printer, MessageCircle, AlertCircle, RefreshCw,
   ShoppingBag, Receipt, Banknote, ChevronLeft, ChevronRight,
+  Loader2, Download,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardBody } from "@/components/ui/card";
@@ -17,7 +18,10 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { WhatsAppShareDialog } from "@/components/dialogs/whatsapp-share-dialog";
+import { toast } from "@/components/ui/toaster";
 import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
+import { downloadXlsx, exportError } from "@/lib/export";
+import { openDocument, openDocumentWhenReady } from "@/lib/documents";
 import { formatMoney, formatDate } from "@/lib/format";
 import { statusLabel } from "@/lib/labels";
 import { prettyPhone } from "@/lib/whatsapp";
@@ -102,8 +106,38 @@ export default function WalkInSalesPage() {
     void load();
   }, [load]);
 
-  function printBill(invoiceId: number) {
-    window.open(`${API_BASE_URL}/sales/invoices/${invoiceId}/pdf`, "_blank", "noopener,noreferrer");
+  /* Opens the bill's own file in the Cloudinary store -- the same one the
+     customer gets over WhatsApp. window.open carries no Authorization header,
+     so it must be the Cloudinary URL and not an API route. */
+  async function openBill(invoiceId: number, storedUrl?: string | null, attachment = false) {
+    if (storedUrl) {
+      openDocument(storedUrl, attachment);
+      return;
+    }
+    const opened = await openDocumentWhenReady(async () => {
+      const res = await axios.post<{ pdfUrl: string | null }>(
+        `${API_BASE_URL}/sales/invoices/${invoiceId}/pdf`, {}, { headers: authHeader() });
+      return res.data.pdfUrl;
+    }, attachment);
+    if (!opened) {
+      toast.error("Could not open the bill", {
+        description: "It could not be saved to the document store. Try again in a moment.",
+      });
+    }
+  }
+
+  const [exporting, setExporting] = React.useState(false);
+
+  async function exportXlsx() {
+    setExporting(true);
+    try {
+      await downloadXlsx("sales/direct/walkin/export", { q: search || undefined, from: from || undefined, to: to || undefined }, "walk-in-sales.xlsx");
+      toast.success("Export ready", { description: "Walk-in bills downloaded as a spreadsheet." });
+    } catch (e) {
+      toast.error("Could not export", { description: await exportError(e) });
+    } finally {
+      setExporting(false);
+    }
   }
 
   const pageCount = Math.max(1, Math.ceil(data.total / PAGE_SIZE));
@@ -119,6 +153,10 @@ export default function WalkInSalesPage() {
           <>
             <Button variant="ghost" size="md" className="gap-1.5" asChild>
               <Link href="/sales/direct"><ArrowLeft />Back to counter</Link>
+            </Button>
+            <Button variant="secondary" size="md" className="gap-1.5" onClick={exportXlsx} disabled={exporting}>
+              {exporting ? <Loader2 className="size-4 animate-spin" /> : <Download />}
+              <span className="hidden sm:inline">{exporting ? "Exporting…" : "Export"}</span>
             </Button>
             <Button variant="accent" size="md" className="gap-1.5" asChild>
               <Link href="/sales/direct"><ShoppingBag />New counter sale</Link>
@@ -252,7 +290,7 @@ export default function WalkInSalesPage() {
                   </div>
 
                   <div className="flex items-center gap-2 flex-shrink-0">
-                    <Button variant="secondary" size="md" className="gap-1.5" onClick={() => printBill(s.id)}>
+                    <Button variant="secondary" size="md" className="gap-1.5" onClick={() => void openBill(s.id, s.pdfUrl)}>
                       <Printer />Print
                     </Button>
                     <Button

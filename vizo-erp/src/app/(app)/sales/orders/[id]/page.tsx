@@ -23,6 +23,7 @@ import {
 import { ConfirmDialog } from "@/components/dialogs/confirm-dialog";
 import { WhatsAppShareDialog } from "@/components/dialogs/whatsapp-share-dialog";
 import { useSession, API_BASE_URL, authHeader } from "@/components/providers/session-provider";
+import { openDocument, openDocumentWhenReady } from "@/lib/documents";
 import { formatMoney, formatDate, formatNumber, formatRelative } from "@/lib/format";
 import { toast } from "@/components/ui/toaster";
 import { cn } from "@/lib/utils";
@@ -188,12 +189,22 @@ export default function OrderDetailPage() {
     }
   }
 
-  function openBill() {
+  /* The bill's own file in the Cloudinary store -- the same one the customer
+     was sent. window.open carries no Authorization header, so this has to be
+     the Cloudinary URL rather than an API route. */
+  async function openBill(attachment = false) {
     if (!order?.invoiceId) return;
-    /* Straight from the API rather than the Cloudinary copy: this always
-       reflects the row as it stands right now, and it works even when the
-       document store is unreachable. */
-    window.open(`${API_BASE_URL}/sales/invoices/${order.invoiceId}/pdf`, "_blank", "noopener,noreferrer");
+    if (order.invoicePdfUrl) {
+      openDocument(order.invoicePdfUrl, attachment);
+      return;
+    }
+    const opened = await openDocumentWhenReady(async () => {
+      const res = await axios.post<{ pdfUrl: string | null }>(
+        `${API_BASE_URL}/sales/invoices/${order.invoiceId}/pdf`, {}, { headers: authHeader() });
+      await load();
+      return res.data.pdfUrl;
+    }, attachment);
+    if (!opened) toast.error("Could not open the bill", { description: "Try again in a moment." });
   }
 
   if (loading) {
@@ -269,7 +280,7 @@ export default function OrderDetailPage() {
         subtitle={`Created ${formatDate(order.orderDate)} by ${order.createdBy}${order.salesPerson ? ` · rep ${order.salesPerson}` : ""} · ${order.location}`}
         actions={
           <>
-            <Button variant="ghost" size="md" className="gap-1.5" onClick={openBill} disabled={!order.invoiceId}>
+            <Button variant="ghost" size="md" className="gap-1.5" onClick={() => void openBill(false)} disabled={!order.invoiceId}>
               <Printer />
               <span className="hidden sm:inline">Print bill</span>
             </Button>
@@ -298,7 +309,7 @@ export default function OrderDetailPage() {
                 <DropdownMenuItem onClick={() => setShareOpen(true)}><MessageCircle />Share on WhatsApp</DropdownMenuItem>
                 {order.invoiceId && (
                   <>
-                    <DropdownMenuItem onClick={openBill}><Download />Download bill</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => void openBill(true)}><Download />Download bill</DropdownMenuItem>
                     <DropdownMenuItem asChild>
                       <Link href={`/sales/invoices/${order.invoiceId}`}><FileText />Open invoice {order.invoiceNo}</Link>
                     </DropdownMenuItem>
@@ -508,7 +519,7 @@ export default function OrderDetailPage() {
                           Sale invoice · {order.invoicePdfUrl ? "archived to the document store" : "generated on request"}
                         </div>
                       </div>
-                      <Button variant="ghost" size="sm" onClick={openBill}><Download />Open</Button>
+                      <Button variant="ghost" size="sm" onClick={() => void openBill(false)}><Download />Open</Button>
                     </div>
                   ) : (
                     <p className="text-sm text-slate-500 dark:text-slate-400 py-6 text-center">
@@ -608,10 +619,10 @@ export default function OrderDetailPage() {
             <CardBody>
               <h3 className="text-sm font-semibold text-navy-900 dark:text-white mb-3">Quick Actions</h3>
               <div className="space-y-2">
-                <Button variant="secondary" size="md" className="w-full justify-start gap-2" onClick={openBill} disabled={!order.invoiceId}>
+                <Button variant="secondary" size="md" className="w-full justify-start gap-2" onClick={() => void openBill(false)} disabled={!order.invoiceId}>
                   <Printer />Print bill
                 </Button>
-                <Button variant="secondary" size="md" className="w-full justify-start gap-2" onClick={openBill} disabled={!order.invoiceId}>
+                <Button variant="secondary" size="md" className="w-full justify-start gap-2" onClick={() => void openBill(true)} disabled={!order.invoiceId}>
                   <Download />Download bill
                 </Button>
                 <Button variant="secondary" size="md" className="w-full justify-start gap-2" onClick={() => setShareOpen(true)}>

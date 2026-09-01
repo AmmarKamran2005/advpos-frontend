@@ -17,7 +17,7 @@ day to day.
 | **Frontend** | `AmmarKamran2005/advpos-frontend` @ `main` |
 | **Backend** | `muhammadtalhabinsuhail/vizo-backend` @ `master`. Talha's last was `aa510f1` (2026-08-27). |
 | **Database** | Neon PostgreSQL 18, Singapore. PascalCase columns. Real data, shared with Talha. Migrations **08**, **09** and **10** are applied. |
-| **API** | 27 controllers. Every printable document in the system renders to PDF and uploads to Cloudinary. Every action wrapped in try/catch. |
+| **API** | 27 controllers. Every document is archived to Cloudinary **when it is created**; Print and Download open that stored file. Seven list screens export a real `.xlsx`. |
 | **Screens** | 99 pages. **91 on live data, 8 still on mock** — all eight are accounting forms. |
 | **Gate** | `tsc` clean · eslint **0 errors, 67 warnings** (was 83) · `next build` **84 routes** |
 
@@ -29,6 +29,117 @@ day to day.
 **Always `git fetch` before staging — on the frontend as well as the backend.**
 A `--force` here would delete a day of his work. Both remotes were unchanged
 when this session pushed (`32fd4a2` / `aa510f1`).
+
+---
+
+## 2026-08-30 (later) — Cloudinary-first documents, and a real .xlsx export
+
+Two things asked for, and a bug found on the way to the first.
+
+### 🔴 The Print and Download buttons shipped yesterday were broken
+
+Every one of them did `window.open(".../api/.../pdf")`. **A browser navigation
+sends cookies and NOT the `Authorization: Bearer` header**, which every `/api`
+route requires — so every Print and Download button opened a 401 page.
+
+It was not caught because they were verified with curl and a bearer token, not
+by clicking them. Proof of the failure:
+
+```bash
+curl -sk -o /dev/null -w "%{http_code}\n" \
+  "https://localhost:7177/api/documents/purchase-order/1/download"     # 401
+```
+
+The fix is also the thing that was asked for: **open the Cloudinary URL, which
+needs no header at all.**
+
+### Documents are archived when they are created, not when a button is pressed
+
+Nine create actions now push their PDF to Cloudinary before returning —
+purchase orders, goods receipts, purchase invoices and returns, stock
+adjustments and transfers, journal entries, expenses and vouchers. Sale
+invoices already did.
+
+So by the time anybody can press Print, the file exists and the screen already
+holds its link. Print and Download open **that document's own file**:
+
+| | |
+|---|---|
+| link already in hand | opens straight away, no round trip |
+| never archived | archived first, then opened |
+
+The failure is logged and swallowed on purpose. By the time it runs the order is
+taken, the stock has moved and the money is in the drawer. Failing the request
+because a document store was briefly unreachable would tell the operator the sale
+did not happen, and they would ring it up twice. The PDF can be rebuilt from the
+row; the sale cannot.
+
+Proved, on a purchase order created through the API:
+
+```
+POST /api/purchases/orders   ->  PO-26-0065
+DocumentFile, one second later:  purchase-order | PO-26-0065 | deliverable | 5131 bytes
+```
+
+Nobody pressed anything.
+
+### One document, not three
+
+Before this there were three ways to get the same bill — render it fresh,
+download the stored copy, or share the link — and only the last touched
+Cloudinary. Three paths to one document is three things that can disagree.
+
+Now the bytes on screen are the bytes in the store are the bytes the customer was
+sent over WhatsApp.
+
+`GET /documents/{kind}/{id}/download` and `GET /sales/invoices/{id}/download`
+still exist and 302 to the stored file, archiving on the way if needed. They are
+for API callers that can send the header. **Do not wire a `window.open` to them**
+— that is the bug above.
+
+`attachment=true` inserts Cloudinary's `fl_attachment` so Download saves the file
+and Print previews it. `CloudinaryUrl.AsAttachment` on the API and `asAttachment`
+in `lib/documents.ts` are deliberate mirrors of each other.
+
+`openDocumentWhenReady` opens the tab **synchronously inside the click** and
+points it at the file once the URL arrives. Opening it after the `await` instead
+is what every popup blocker on earth is built to stop.
+
+### Export produces a real .xlsx
+
+Four Export buttons existed. One showed a toast; three had no `onClick` at all.
+All of them now download a workbook, and two more lists gained the button:
+
+```
+/sales/orders          /sales/invoices        /sales/returns
+/sales/direct/walkin   /purchases/orders      /parties        /inventory/products
+```
+
+Each endpoint runs the **same list action the screen runs** and writes its
+result, so the file is what was on the page, filters and all. Money, dates and
+counts are typed cells — a date column sorts by date and a total column sums —
+rather than text that merely looks like numbers. Frozen header and auto-filter,
+because an export nobody can sort is a screenshot with extra steps.
+
+`Documents/XlsxWriter.cs`, no NuGet package. EPPlus went commercial at v5 and
+wants a licence key at startup; ClosedXML drags in the whole OpenXML object model
+for one sheet of one table. An `.xlsx` is a zip of six small XML parts and
+`System.IO.Compression` is in the framework — same reasoning as the PDF writer.
+
+The `/sales/invoices` CSV built in the browser last session is gone; one export
+format across the app beats two that behave differently.
+
+### Also
+
+- **`DocumentBuilder` was extracted out of `DocumentsController`.** It had to be:
+  a document is archived from Purchases, Inventory and Accounting now, and a
+  controller cannot reach another controller's private methods.
+- **A class called `Cloudinary` silently shadowed the SDK's own type** — same
+  namespace as `PdfStore`, which uses it. Renamed `CloudinaryUrl`. The codebase
+  already documents this trap for `Claim` and `Account`.
+- **`.next` was serving 404s for every route.** A production `next build` ran
+  earlier in the session, and `next dev` then read that directory. Trap 14 in
+  Standing facts covers it; `rm -rf .next` fixes it.
 
 ---
 
@@ -728,8 +839,21 @@ of the whole folder reverts his work. Two further traps that recipe avoids:
     that overflows makes its own pages as it goes, so the count is not known
     until the body is finished. Draw the body first, then stamp the footers --
     `PdfCanvas.SelectPage` exists for exactly this.
-14. **Never run `next build` while `next dev` is up** — they share `.next` and
-   the cache corrupts into a blanket HTTP 500.
+14. **`window.open` carries no `Authorization` header.** It is a plain browser
+    navigation: cookies go, the bearer token does not. Pointing any button at an
+    `[Authorize]` API route therefore opens a 401 page, and curl with a token
+    will not reproduce it. Open the Cloudinary URL instead -- see
+    `vizo-erp/src/lib/documents.ts`.
+15. **A popup opened after an `await` is blocked.** Open the tab synchronously
+    inside the click and set its `location` when the URL arrives.
+16. **A class named after an SDK type shadows it inside the same namespace.**
+    `Documents/Cloudinary.cs` silently hid `CloudinaryDotNet.Cloudinary` from
+    `PdfStore`, which sits in that namespace. Same trap as `Claim` and
+    `Account`. It is `CloudinaryUrl` now.
+17. **Never run `next build` while `next dev` is up** -- and if a production
+    build ran earlier in the session, `rm -rf .next` before starting `next dev`.
+    A stale production `.next` makes **every route 404**, including `/dashboard`,
+    which looks exactly like a routing bug and is not one.
 
 ### Reference
 
@@ -738,9 +862,11 @@ of the whole folder reverts his work. Two further traps that recipe avoids:
 | `backend/database/08_sales_documents.sql` | Invoice PDF columns, walk-in identity, return decision. **Applied.** |
 | `backend/database/09_document_series_catchup.sql` | Winds `DocumentSeries.NextNumber` past the data. **Applied. Re-run after any import with explicit document numbers.** |
 | `backend/database/10_document_files.sql` | `DocumentFile` — one row per generated PDF and its Cloudinary link. **Applied.** |
-| `backend/vizo-backend/Documents/` | `PdfCanvas` (a small PDF writer, no dependency), `InvoicePdf` (the bill), `DocumentPdf` (every other document and report), `PdfStore` (Cloudinary + delivery check), `DocumentArchive` (render, upload, record) |
+| `backend/vizo-backend/Documents/` | `PdfCanvas` (a small PDF writer, no dependency), `InvoicePdf` (the bill), `DocumentPdf` (every other document and report), `DocumentBuilder` (reads one document out of the database), `PdfStore` (Cloudinary + delivery check), `DocumentArchive` (render, upload, record; **archive-on-create**), `XlsxWriter` (spreadsheet export, no dependency), `CloudinaryUrl` |
 | **`/admin/documents`** (Setup → Document Store) | **Every PDF the system has generated and its real Cloudinary link.** Open this first when somebody asks where the documents go. |
 | `vizo-erp/src/components/widgets/document-actions.tsx` | Print / Download / Save-to-store for one document. Used by all ten document screens |
+| `vizo-erp/src/lib/documents.ts` | Opens a stored document. **Read the comment before pointing any button at an API route** |
+| `vizo-erp/src/lib/export.ts` | Fetches an `.xlsx` with the auth header and hands it to the browser |
 | `vizo-erp/src/components/widgets/report-toolbar.tsx` | Shared by 13 report and statement screens. Give it a `doc` prop and it renders the real PDF; without one it falls back to the browser print dialog |
 | `backend/database/db_code_changes.txt` | **Every DB change, applied or not, with rollbacks.** §9–12 are the newest |
 | `backend/SETUP.md` | NuGet packages, configuration, how to run |

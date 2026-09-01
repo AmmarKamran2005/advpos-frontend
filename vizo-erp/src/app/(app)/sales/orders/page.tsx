@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Plus, Download, Search, Send, Check, Truck, ChevronRight } from "lucide-react";
+import { Plus, Download, Search, Send, Check, Truck, ChevronRight , Loader2} from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardBody } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,7 @@ import { StatusPill } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { toast } from "@/components/ui/toaster";
 import { useSession } from "@/components/providers/session-provider";
+import { downloadXlsx, exportError } from "@/lib/export";
 import axios from "axios";
 import { AlertCircle } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -191,6 +192,22 @@ export default function OrdersPage() {
     });
   }, [scope, search, tab]);
 
+  /* The Export button used to be a toast. The API builds the workbook from the
+     same list query this screen ran, so the file is what is on the page. */
+  const [exporting, setExporting] = React.useState(false);
+
+  async function exportXlsx() {
+    setExporting(true);
+    try {
+      await downloadXlsx("sales/orders/export", { q: search || undefined, status: status || undefined }, "sales-orders.xlsx");
+      toast.success("Export ready", { description: "Orders downloaded as a spreadsheet." });
+    } catch (e) {
+      toast.error("Could not export", { description: await exportError(e) });
+    } finally {
+      setExporting(false);
+    }
+  }
+
   return (
     <>
       <PageHeader
@@ -199,10 +216,9 @@ export default function OrdersPage() {
         subtitle={isRep ? "Your orders and where each one has reached" : "Every customer order"}
         actions={
           <>
-            <Button variant="ghost" size="md" className="gap-1.5"
-              onClick={() => toast.success("Export started", { description: `${rows.length} orders` })}>
-              <Download />
-              <span className="hidden sm:inline">Export</span>
+            <Button variant="ghost" size="md" className="gap-1.5" onClick={exportXlsx} disabled={exporting}>
+              {exporting ? <Loader2 className="size-4 animate-spin" /> : <Download />}
+              <span className="hidden sm:inline">{exporting ? "Exporting…" : "Export"}</span>
             </Button>
             <Button variant="accent" size="md" className="gap-1.5" asChild>
               <Link href="/sales/orders/new"><Plus /> New Order</Link>

@@ -17,6 +17,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ConfirmDialog } from "@/components/dialogs/confirm-dialog";
 import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
+import { openDocumentWhenReady } from "@/lib/documents";
 import { formatMoney, formatDate, formatRelative } from "@/lib/format";
 import { toast } from "@/components/ui/toaster";
 import { cn } from "@/lib/utils";
@@ -185,7 +186,11 @@ export default function SalesReturnDetailPage() {
           <>
             <Button variant="ghost" asChild><Link href="/sales/returns"><ArrowLeft />Back</Link></Button>
             <Button variant="ghost" className="gap-1.5"
-              onClick={() => window.open(`${API_BASE_URL}/sales/invoices/${r.invoiceId}/pdf`, "_blank", "noopener,noreferrer")}>
+              onClick={() => void openDocumentWhenReady(async () => {
+                const res = await axios.post<{ pdfUrl: string | null }>(
+                  `${API_BASE_URL}/sales/invoices/${r.invoiceId}/pdf`, {}, { headers: authHeader() });
+                return res.data.pdfUrl;
+              })}>
               <Printer /><span className="hidden sm:inline">Original bill</span>
             </Button>
 

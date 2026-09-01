@@ -23,6 +23,7 @@ import {
 import { WhatsAppShareDialog } from "@/components/dialogs/whatsapp-share-dialog";
 import { toast } from "@/components/ui/toaster";
 import { useSession, API_BASE_URL, authHeader } from "@/components/providers/session-provider";
+import { openDocument, openDocumentWhenReady } from "@/lib/documents";
 import { formatMoney } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -268,9 +269,29 @@ export default function CounterSalePage() {
     }
   }
 
-  /** Opens the bill in a new tab, where the browser's own print dialog takes over. */
-  function printBill(invoiceId: number) {
-    window.open(`${API_BASE_URL}/sales/invoices/${invoiceId}/pdf`, "_blank", "noopener,noreferrer");
+  /* Opens the bill's own file in the Cloudinary store -- the same one the
+     customer gets over WhatsApp. window.open carries no Authorization header,
+     so it must be the Cloudinary URL and not an API route. */
+  async function openBill(invoiceId: number, storedUrl?: string | null, attachment = false) {
+    if (storedUrl) {
+      openDocument(storedUrl, attachment);
+      return;
+    }
+    const opened = await openDocumentWhenReady(async () => {
+      const res = await axios.post<{ pdfUrl: string | null }>(
+        `${API_BASE_URL}/sales/invoices/${invoiceId}/pdf`, {}, { headers: authHeader() });
+      return res.data.pdfUrl;
+    }, attachment);
+    if (!opened) {
+      toast.error("Could not open the bill", {
+        description: "It could not be saved to the document store. Try again in a moment.",
+      });
+    }
+  }
+
+  /** Print opens the stored bill; the browser's own print dialog takes over. */
+  function printBill(invoiceId: number, storedUrl?: string | null) {
+    void openBill(invoiceId, storedUrl);
   }
 
   return (
@@ -337,7 +358,7 @@ export default function CounterSalePage() {
                 </p>
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">
-                <Button variant="secondary" size="md" className="gap-1.5" onClick={() => printBill(sale.invoiceId)}>
+                <Button variant="secondary" size="md" className="gap-1.5" onClick={() => printBill(sale.invoiceId, sale.pdfUrl)}>
                   <Printer />Print
                 </Button>
                 <Button variant="accent" size="md" className="gap-1.5" onClick={() => setShareOpen(true)}>
@@ -679,7 +700,7 @@ export default function CounterSalePage() {
               <div className="flex gap-1.5 mt-2">
                 <Button variant="secondary" size="sm" className="flex-1 gap-1"
                   disabled={!sale}
-                  onClick={() => sale && printBill(sale.invoiceId)}>
+                  onClick={() => sale && printBill(sale.invoiceId, sale.pdfUrl)}>
                   <Printer /> Print
                 </Button>
                 <Button variant="secondary" size="sm" className="flex-1 gap-1"
