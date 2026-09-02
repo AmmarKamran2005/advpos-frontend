@@ -32,36 +32,38 @@ when this session pushed (`32fd4a2` / `aa510f1`).
 
 ---
 
-## 2026-09-02 — The completion order: secrets, dashboards, notifications, AI
+## 2026-09-02 — The completion order: dashboards, notifications, AI
 
-Everything in the order shipped. The two things that were not in it mattered
-more than most of what was.
+Everything in the order shipped, plus one thing that was not in it and stopped
+the whole application dead.
 
-### 🔴 READ THIS FIRST — four credentials are still live in git history
+### Configuration lives in `appsettings.json` — by decision
 
-`vizo-backend/appsettings.json` is committed to a **public** repository and held
-five working credentials in plain text: the Neon connection string with its
-password, the JWT signing key, both Cloudinary API secrets and the Gmail app
-password.
+Earlier in this session the five credentials in `vizo-backend/appsettings.json`
+(the Neon connection string, the JWT signing key, both Cloudinary API secrets
+and the Gmail app password) were moved out to User Secrets / environment
+variables. **The project owner reversed that.** They are back in
+`appsettings.json`, which is committed, and that file is now the single source
+of truth again:
 
-All five are now blank in that file and read from User Secrets locally /
-environment variables in production. `Program.cs` refuses to start without the
-connection string or the JWT key, naming what is missing.
+- `Program.cs` no longer checks for missing secrets at startup, and its header
+  describes the arrangement as it actually is.
+- `UserSecretsId` is off the csproj and the local User Secrets store is empty,
+  so nothing silently overrides the file.
+- `SETUP.md` §6 documents `appsettings.json` as the place to look.
+- Frontend variables stay in `vizo-erp/.env.local`, which is not committed.
+  Copy `.env.example` and fill it in.
 
-**The JWT key has been rotated. THE OTHER FOUR HAVE NOT.** They are still
-readable in old commits and will stay readable until somebody rotates them at
-the provider:
+**`NEXT_PUBLIC_VAPID_PUBLIC_KEY` in `.env.local` must be the exact pair of
+`VapidSettings:PrivateKey` in `appsettings.json`.** They match right now. If they
+ever drift, browsers subscribe successfully and every push to them is then
+rejected, which looks like push simply not working.
 
-| | |
-|---|---|
-| Neon Postgres password | Neon dashboard → reset password |
-| Cloudinary Images `ApiSecret` | Cloudinary console (`dzzuoem1w`) |
-| Cloudinary PDFs `ApiSecret` | Cloudinary console (`dve3ucdo`) |
-| Gmail app password | Google account → App passwords |
-
-Scrubbing history (`git filter-repo` / BFG) is worth doing **after** rotating,
-not instead of it — and it force-pushes a repo Talha also clones, so tell him
-first. Rotating is what actually closes the hole.
+What this means in practice: this repository is public, so the database
+password, the JWT signing key, both Cloudinary secrets and the Gmail app
+password are readable by anyone who opens it. That is the owner's call. If it is
+ever revisited, the values have to be rotated at Neon, Cloudinary and Google —
+taking them out of the file does not take them out of the history.
 
 ### 🔴 The ledger was frozen
 
@@ -181,7 +183,6 @@ Set `Gemini:ApiKey` in user-secrets to switch it on.
 
 ### Left undone, on purpose
 
-- **The four credentials above.** Only you can rotate them.
 - **Push was never received on a real device.** The sandboxed preview browser
   blocks notification permission, so the subscribe → receive round trip is
   unproven. Everything either side of it is: the bell row is written on real
