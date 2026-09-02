@@ -16,10 +16,10 @@ day to day.
 |---|---|
 | **Frontend** | `AmmarKamran2005/advpos-frontend` @ `main` |
 | **Backend** | `muhammadtalhabinsuhail/vizo-backend` @ `master`. Talha's last was `aa510f1` (2026-08-27). |
-| **Database** | Neon PostgreSQL 18, Singapore. PascalCase columns. Real data, shared with Talha. Migrations **08**, **09** and **10** are applied. |
-| **API** | 27 controllers. Every document is archived to Cloudinary **when it is created**; Print and Download open that stored file. Seven list screens export a real `.xlsx`. |
-| **Screens** | 99 pages. **91 on live data, 8 still on mock** — all eight are accounting forms. |
-| **Gate** | `tsc` clean · eslint **0 errors, 67 warnings** (was 83) · `next build` **84 routes** |
+| **Database** | Neon PostgreSQL 18, Singapore. PascalCase columns. Real data, shared with Talha. Migrations **08** through **12** are applied. |
+| **API** | 27 controllers. Every document is archived to Cloudinary **when it is created**; Print and Download open that stored file. Ten list screens export a real `.xlsx`. Accounting now has full CRUD, and posting an expense or voucher writes the ledger entry. |
+| **Screens** | 92 app pages. **89 on live data.** What is left is **3 dashboards** (accountant, order-dept, sales) and **6 hardcoded summary numbers** on 2 pages -- full list in `backend/database/db_ans.pdf`. |
+| **Gate** | `tsc` clean · eslint **0 errors, 65 warnings** (was 67) · `next build` **84 routes** · backend builds with 0 errors |
 
 ### ⚠️ Read before touching ANY repo
 
@@ -29,6 +29,144 @@ day to day.
 **Always `git fetch` before staging — on the frontend as well as the backend.**
 A `--force` here would delete a day of his work. Both remotes were unchanged
 when this session pushed (`32fd4a2` / `aa510f1`).
+
+---
+
+## 2026-08-31 — Accounting on live data, and four bugs in the ledger
+
+Nine accounting pages were asked for. Building them turned up four faults in the
+posting layer that the mock pages had been hiding, and those cost more than the
+pages did.
+
+### 🔴 An approved expense never reached the ledger
+
+`SetExpenseStatus` flipped the status to POSTED and stopped there. `EntryId`
+stayed null. Every statement in the app filters on posted **journal entries**, so
+an approved expense was invisible to the trial balance, the P&L and the cash
+flow — the money left the drawer and no report in the system ever showed it.
+
+`PostVoucher` had the same hole. Both now write the double entry inside the same
+transaction as the status change:
+
+| | |
+|---|---|
+| expense | DR expense account, CR the cash/bank account it was paid from |
+| receipt voucher | DR cash/bank, CR Accounts Receivable **against the party** |
+| payment voucher | DR Accounts Payable against the party, CR cash/bank |
+
+The party goes on the control-account line as `PartyUserId`, the way the seeded
+vouchers already did it, so aged receivables can still tell whose money it was.
+
+### 🔴 Reversing an entry left the ledger holding the negative of it
+
+The reversal marked the original REVERSED and posted a mirror. But every
+statement filters `StatusKey == "POSTED"`, so the original dropped out while the
+mirror stayed in. A reversed 5,200 expense came out as **−5,200**, not nothing.
+
+Marking both sides REVERSED would balance, but it rewrites history: an expense
+posted in July and reversed in August would vanish from July's P&L, and July was
+already reported.
+
+So the original **stays POSTED** and a new column records what undid it —
+`JournalEntry.ReversedByEntryId`, added by `database/12_journal_reversal_link.sql`,
+which also repairs the pairs already written the old way. Both entries count,
+they cancel where they should, each period keeps the figures it actually had, and
+the screen can still say "reversed by JV-26-0181".
+
+The column lives in `Models/JournalEntry.Custom.cs`, not the scaffolded file —
+same reason as `AppDbContext.Custom.cs`. **Delete both if you re-scaffold.**
+
+### 🔴 Every hand-written journal entry was typed "Sale"
+
+`CreateJournalEntry` looked up `TypeKey == "MANUAL"`. There is no MANUAL row in
+`JournalEntryType` — the key is `JOURNAL`. `FirstOrDefaultAsync` does not
+complain about a miss, so the `?? FirstAsync()` fallback handed every manual
+entry the **first type in the table, which is SALE**. Two entries in the database
+were already mistyped.
+
+### 🔴 Expenses and claims were numbered by timestamp
+
+`EXP` and `CLM` were never added to `DocumentSeries`. `NextNumber` does not throw
+on a missing series — it falls back to `PREFIX-yyyyMMddHHmmss` and carries on —
+so rows came out as `EXP-20260831165938` instead of `EXP-26-0026`. Nobody can read
+that and no report can sort it.
+
+This is the third time this trap has bitten (`SO` vs `ORD`, then the counters
+behind their data in migration 09). `database/11_series_expense_claim.sql` adds
+both series, winds them past the existing rows, renames the two timestamp rows
+and fixes their `DocumentFile.DocNo`. Safe to run twice.
+
+**If you add a `NextNumber("XYZ")` call, add the XYZ series in the same commit.**
+
+### What the accounting API gained
+
+```
+PUT    /accounting/expenses/{id}            DELETE /accounting/expenses/{id}
+PATCH  /accounting/expenses/{id}/status     POST   /accounting/expenses/{id}/reverse
+PUT    /accounting/journal-entries/{id}     DELETE /accounting/journal-entries/{id}
+POST   /accounting/journal-entries/{id}/reverse
+PUT    /accounting/vouchers/{id}            DELETE /accounting/vouchers/{id}
+POST   /accounting/vouchers/{id}/cancel
+GET    /accounting/open-invoices?kind=sales|purchase&partyId=
+GET    /accounting/{expenses|journal-entries|vouchers}/export
+```
+
+One rule governs all of it: **a draft is scratch, a posted document is history.**
+`WhyLocked()` is the single place that decides, so all three modules refuse an
+edit with the same sentence.
+
+Cancelling a posted voucher reverses its entry **and releases its allocations**,
+so the invoices it cleared go back to owing. Without that, cancelling a bounced
+cheque left the customer credited for money that came back.
+
+All three lists now page, filter and search on the server and return their
+summary figures over the **whole filter, not the page** — a card that changes
+when you turn to page two is not a total.
+
+`ValidateExpense` also got stricter: the expense account must be in the Expenses
+group and the paid-from account must be Cash & Bank. Nothing stopped an expense
+being booked against Owner Capital before, and the entry balanced perfectly while
+saying something untrue.
+
+### The nine pages
+
+| Page | What it does now |
+|---|---|
+| `expenses/`, `journal-entries/`, `vouchers/` | Server search, status and date filters, type tabs (vouchers), server paging, real summary cards, clickable rows, `.xlsx` export |
+| `*/new` | Every dropdown from `/accounting/lookups`. Journal entries and vouchers can Save as Draft **or** Save & Post. The voucher form pulls the party's real open invoices and allocates against them |
+| `*/[id]` | View, inline edit (drafts only), delete, post/approve, reject, reverse/cancel — each wired to its endpoint, each with the API's own error wording |
+
+Three things were **removed** rather than left dead: the receipt-upload dropzone
+(no upload endpoint exists), the per-voucher Reconcile button (reconciliation
+happens on its own screen, which the page now links to), and the entry-type
+dropdown on the journal form (the API always writes JOURNAL).
+
+### Also
+
+- **`components/ui/pager.tsx`** is new. `DataTable` pages the array it was handed,
+  which is wrong when page 2 is a request nobody has made yet.
+- **The `Filters` button in `FilterBar` opened nothing on every page in the app.**
+  It now renders only when a page supplies no filter controls of its own. Pages
+  that hand in real filters no longer show a dead button next to the working ones.
+- **Accounting screens use the API's `statusName`, not `statusLabel()`.** The
+  shared helper speaks shopkeeper on purpose — POSTED reads "Confirmed",
+  REVERSED reads "Undone". Right for sales, wrong for an accountant reading a
+  ledger.
+- **`backend/database/db_ans.pdf`** — the three answers that were asked for, in
+  Roman Urdu: what is still static, where AI is worth adding and which free
+  provider to use, and a 40-point map of where Web Push notifications belong.
+  Q3 is planning only, no code, as requested.
+
+### Left undone, on purpose
+
+- **Nothing writes a `Notification` row.** The table and the three read endpoints
+  exist; not one controller inserts. The bell shows six seed rows and always will.
+  The 40 insertion points are mapped in `db_ans.pdf` §Q3 — that map is the work
+  order for both the notification rows and Web Push.
+- **Test rows are in the live database.** `EXP-26-0027` (reversed), `EXP-26-0028`
+  (Nayatel, posted), `JV-26-0182`/`0183`, `RV-26-0512`/`0513` (both cancelled) were
+  created while proving the endpoints. They are correctly modelled, not junk, but
+  they are not real business records — delete them if you want the books clean.
 
 ---
 
