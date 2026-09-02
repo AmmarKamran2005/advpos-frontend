@@ -45,6 +45,10 @@ type ExpenseResponse = {
   page: number;
   pageSize: number;
   pageCount: number;
+  /* Computed by the API across the whole filter, not by this page across the
+     rows it happens to be holding. */
+  topCategory: { name: string; amount: number } | null;
+  draftCount: number;
   items: Expense[];
 };
 
@@ -80,7 +84,7 @@ const STATUS_VARIANT: Record<string, "success" | "muted" | "warning" | "danger">
   CANCELLED: "danger",
 };
 
-const EMPTY: ExpenseResponse = { total: 0, count: 0, page: 1, pageSize: PAGE_SIZE, pageCount: 1, items: [] };
+const EMPTY: ExpenseResponse = { total: 0, count: 0, page: 1, pageSize: PAGE_SIZE, pageCount: 1, topCategory: null, draftCount: 0, items: [] };
 
 export default function ExpensesPage() {
   const [data, setData] = React.useState<ExpenseResponse>(EMPTY);
@@ -140,24 +144,6 @@ export default function ExpensesPage() {
   }, [load]);
 
   const rows = data.items;
-  const draftCount = rows.filter((e) => e.status === "DRAFT").length;
-
-  /* The biggest category on the page, worked out from the rows rather than
-     written into the markup. */
-  const topCategory = React.useMemo(() => {
-    const byCategory = new Map<string, number>();
-    for (const e of rows) {
-      if (e.status === "REJECTED" || e.status === "CANCELLED") continue;
-      byCategory.set(e.categoryName || "Uncategorised", (byCategory.get(e.categoryName || "Uncategorised") ?? 0) + e.amount);
-    }
-    let best: { name: string; amount: number } | null = null;
-    for (const [name, amount] of byCategory) {
-      if (!best || amount > best.amount) best = { name, amount };
-    }
-    return best;
-  }, [rows]);
-
-  const pageTotal = rows.reduce((s, e) => s + e.amount, 0);
 
   const chips = [
     status && { key: "status", label: "Status", value: STATUS_TEXT[status] ?? status },
@@ -253,10 +239,12 @@ export default function ExpensesPage() {
           </div>
         </Card>
         <Card className="p-4">
-          <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Top Category (this page)</div>
-          <div className="text-base tabular font-bold text-navy-900 dark:text-white mt-1">{topCategory?.name ?? "—"}</div>
+          <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Top Category</div>
+          <div className="text-base tabular font-bold text-navy-900 dark:text-white mt-1">{data.topCategory?.name ?? "—"}</div>
           <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            {topCategory ? `${formatMoney(topCategory.amount)}${pageTotal > 0 ? ` (${Math.round((topCategory.amount / pageTotal) * 100)}%)` : ""}` : "Nothing to show"}
+            {data.topCategory
+              ? `${formatMoney(data.topCategory.amount)}${data.total > 0 ? ` (${Math.round((data.topCategory.amount / data.total) * 100)}%)` : ""}`
+              : "Nothing to show"}
           </div>
         </Card>
         <Card className="p-4">
@@ -264,8 +252,8 @@ export default function ExpensesPage() {
           <div className="text-2xl tabular font-bold text-navy-900 dark:text-white mt-1">{data.count.toLocaleString()}</div>
         </Card>
         <Card className="p-4">
-          <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Awaiting Approval (this page)</div>
-          <div className={`text-2xl tabular font-bold mt-1 ${draftCount ? "text-warning" : "text-slate-400"}`}>{draftCount}</div>
+          <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Awaiting Approval</div>
+          <div className={`text-2xl tabular font-bold mt-1 ${data.draftCount ? "text-warning" : "text-slate-400"}`}>{data.draftCount.toLocaleString()}</div>
         </Card>
       </div>
 

@@ -358,92 +358,15 @@ export const activeCouriers = () => couriers.filter((c) => c.isActive);
  * `remindEveryHours` is how often to ask again until someone answers.
  */
 
-export type ChannelKey = "local" | "online" | "cargo" | "logistics";
+/* These four live in lib/app-config.ts now.
 
-/** Who is allowed to mark this channel delivered. */
-export type ConfirmedBy =
-  | "sales-rep"      // the rep who owns the order — he handed it over himself
-  | "order-dept"     // back office
-  | "cargo-handler"; // the person in Karachi who chases cargo
-
-export type DeliveryChannel = {
-  key: ChannelKey;
-  name: string;
-  description: string;
-  confirmedBy: ConfirmedBy;
-  /** Courier/transporter names offered for this channel. */
-  carriers: string[];
-  /** Wait this long after dispatch before the first reminder. */
-  remindAfterDays: number;
-  /** Then ask again this often until someone answers. */
-  remindEveryHours: number;
-  /** Mark delivered from the carrier's own system. Needs a backend. */
-  autoConfirm: boolean;
-  /** Consignment note number is required (bilty for freight). */
-  requiresBilty: boolean;
-  isActive: boolean;
-};
-
-export const deliveryChannels: DeliveryChannel[] = [
-  {
-    key: "local",
-    name: "Karachi — own team",
-    description: "Karachi stock handed to the city's own sales rep, delivered by hand.",
-    confirmedBy: "sales-rep",
-    carriers: ["Own rider", "Sales rep"],
-    remindAfterDays: 0,
-    remindEveryHours: 6,
-    autoConfirm: false,
-    requiresBilty: false,
-    isActive: true,
-  },
-  {
-    key: "online",
-    name: "Online courier",
-    description: "Booked with a courier that has its own tracking portal.",
-    confirmedBy: "order-dept",
-    carriers: ["PostEx", "TCS Courier", "Leopards Courier", "M&P Express", "Trax Logistics"],
-    remindAfterDays: 2,
-    remindEveryHours: 24,
-    /* The courier's portal exists but has never been used. Manual until the
-       backend can read it — then this becomes a single switch. */
-    autoConfirm: false,
-    requiresBilty: false,
-    isActive: true,
-  },
-  {
-    key: "cargo",
-    name: "Local cargo",
-    description: "Goods transport companies. Confirmed by phone with the customer.",
-    confirmedBy: "cargo-handler",
-    carriers: ["Pak International Cargo", "Rehman Cargo", "Mehran Railway Cargo"],
-    remindAfterDays: 2,
-    remindEveryHours: 24,
-    autoConfirm: false,
-    requiresBilty: true,
-    isActive: true,
-  },
-  {
-    key: "logistics",
-    name: "Heavy — logistics",
-    description: "Bulk consignments by freight. The bilty receipt is the proof.",
-    confirmedBy: "cargo-handler",
-    carriers: ["Pak International Cargo", "NLC", "Daewoo Cargo"],
-    /* Deliberately manual: freight has no tracking feed to read, and these are
-       the highest-value consignments — a guessed "delivered" is worst here. */
-    remindAfterDays: 4,
-    remindEveryHours: 24,
-    autoConfirm: false,
-    requiresBilty: true,
-    isActive: true,
-  },
-];
-
-export function getChannel(key: ChannelKey) {
-  return deliveryChannels.find((c) => c.key === key);
-}
-
-export const activeChannels = () => deliveryChannels.filter((c) => c.isActive);
+   They are config, not seed data -- which matters because CLIENT components
+   need them, and importing anything from this file drags all 767 lines of it
+   into the browser bundle (AGENTS.md rule 5). Re-exported here so the server-
+   side callers that already import from "@/data/settings" keep working, and so
+   there is exactly one definition of each. */
+export type { ChannelKey, ConfirmedBy, DeliveryChannel } from "@/lib/app-config";
+export { deliveryChannels, getChannel, activeChannels } from "@/lib/app-config";
 
 /* ═══════════════════════════ Roles & permissions ═══════════════════════════ */
 /**
@@ -452,7 +375,11 @@ export const activeChannels = () => deliveryChannels.filter((c) => c.isActive);
  * same way. Adding a fifth role means adding a row here.
  */
 
-export type RoleKey = "super-admin" | "accountant" | "order-dept" | "sales";
+/* Imported as well as re-exported: `export type { X } from` forwards the name
+   to importers but does not bring it into this file's own scope, and the
+   permission matrix below is typed with it. */
+import type { RoleKey } from "@/lib/app-config";
+export type { RoleKey };
 
 export type AppRole = {
   key: RoleKey;

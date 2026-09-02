@@ -25,7 +25,7 @@ import {
   API_BASE_URL,
   type SessionUser,
 } from "@/components/providers/session-provider";
-import type { RoleKey } from "@/data/settings";
+import type { RoleKey } from "@/lib/app-config";
 import { cn } from "@/lib/utils";
 
 const LoginSchema = z.object({

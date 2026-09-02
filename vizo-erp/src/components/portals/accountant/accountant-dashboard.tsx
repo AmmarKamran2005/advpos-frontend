@@ -2,109 +2,204 @@
 
 import * as React from "react";
 import Link from "next/link";
+import axios from "axios";
 import {
-  Clock, Wallet, TrendingDown, AlertTriangle, ArrowRight, Check, X,
-  Banknote, Landmark, Smartphone,
+  Clock, Check, TrendingDown, AlertTriangle, ArrowRight, Wallet,
+  AlertCircle, Receipt, ArrowDownToLine, ArrowUpFromLine,
 } from "lucide-react";
 import { Card, CardBody } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Avatar } from "@/components/ui/avatar";
-import { ConfirmDialog } from "@/components/dialogs";
-import { toast } from "@/components/ui/toaster";
-import { ReminderList } from "@/components/widgets/reminder-list";
-import { useSession } from "@/components/providers/session-provider";
-import {
-  collections, awaitingConfirmation, totalOf, COLLECTION_METHOD_LABEL, type Collection,
-} from "@/data/collections";
-import { payablesDueSoon } from "@/data/purchases";
-import { dashboardStats, cashPosition } from "@/data/mock";
+import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Counter, CounterSkeletons } from "@/components/portals/dashboard-counter";
+import { API_BASE_URL, authHeader, useSession } from "@/components/providers/session-provider";
 import { formatMoney, formatCompact, formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-const METHOD_ICON: Record<Collection["method"], typeof Banknote> = {
-  CASH: Banknote,
-  CHEQUE: Banknote,
-  BANK: Landmark,
-  JAZZCASH: Smartphone,
-  EASYPAISA: Smartphone,
+/* GET /reports/dashboard/accountant — one request, everything on the page.
+   Nothing here comes from @/data any more. */
+type QueueRow = {
+  id: number;
+  receiptNo: string;
+  customerName: string;
+  collectedBy: string;
+  collectedOn: string;
+  amount: number;
+  method: string;
+  reference: string | null;
 };
 
-/**
- * The accountant's day is deciding whether money that other people say
- * arrived actually did. This screen leads with exactly that queue, not a
- * chart — the same house rule Sales and Order Dept open on.
- */
+type PayableRow = {
+  id: number;
+  invoiceNo: string;
+  supplier: string;
+  dueDate: string;
+  total: number;
+  balance: number;
+};
+
+type CashAccount = { id: number; name: string; code: string; balance: number };
+
+type Data = {
+  asOf: string;
+  cash: { total: number; breakdown: CashAccount[] };
+  collections: {
+    awaitingCount: number;
+    awaitingTotal: number;
+    confirmedTodayCount: number;
+    confirmedTodayTotal: number;
+    queue: QueueRow[];
+  };
+  money: {
+    receiptsToday: number;
+    paymentsToday: number;
+    receiptsMonth: number;
+    paymentsMonth: number;
+    receiptsPrevMonth: number;
+    paymentsPrevMonth: number;
+  };
+  payables: {
+    openCount: number;
+    openTotal: number;
+    dueSoonCount: number;
+    dueSoonTotal: number;
+    dueSoon: PayableRow[];
+  };
+  receivables: {
+    total: number;
+    current: number;
+    days1To30: number;
+    days31To60: number;
+    days60Plus: number;
+  };
+  expenses: { draftCount: number; draftValue: number };
+};
+
+/** Every failure comes back as { message } -- show the wording the API chose. */
+function apiMessage(e: unknown, fallback: string) {
+  if (axios.isAxiosError(e) && e.response) {
+    return (e.response.data as { message?: string })?.message ?? fallback;
+  }
+  return "Cannot reach the server.";
+}
+
 export function AccountantDashboard() {
   const { user } = useSession();
-  /* The shell does not mount this until the session has resolved, so user
-     is set. An early `return null` here would sit above the hooks below
-     and change the hook count between renders. */
-  const me = user!;
 
+  const [data, setData] = React.useState<Data | null>(null);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
 
-  const awaiting = awaitingConfirmation();
-  const confirmedToday = collections.filter(
-    (c) => c.status === "CONFIRMED" && c.confirmedOn === "2026-08-15"
-  );
-  const duePayables = payablesDueSoon();
+  const load = React.useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await axios.get<Data>(`${API_BASE_URL}/reports/dashboard/accountant`, {
+        headers: authHeader(),
+      });
+      setData(res.data);
+      setError(null);
+    } catch (e) {
+      setError(apiMessage(e, "Could not load the dashboard."));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-  const [confirming, setConfirming] = React.useState<Collection | null>(null);
-  const [bouncing, setBouncing] = React.useState<Collection | null>(null);
+  React.useEffect(() => {
+    /* eslint-disable-next-line react-hooks/set-state-in-effect --
+       axios inside the page is the brief for this project. */
+    void load();
+  }, [load]);
+
+  /* `user` is filled by the session provider before this renders. Reading it
+     after the hooks above keeps the hook count stable between renders. */
+  const firstName = (user?.fullName ?? "").split(" ")[0];
+
+  const awaiting = data?.collections.awaitingCount ?? 0;
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-navy-900 dark:text-white">
-          Good morning, {me.fullName.split(" ")[0]}
-        </h1>
-        <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-          {awaiting.length > 0
-            ? `${awaiting.length} ${awaiting.length === 1 ? "receipt is" : "receipts are"} waiting on your confirmation.`
-            : "Every collection is confirmed. Nothing waiting on you."}
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-navy-900 dark:text-white">
+            Good morning{firstName ? `, ${firstName}` : ""}
+          </h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+            {loading
+              ? "Checking what is waiting on you…"
+              : error
+                ? "The dashboard could not be loaded."
+                : awaiting > 0
+                  ? `${awaiting} ${awaiting === 1 ? "receipt is" : "receipts are"} waiting on your confirmation.`
+                  : "Every collection is confirmed. Nothing waiting on you."}
+          </p>
+        </div>
+        {data && (
+          <div className="text-right shrink-0">
+            <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">
+              Cash &amp; bank
+            </div>
+            <div className="tabular text-2xl font-bold text-navy-900 dark:text-white">
+              {formatCompact(data.cash.total)}
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Counters */}
+      {error && (
+        <Card className="p-4 border-danger/40">
+          <div className="flex items-center gap-3">
+            <AlertCircle className="size-5 text-danger shrink-0" />
+            <div className="flex-1 min-w-0 font-medium text-navy-900 dark:text-white">{error}</div>
+            <Button variant="secondary" size="sm" onClick={() => void load()}>Try again</Button>
+          </div>
+        </Card>
+      )}
+
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Counter
-          label="Awaiting confirmation"
-          value={awaiting.length}
-          icon={Clock}
-          tone="warning"
-          hint={formatCompact(totalOf(awaiting))}
-          href="/accounting/collections"
-        />
-        <Counter
-          label="Confirmed today"
-          value={confirmedToday.length}
-          icon={Check}
-          tone="success"
-          hint={formatCompact(totalOf(confirmedToday))}
-          href="/accounting/collections?tab=CONFIRMED"
-        />
-        <Counter
-          label="Payables due"
-          value={duePayables.length}
-          icon={TrendingDown}
-          tone="danger"
-          hint="overdue or due within 3 days"
-          href="/purchases/invoices"
-        />
-        <Counter
-          label="Recovery 60+ days"
-          value={formatCompact(dashboardStats.arOutstanding.overdue60Plus)}
-          icon={AlertTriangle}
-          tone="info"
-          hint="outstanding, 60 days or older"
-          href="/reports/aging/customer"
-        />
+        {loading || !data ? (
+          <CounterSkeletons count={4} />
+        ) : (
+          <>
+            <Counter
+              label="Awaiting confirmation"
+              value={data.collections.awaitingCount}
+              icon={Clock}
+              tone="warning"
+              hint={formatCompact(data.collections.awaitingTotal)}
+              href="/accounting/collections"
+            />
+            <Counter
+              label="Confirmed today"
+              value={data.collections.confirmedTodayCount}
+              icon={Check}
+              tone="success"
+              hint={formatCompact(data.collections.confirmedTodayTotal)}
+              href="/accounting/collections"
+            />
+            <Counter
+              label="Payables due"
+              value={data.payables.dueSoonCount}
+              icon={TrendingDown}
+              tone="danger"
+              hint={`${formatCompact(data.payables.dueSoonTotal)} · overdue or due in 3 days`}
+              href="/purchases/invoices"
+            />
+            <Counter
+              label="Recovery 60+ days"
+              value={formatCompact(data.receivables.days60Plus)}
+              icon={AlertTriangle}
+              tone="info"
+              hint="outstanding, 60 days or older"
+              href="/reports/aging/customer"
+            />
+          </>
+        )}
       </div>
-
-      {/* What the software is chasing you for */}
-      <ReminderList limit={6} />
 
       <div className="grid gap-6 lg:grid-cols-3">
-        {/* Confirm queue, right on the dashboard */}
+        {/* The confirm queue, right where the accountant lands */}
         <Card className="lg:col-span-2">
           <CardBody>
             <div className="flex items-center justify-between mb-4">
@@ -113,7 +208,7 @@ export function AccountantDashboard() {
                   Confirm collections
                 </h2>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  Oldest first — the ledger waits on your word
+                  Money a rep has taken that has not been confirmed yet
                 </p>
               </div>
               <Button variant="ghost" size="sm" asChild>
@@ -121,155 +216,243 @@ export function AccountantDashboard() {
               </Button>
             </div>
 
-            {awaiting.length === 0 ? (
-              <p className="text-sm text-slate-500 dark:text-slate-400 py-6 text-center">
-                Nothing waiting. The desk is clear.
-              </p>
-            ) : (
+            {loading ? (
               <div className="space-y-2">
-                {awaiting.slice(0, 6).map((c) => {
-                  const Icon = METHOD_ICON[c.method];
-                  return (
-                    <div
-                      key={c.id}
-                      className="flex items-center gap-3 p-3 rounded-lg border border-slate-200 dark:border-navy-700"
-                    >
-                      <Avatar initials={c.customerInitials} size="sm" />
-                      <div className="min-w-0 flex-1">
-                        <div className="text-sm font-medium text-navy-900 dark:text-white truncate">
-                          {c.customerName}
-                        </div>
-                        <div className="tabular text-2xs text-slate-500 dark:text-slate-400">
-                          {c.receiptNo} · {c.collectedBy} · {formatDate(c.collectedOn)}
-                        </div>
+                {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-14" />)}
+              </div>
+            ) : !data || data.collections.queue.length === 0 ? (
+              <EmptyState
+                icon={Check}
+                title="Nothing waiting"
+                description="Every collection has been confirmed."
+              />
+            ) : (
+              <div className="divide-y divide-slate-100 dark:divide-navy-700">
+                {data.collections.queue.map((c) => (
+                  <Link
+                    key={c.id}
+                    href="/accounting/collections"
+                    className="flex items-center gap-3 py-3 hover:bg-slate-50 dark:hover:bg-navy-700/50 -mx-2 px-2 rounded-lg"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-medium text-navy-900 dark:text-white truncate">
+                        {c.customerName}
                       </div>
-                      <Icon className="size-3.5 text-slate-400 flex-shrink-0 hidden sm:block" />
-                      <div className="hidden sm:block text-2xs text-slate-500 dark:text-slate-400 w-24 flex-shrink-0">
-                        {COLLECTION_METHOD_LABEL[c.method]}
-                      </div>
-                      <div className="tabular text-sm font-bold text-navy-900 dark:text-white w-24 text-right flex-shrink-0">
-                        {formatMoney(c.amount)}
-                      </div>
-                      <div className="flex items-center gap-1 flex-shrink-0">
-                        <Button variant="accent" size="sm" className="gap-1" onClick={() => setConfirming(c)}>
-                          <Check /> Confirm
-                        </Button>
-                        <Button
-                          variant="ghost" size="icon-sm" className="text-danger"
-                          aria-label="Mark bounced" onClick={() => setBouncing(c)}
-                        >
-                          <X />
-                        </Button>
+                      <div className="text-2xs text-slate-500 dark:text-slate-400 mt-0.5">
+                        <span className="tabular">{c.receiptNo}</span> · {c.collectedBy} · {formatDate(c.collectedOn)}
                       </div>
                     </div>
-                  );
-                })}
+                    <Badge variant="muted">{c.method}</Badge>
+                    <div className="tabular text-sm font-semibold text-navy-900 dark:text-white shrink-0">
+                      {formatMoney(c.amount)}
+                    </div>
+                  </Link>
+                ))}
               </div>
             )}
           </CardBody>
         </Card>
 
-        {/* Cash position */}
+        <div className="space-y-6">
+          {/* Cash position, straight from the ledger */}
+          <Card>
+            <CardBody>
+              <h2 className="text-base font-semibold text-navy-900 dark:text-white">Cash position</h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                Posted movement, not a guess
+              </p>
+
+              {loading ? (
+                <div className="mt-4 space-y-2">
+                  {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-8" />)}
+                </div>
+              ) : !data ? null : (
+                <>
+                  <div className="tabular text-3xl font-bold text-navy-900 dark:text-white mt-3">
+                    {formatMoney(data.cash.total)}
+                  </div>
+                  <div className="mt-4 space-y-2">
+                    {data.cash.breakdown.map((b) => (
+                      <Link
+                        key={b.id}
+                        href={`/accounting/ledger?accountId=${b.id}`}
+                        className="flex items-center justify-between text-sm py-1 hover:text-navy-900 dark:hover:text-white"
+                      >
+                        <span className="text-slate-600 dark:text-slate-300 truncate">{b.name}</span>
+                        <span className={cn("tabular font-medium shrink-0 ml-3",
+                          b.balance < 0 ? "text-danger" : "text-navy-900 dark:text-white")}>
+                          {formatMoney(b.balance)}
+                        </span>
+                      </Link>
+                    ))}
+                  </div>
+                </>
+              )}
+            </CardBody>
+          </Card>
+
+          {/* Money in and out */}
+          <Card>
+            <CardBody>
+              <h2 className="text-base font-semibold text-navy-900 dark:text-white">Money moved</h2>
+              {loading || !data ? (
+                <div className="mt-4 space-y-2">
+                  {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-8" />)}
+                </div>
+              ) : (
+                <dl className="mt-3 space-y-2.5 text-sm">
+                  <Row
+                    label="In today"
+                    value={formatMoney(data.money.receiptsToday)}
+                    icon={ArrowDownToLine}
+                    tone="text-success"
+                  />
+                  <Row
+                    label="Out today"
+                    value={formatMoney(data.money.paymentsToday)}
+                    icon={ArrowUpFromLine}
+                    tone="text-danger"
+                  />
+                  <div className="pt-2 mt-2 border-t border-slate-100 dark:border-navy-700 space-y-2.5">
+                    <Row label="In this month" value={formatMoney(data.money.receiptsMonth)} tone="text-success" />
+                    <Row label="Out this month" value={formatMoney(data.money.paymentsMonth)} tone="text-danger" />
+                    <Row
+                      label="Last month, in"
+                      value={formatMoney(data.money.receiptsPrevMonth)}
+                      tone="text-slate-500 dark:text-slate-400"
+                    />
+                  </div>
+                </dl>
+              )}
+            </CardBody>
+          </Card>
+        </div>
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        {/* Receivables aging */}
         <Card>
           <CardBody>
-            <h2 className="text-base font-semibold text-navy-900 dark:text-white">Cash position</h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 mb-4">
-              What is actually liquid right now
-            </p>
-
-            <div className="tabular text-2xl font-bold text-navy-900 dark:text-white mb-4">
-              {formatMoney(cashPosition.total)}
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-base font-semibold text-navy-900 dark:text-white">What customers owe</h2>
+              <Button variant="ghost" size="sm" asChild>
+                <Link href="/reports/aging/customer">Recovery report <ArrowRight /></Link>
+              </Button>
             </div>
-
-            <div className="space-y-3">
-              {cashPosition.breakdown.map((b) => (
-                <div key={b.label} className="flex items-center gap-3">
-                  <div className="min-w-0 flex-1">
-                    <div className="text-sm font-medium text-navy-900 dark:text-white">{b.label}</div>
-                    <div className="text-2xs text-slate-500 dark:text-slate-400">{b.sublabel}</div>
-                  </div>
-                  <div className="tabular text-sm font-bold text-navy-900 dark:text-white">
-                    {formatCompact(b.value)}
-                  </div>
+            {loading || !data ? (
+              <div className="space-y-2">
+                {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-8" />)}
+              </div>
+            ) : (
+              <>
+                <div className="tabular text-2xl font-bold text-navy-900 dark:text-white mb-3">
+                  {formatMoney(data.receivables.total)}
                 </div>
-              ))}
-            </div>
+                <dl className="space-y-2.5 text-sm">
+                  <Row label="Not due yet" value={formatMoney(data.receivables.current)} />
+                  <Row label="1 – 30 days" value={formatMoney(data.receivables.days1To30)} tone="text-warning" />
+                  <Row label="31 – 60 days" value={formatMoney(data.receivables.days31To60)} tone="text-warning" />
+                  <Row label="60+ days" value={formatMoney(data.receivables.days60Plus)} tone="text-danger" />
+                </dl>
+              </>
+            )}
+          </CardBody>
+        </Card>
 
-            <Button variant="secondary" size="md" className="w-full mt-4 justify-center gap-1.5" asChild>
-              <Link href="/accounting/ledgers">
-                <Wallet /> See ledgers <ArrowRight />
-              </Link>
-            </Button>
+        {/* Payables due soon */}
+        <Card>
+          <CardBody>
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <h2 className="text-base font-semibold text-navy-900 dark:text-white">Bills to pay</h2>
+                {data && (
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    {data.payables.openCount} open · {formatMoney(data.payables.openTotal)} outstanding
+                  </p>
+                )}
+              </div>
+              <Button variant="ghost" size="sm" asChild>
+                <Link href="/purchases/invoices">All bills <ArrowRight /></Link>
+              </Button>
+            </div>
+            {loading ? (
+              <div className="space-y-2">
+                {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-12" />)}
+              </div>
+            ) : !data || data.payables.dueSoon.length === 0 ? (
+              <EmptyState icon={Check} title="Nothing due" description="No bill is overdue or due within three days." />
+            ) : (
+              <div className="divide-y divide-slate-100 dark:divide-navy-700">
+                {data.payables.dueSoon.map((p) => (
+                  <Link
+                    key={p.id}
+                    href={`/purchases/invoices/${p.id}`}
+                    className="flex items-center gap-3 py-2.5 hover:bg-slate-50 dark:hover:bg-navy-700/50 -mx-2 px-2 rounded-lg"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-medium text-navy-900 dark:text-white truncate">{p.supplier}</div>
+                      <div className="text-2xs text-slate-500 dark:text-slate-400 mt-0.5">
+                        <span className="tabular">{p.invoiceNo}</span> · due {formatDate(p.dueDate)}
+                      </div>
+                    </div>
+                    <div className="tabular text-sm font-semibold text-danger shrink-0">
+                      {formatMoney(p.balance)}
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )}
           </CardBody>
         </Card>
       </div>
 
-      <ConfirmDialog
-        open={confirming !== null}
-        onOpenChange={(o) => !o && setConfirming(null)}
-        title={`Confirm ${formatMoney(confirming?.amount ?? 0)} from ${confirming?.customerName}?`}
-        description="The customer's balance drops by this amount and it posts to the ledger. Only do this once the cash or cheque is actually in hand."
-        variant="info"
-        confirmLabel="Yes, confirm it"
-        onConfirm={() => {
-          toast.success("Collection confirmed", {
-            description: `${confirming?.receiptNo} posted to the ledger.`,
-          });
-          setConfirming(null);
-        }}
-      />
+      {/* Expenses awaiting this accountant */}
+      {data && data.expenses.draftCount > 0 && (
+        <Card className="border-warning/30 bg-warning/5">
+          <CardBody className="py-4">
+            <div className="flex items-center gap-3">
+              <Receipt className="size-5 text-warning shrink-0" />
+              <div className="flex-1 min-w-0 text-sm text-navy-900 dark:text-white">
+                <strong>{data.expenses.draftCount}</strong>{" "}
+                {data.expenses.draftCount === 1 ? "expense is" : "expenses are"} waiting for approval,
+                worth {formatMoney(data.expenses.draftValue)}.
+              </div>
+              <Button variant="secondary" size="sm" asChild>
+                <Link href="/accounting/expenses?status=DRAFT">Review</Link>
+              </Button>
+            </div>
+          </CardBody>
+        </Card>
+      )}
 
-      <ConfirmDialog
-        open={bouncing !== null}
-        onOpenChange={(o) => !o && setBouncing(null)}
-        title={`Mark ${bouncing?.receiptNo} bounced?`}
-        description={`${bouncing?.customerName}'s balance goes back up by ${formatMoney(bouncing?.amount ?? 0)}. The receipt stays on record as evidence of what was promised.`}
-        variant="danger"
-        confirmLabel="Yes, it bounced"
-        requireReason
-        reasonLabel="What happened?"
-        reasonPlaceholder="e.g. insufficient funds, wrong account…"
-        onConfirm={(r) => {
-          toast.success("Marked bounced", { description: `${bouncing?.receiptNo} — ${r}` });
-          setBouncing(null);
-        }}
-      />
+      {data && (
+        <p className="text-2xs text-slate-400 dark:text-slate-500 text-right">
+          Figures as at {formatDate(data.asOf)}
+          <span className="mx-1.5">·</span>
+          <Wallet className="size-3 inline-block -mt-0.5" /> posted entries only
+        </p>
+      )}
     </div>
   );
 }
 
-const TONE_BG: Record<string, string> = {
-  yellow: "bg-brand-yellow/10 text-brand-yellow",
-  info: "bg-info/10 text-info",
-  danger: "bg-danger/10 text-danger",
-  success: "bg-success/10 text-success",
-  warning: "bg-warning/10 text-warning",
-};
-
-function Counter({
-  label, value, icon: Icon, tone, hint, href,
+function Row({
+  label, value, icon: Icon, tone,
 }: {
-  label: string; value: number | string; icon: typeof Clock;
-  tone: string; hint: string; href: string;
+  label: string;
+  value: string;
+  icon?: React.ComponentType<{ className?: string }>;
+  tone?: string;
 }) {
   return (
-    <Link href={href}>
-      <Card className="p-5 hover:border-brand-yellow/40 transition-colors h-full">
-        <div className="flex items-start justify-between">
-          <div>
-            <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">
-              {label}
-            </div>
-            <div className="tabular text-3xl font-bold text-navy-900 dark:text-white mt-1.5">
-              {value}
-            </div>
-            <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">{hint}</div>
-          </div>
-          <div className={cn("size-10 rounded-lg flex items-center justify-center", TONE_BG[tone])}>
-            <Icon className="size-5" />
-          </div>
-        </div>
-      </Card>
-    </Link>
+    <div className="flex items-center justify-between gap-3">
+      <dt className="text-slate-500 dark:text-slate-400 inline-flex items-center gap-1.5">
+        {Icon && <Icon className="size-3.5" />}
+        {label}
+      </dt>
+      <dd className={cn("tabular font-medium shrink-0", tone ?? "text-navy-900 dark:text-white")}>
+        {value}
+      </dd>
+    </div>
   );
 }

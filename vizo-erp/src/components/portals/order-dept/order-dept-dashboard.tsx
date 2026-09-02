@@ -2,138 +2,256 @@
 
 import * as React from "react";
 import Link from "next/link";
+import axios from "axios";
 import {
-  Inbox, PackageCheck, Send, PackageX, ArrowRight, AlertTriangle,
-  ShoppingBag, ArrowLeftRight, ChevronRight,
+  Inbox, PackageCheck, Send, PackageX, ArrowRight, AlertCircle,
+  Truck, TriangleAlert, ShieldAlert, Boxes,
 } from "lucide-react";
 import { Card, CardBody } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Avatar } from "@/components/ui/avatar";
-import { StatusPill, Badge } from "@/components/ui/badge";
-import { ReminderList } from "@/components/widgets/reminder-list";
-import { useSession } from "@/components/providers/session-provider";
-import { orders, getStatusVariant, DELIVERY_STATE_VARIANT } from "@/data/sales";
-import { claims, openClaims, claimValue } from "@/data/claims";
-import { products } from "@/data/products";
-import { getChannel } from "@/data/settings";
+import { Badge, StatusPill } from "@/components/ui/badge";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Counter, CounterSkeletons } from "@/components/portals/dashboard-counter";
+import { API_BASE_URL, authHeader, useSession } from "@/components/providers/session-provider";
 import { formatMoney, formatCompact, formatDate } from "@/lib/format";
-import { statusLabel } from "@/lib/labels";
 import { cn } from "@/lib/utils";
 
-/**
- * The order department is the floor of this business: orders land here, stock
- * gets moved and packed, consignments go out, and faulty pieces come back.
- * The screen is a work queue, not a report.
- */
+/* GET /reports/dashboard/order-dept — one request, everything on the page. */
+type QueueOrder = {
+  id: number;
+  orderNo: string;
+  customer: string;
+  orderDate: string;
+  deliveryDate: string | null;
+  total: number;
+  status: string;
+  statusName: string;
+  itemCount: number;
+};
+
+type LowStockItem = { id: number; sku: string; name: string; minQty: number; onHand: number };
+
+type OpenClaim = {
+  id: number;
+  claimNo: string;
+  customer: string;
+  product: string;
+  quantity: number;
+  value: number;
+  stage: string;
+  receivedOn: string;
+  remindersSent: number;
+};
+
+type Data = {
+  asOf: string;
+  orders: {
+    submitted: number;
+    submittedValue: number;
+    confirmed: number;
+    processing: number;
+    packed: number;
+    creditHold: number;
+    creditHoldValue: number;
+    queue: QueueOrder[];
+  };
+  packing: { waiting: number; packed: number };
+  dispatch: {
+    dispatchedToday: number;
+    awaitingDispatch: number;
+    inTransit: number;
+    transfersInTransit: number;
+  };
+  stock: { lowCount: number; items: LowStockItem[] };
+  claims: { openCount: number; openValue: number; items: OpenClaim[] };
+};
+
+/** Every failure comes back as { message } -- show the wording the API chose. */
+function apiMessage(e: unknown, fallback: string) {
+  if (axios.isAxiosError(e) && e.response) {
+    return (e.response.data as { message?: string })?.message ?? fallback;
+  }
+  return "Cannot reach the server.";
+}
+
+const STATUS_VARIANT: Record<string, "success" | "muted" | "warning" | "danger" | "info"> = {
+  SUBMITTED: "warning",
+  CONFIRMED: "info",
+  PROCESSING: "info",
+  PACKED: "success",
+  CREDIT_HOLD: "danger",
+};
+
 export function OrderDeptDashboard() {
   const { user } = useSession();
-  /* The shell does not mount this until the session has resolved, so user
-     is set. An early `return null` here would sit above the hooks below
-     and change the hook count between renders. */
-  const me = user!;
 
+  const [data, setData] = React.useState<Data | null>(null);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
 
-  const incoming = orders.filter((o) => ["SUBMITTED", "CREDIT_HOLD"].includes(o.status));
-  const toPack = orders.filter((o) => ["CONFIRMED", "PROCESSING"].includes(o.status));
-  const toDispatch = orders.filter((o) => o.status === "PACKED");
-  const toConfirm = orders.filter((o) => {
-    const ch = getChannel(o.channel);
-    return (
-      ch?.confirmedBy !== "sales-rep" &&
-      (o.deliveryState === "AWAITING" || o.deliveryState === "ON_THE_WAY")
-    );
-  });
+  const load = React.useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await axios.get<Data>(`${API_BASE_URL}/reports/dashboard/order-dept`, {
+        headers: authHeader(),
+      });
+      setData(res.data);
+      setError(null);
+    } catch (e) {
+      setError(apiMessage(e, "Could not load the dashboard."));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-  const open = openClaims();
-  const onShelf = claims.filter((c) => c.stage === "RECEIVED");
-  const lowStock = products.filter((p) => p.totalStock <= p.minQty && p.isActive);
+  React.useEffect(() => {
+    /* eslint-disable-next-line react-hooks/set-state-in-effect --
+       axios inside the page is the brief for this project. */
+    void load();
+  }, [load]);
 
-  const queue = [...incoming, ...toPack, ...toDispatch].slice(0, 6);
+  const firstName = (user?.fullName ?? "").split(" ")[0];
+  const waiting = data ? data.orders.submitted + data.orders.confirmed + data.orders.processing : 0;
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-navy-900 dark:text-white">
-            Good morning, {me.fullName.split(" ")[0]}
-          </h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-            {incoming.length > 0
-              ? `${incoming.length} new ${incoming.length === 1 ? "order" : "orders"} came in from the sales team.`
-              : "No new orders waiting."}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="secondary" size="md" className="gap-1.5" asChild>
-            <Link href="/inventory/transfers/new"><ArrowLeftRight /> Move Stock</Link>
-          </Button>
-          <Button variant="accent" size="md" className="gap-1.5" asChild>
-            <Link href="/sales/direct"><ShoppingBag /> Counter Sale</Link>
-          </Button>
-        </div>
+      <div>
+        <h1 className="text-2xl font-bold text-navy-900 dark:text-white">
+          Good morning{firstName ? `, ${firstName}` : ""}
+        </h1>
+        <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+          {loading
+            ? "Checking the queue…"
+            : error
+              ? "The dashboard could not be loaded."
+              : waiting > 0
+                ? `${waiting} ${waiting === 1 ? "order is" : "orders are"} waiting to be worked.`
+                : "The queue is clear. Nothing waiting."}
+        </p>
       </div>
 
-      {/* Work counters */}
+      {error && (
+        <Card className="p-4 border-danger/40">
+          <div className="flex items-center gap-3">
+            <AlertCircle className="size-5 text-danger shrink-0" />
+            <div className="flex-1 min-w-0 font-medium text-navy-900 dark:text-white">{error}</div>
+            <Button variant="secondary" size="sm" onClick={() => void load()}>Try again</Button>
+          </div>
+        </Card>
+      )}
+
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Counter label="New orders" value={incoming.length} icon={Inbox} tone="yellow"
-          hint="from the sales team" href="/sales/orders" />
-        <Counter label="To pack" value={toPack.length + toDispatch.length} icon={PackageCheck} tone="info"
-          hint="confirmed, not out yet" href="/sales/orders" />
-        <Counter label="Confirm delivery" value={toConfirm.length} icon={Send} tone="danger"
-          hint="courier and cargo" href="/delivery" />
-        <Counter label="Claims open" value={open.length} icon={PackageX} tone="warning"
-          hint={`${formatCompact(claimValue(open))} tied up`} href="/claims" />
+        {loading || !data ? (
+          <CounterSkeletons count={4} />
+        ) : (
+          <>
+            <Counter
+              label="New orders"
+              value={data.orders.submitted}
+              icon={Inbox}
+              tone="yellow"
+              hint={formatCompact(data.orders.submittedValue)}
+              href="/sales/orders?status=SUBMITTED"
+            />
+            <Counter
+              label="To pack"
+              value={data.packing.waiting}
+              icon={PackageCheck}
+              tone="info"
+              hint={`${data.packing.packed} already packed`}
+              href="/packing"
+            />
+            <Counter
+              label="Out for delivery"
+              value={data.dispatch.inTransit}
+              icon={Send}
+              tone="danger"
+              hint={`${data.dispatch.awaitingDispatch} still to send`}
+              href="/delivery"
+            />
+            <Counter
+              label="Claims open"
+              value={data.claims.openCount}
+              icon={PackageX}
+              tone="warning"
+              hint={formatCompact(data.claims.openValue)}
+              href="/claims"
+            />
+          </>
+        )}
       </div>
 
-      {/* What the software is chasing you for */}
-      <ReminderList limit={6} />
+      {/* Credit holds are the order department's problem too -- the order is
+          theirs to move and it cannot move until somebody clears it. */}
+      {data && data.orders.creditHold > 0 && (
+        <Card className="border-danger/30 bg-danger/5">
+          <CardBody className="py-4">
+            <div className="flex items-center gap-3">
+              <ShieldAlert className="size-5 text-danger shrink-0" />
+              <div className="flex-1 min-w-0 text-sm text-navy-900 dark:text-white">
+                <strong>{data.orders.creditHold}</strong>{" "}
+                {data.orders.creditHold === 1 ? "order is" : "orders are"} stuck on a credit limit,
+                worth {formatMoney(data.orders.creditHoldValue)}. Nothing can be packed until
+                accounts clears them.
+              </div>
+              <Button variant="secondary" size="sm" asChild>
+                <Link href="/sales/credit-holds">Open</Link>
+              </Button>
+            </div>
+          </CardBody>
+        </Card>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-3">
-        {/* The queue */}
+        {/* The work queue, oldest first */}
         <Card className="lg:col-span-2">
           <CardBody>
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h2 className="text-base font-semibold text-navy-900 dark:text-white">
-                  Order queue
-                </h2>
+                <h2 className="text-base font-semibold text-navy-900 dark:text-white">Work queue</h2>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  Everything waiting on this desk
+                  Oldest first — these are the ones people ring about
                 </p>
               </div>
               <Button variant="ghost" size="sm" asChild>
-                <Link href="/sales/orders">View all <ArrowRight /></Link>
+                <Link href="/sales/orders">All orders <ArrowRight /></Link>
               </Button>
             </div>
 
-            {queue.length === 0 ? (
-              <p className="text-sm text-slate-500 dark:text-slate-400 py-6 text-center">
-                The queue is empty.
-              </p>
-            ) : (
+            {loading ? (
               <div className="space-y-2">
-                {queue.map((o) => (
+                {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-14" />)}
+              </div>
+            ) : !data || data.orders.queue.length === 0 ? (
+              <EmptyState
+                icon={PackageCheck}
+                title="Queue is clear"
+                description="No order is waiting to be worked."
+              />
+            ) : (
+              <div className="divide-y divide-slate-100 dark:divide-navy-700">
+                {data.orders.queue.map((o) => (
                   <Link
                     key={o.id}
                     href={`/sales/orders/${o.id}`}
-                    className="flex items-center gap-3 p-3 rounded-lg border border-slate-200 dark:border-navy-700 hover:border-brand-yellow/40 transition-colors group"
+                    className="flex items-center gap-3 py-3 hover:bg-slate-50 dark:hover:bg-navy-700/50 -mx-2 px-2 rounded-lg"
                   >
-                    <Avatar initials={o.customerInitials} size="sm" />
                     <div className="min-w-0 flex-1">
                       <div className="text-sm font-medium text-navy-900 dark:text-white truncate">
-                        {o.customerName}
+                        {o.customer}
                       </div>
-                      <div className="tabular text-2xs text-slate-500 dark:text-slate-400">
-                        {o.orderNo} · {o.itemCount} items · {o.city}
+                      <div className="text-2xs text-slate-500 dark:text-slate-400 mt-0.5">
+                        <span className="tabular">{o.orderNo}</span> · {formatDate(o.orderDate)} ·{" "}
+                        {o.itemCount} {o.itemCount === 1 ? "item" : "items"}
                       </div>
                     </div>
-                    <StatusPill variant={getStatusVariant(o.status)}>
-                      {statusLabel(o.status)}
+                    <StatusPill variant={STATUS_VARIANT[o.status] ?? "muted"}>
+                      {o.statusName}
                     </StatusPill>
-                    <div className="tabular text-sm font-semibold text-navy-900 dark:text-white w-24 text-right">
+                    <div className="tabular text-sm font-semibold text-navy-900 dark:text-white shrink-0">
                       {formatMoney(o.total)}
                     </div>
-                    <ChevronRight className="size-4 text-slate-300 dark:text-slate-600 opacity-0 group-hover:opacity-100 transition-opacity" />
                   </Link>
                 ))}
               </div>
@@ -142,128 +260,154 @@ export function OrderDeptDashboard() {
         </Card>
 
         <div className="space-y-6">
-          {/* Claim shelf */}
+          {/* Movement */}
           <Card>
             <CardBody>
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-base font-semibold text-navy-900 dark:text-white">
-                  Claim shelf
-                </h2>
-                <Button variant="ghost" size="sm" asChild>
-                  <Link href="/claims">Open <ArrowRight /></Link>
-                </Button>
-              </div>
-              {onShelf.length === 0 ? (
-                <p className="text-xs text-slate-500 dark:text-slate-400">The shelf is clear.</p>
-              ) : (
-                <div className="space-y-2">
-                  {onShelf.slice(0, 4).map((c) => (
-                    <Link
-                      key={c.id}
-                      href={`/claims/${c.id}`}
-                      className="flex items-center gap-2.5 p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-navy-800"
-                    >
-                      <PackageX className="size-4 text-warning flex-shrink-0" />
-                      <div className="min-w-0 flex-1">
-                        <div className="text-xs font-medium text-navy-900 dark:text-white truncate">
-                          {c.qty} × {c.productName}
-                        </div>
-                        <div className="text-2xs text-slate-500 dark:text-slate-400 truncate">
-                          {c.customerName} · {formatDate(c.receivedOn)}
-                        </div>
-                      </div>
-                      <span className="tabular text-2xs font-semibold text-slate-600 dark:text-slate-300">
-                        {formatCompact(c.qty * c.unitCost)}
-                      </span>
-                    </Link>
-                  ))}
+              <h2 className="text-base font-semibold text-navy-900 dark:text-white">On the move</h2>
+              {loading || !data ? (
+                <div className="mt-4 space-y-2">
+                  {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-8" />)}
                 </div>
+              ) : (
+                <dl className="mt-3 space-y-2.5 text-sm">
+                  <Row label="Booked today" value={data.dispatch.dispatchedToday} icon={Truck} />
+                  <Row label="Waiting to be sent" value={data.dispatch.awaitingDispatch} />
+                  <Row label="In transit" value={data.dispatch.inTransit} />
+                  <Row
+                    label="Stock transfers moving"
+                    value={data.dispatch.transfersInTransit}
+                    hint="stock nobody can sell yet"
+                  />
+                </dl>
               )}
             </CardBody>
           </Card>
 
           {/* Low stock */}
-          <Card>
+          <Card className={cn(data && data.stock.lowCount > 0 && "border-warning/30")}>
             <CardBody>
               <div className="flex items-center justify-between mb-3">
-                <h2 className="text-base font-semibold text-navy-900 dark:text-white">
-                  Running low
-                </h2>
+                <h2 className="text-base font-semibold text-navy-900 dark:text-white">Running out</h2>
                 <Button variant="ghost" size="sm" asChild>
-                  <Link href="/inventory/stock-levels">Stock <ArrowRight /></Link>
+                  <Link href="/inventory/stock">Stock <ArrowRight /></Link>
                 </Button>
               </div>
-              {lowStock.length === 0 ? (
-                <p className="text-xs text-slate-500 dark:text-slate-400">Everything is above its minimum.</p>
+              {loading ? (
+                <div className="space-y-2">
+                  {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-10" />)}
+                </div>
+              ) : !data || data.stock.items.length === 0 ? (
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Nothing is below its minimum.
+                </p>
               ) : (
                 <div className="space-y-2">
-                  {lowStock.slice(0, 5).map((p) => (
-                    <div key={p.id} className="flex items-center gap-2.5">
-                      <AlertTriangle
-                        className={cn(
-                          "size-3.5 flex-shrink-0",
-                          p.totalStock <= 0 ? "text-danger" : "text-warning"
-                        )}
-                      />
-                      <div className="min-w-0 flex-1">
-                        <div className="text-xs font-medium text-navy-900 dark:text-white truncate">
-                          {p.name}
-                        </div>
-                        <div className="tabular text-2xs text-slate-500 dark:text-slate-400">
-                          {p.sku}
-                        </div>
-                      </div>
-                      <span
-                        className={cn(
-                          "tabular text-xs font-semibold",
-                          p.totalStock <= 0 ? "text-danger" : "text-warning"
-                        )}
-                      >
-                        {p.totalStock} / {p.minQty}
+                  {data.stock.items.map((p) => (
+                    <Link
+                      key={p.id}
+                      href={`/inventory/products/${p.id}`}
+                      className="flex items-center gap-2 text-sm hover:bg-slate-50 dark:hover:bg-navy-700/50 -mx-2 px-2 py-1.5 rounded-lg"
+                    >
+                      <TriangleAlert className={cn("size-3.5 shrink-0",
+                        p.onHand <= 0 ? "text-danger" : "text-warning")} />
+                      <span className="min-w-0 flex-1 truncate text-slate-700 dark:text-slate-200">
+                        {p.name}
                       </span>
-                    </div>
+                      <span className={cn("tabular text-xs font-semibold shrink-0",
+                        p.onHand <= 0 ? "text-danger" : "text-warning")}>
+                        {p.onHand} / {p.minQty}
+                      </span>
+                    </Link>
                   ))}
+                  {data.stock.lowCount > data.stock.items.length && (
+                    <p className="text-2xs text-slate-500 dark:text-slate-400 pt-1">
+                      and {data.stock.lowCount - data.stock.items.length} more
+                    </p>
+                  )}
                 </div>
               )}
             </CardBody>
           </Card>
         </div>
       </div>
+
+      {/* Claims stuck with suppliers */}
+      <Card>
+        <CardBody>
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h2 className="text-base font-semibold text-navy-900 dark:text-white">Claims still open</h2>
+              {data && (
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  {data.claims.openCount} open · {formatMoney(data.claims.openValue)} tied up
+                </p>
+              )}
+            </div>
+            <Button variant="ghost" size="sm" asChild>
+              <Link href="/claims">All claims <ArrowRight /></Link>
+            </Button>
+          </div>
+          {loading ? (
+            <div className="space-y-2">
+              {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-12" />)}
+            </div>
+          ) : !data || data.claims.items.length === 0 ? (
+            <EmptyState icon={Boxes} title="No open claims" description="Nothing is sitting with a supplier." />
+          ) : (
+            <div className="divide-y divide-slate-100 dark:divide-navy-700">
+              {data.claims.items.map((c) => (
+                <Link
+                  key={c.id}
+                  href={`/claims/${c.id}`}
+                  className="flex items-center gap-3 py-2.5 hover:bg-slate-50 dark:hover:bg-navy-700/50 -mx-2 px-2 rounded-lg"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-medium text-navy-900 dark:text-white truncate">
+                      {c.product}
+                    </div>
+                    <div className="text-2xs text-slate-500 dark:text-slate-400 mt-0.5">
+                      <span className="tabular">{c.claimNo}</span> · {c.customer} · since {formatDate(c.receivedOn)}
+                      {c.remindersSent > 0 && ` · ${c.remindersSent} reminder${c.remindersSent === 1 ? "" : "s"} sent`}
+                    </div>
+                  </div>
+                  <Badge variant="muted">{c.stage}</Badge>
+                  <div className="tabular text-sm font-semibold text-navy-900 dark:text-white shrink-0">
+                    {formatMoney(c.value)}
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
+        </CardBody>
+      </Card>
+
+      {data && (
+        <p className="text-2xs text-slate-400 dark:text-slate-500 text-right">
+          Figures as at {formatDate(data.asOf)}
+        </p>
+      )}
     </div>
   );
 }
 
-const TONE_BG: Record<string, string> = {
-  yellow: "bg-brand-yellow/10 text-brand-yellow",
-  info: "bg-info/10 text-info",
-  danger: "bg-danger/10 text-danger",
-  warning: "bg-warning/10 text-warning",
-};
-
-function Counter({
-  label, value, icon: Icon, tone, hint, href,
+function Row({
+  label, value, icon: Icon, hint,
 }: {
-  label: string; value: number; icon: typeof Inbox;
-  tone: string; hint: string; href: string;
+  label: string;
+  value: number | string;
+  icon?: React.ComponentType<{ className?: string }>;
+  hint?: string;
 }) {
   return (
-    <Link href={href}>
-      <Card className="p-5 hover:border-brand-yellow/40 transition-colors h-full">
-        <div className="flex items-start justify-between">
-          <div>
-            <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">
-              {label}
-            </div>
-            <div className="tabular text-3xl font-bold text-navy-900 dark:text-white mt-1.5">
-              {value}
-            </div>
-            <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">{hint}</div>
-          </div>
-          <div className={cn("size-10 rounded-lg flex items-center justify-center", TONE_BG[tone])}>
-            <Icon className="size-5" />
-          </div>
-        </div>
-      </Card>
-    </Link>
+    <div className="flex items-center justify-between gap-3">
+      <dt className="text-slate-500 dark:text-slate-400 inline-flex items-center gap-1.5 min-w-0">
+        {Icon && <Icon className="size-3.5 shrink-0" />}
+        <span className="truncate">
+          {label}
+          {hint && <span className="block text-2xs text-slate-400 dark:text-slate-500">{hint}</span>}
+        </span>
+      </dt>
+      <dd className="tabular font-medium text-navy-900 dark:text-white shrink-0">{value}</dd>
+    </div>
   );
 }
