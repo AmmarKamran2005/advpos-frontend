@@ -16,10 +16,10 @@ day to day.
 |---|---|
 | **Frontend** | `AmmarKamran2005/advpos-frontend` @ `main` |
 | **Backend** | `muhammadtalhabinsuhail/vizo-backend` @ `master`. Talha's last was `aa510f1` (2026-08-27). |
-| **Database** | Neon PostgreSQL 18, Singapore. PascalCase columns. Real data, shared with Talha. Migrations **08** through **12** are applied. |
-| **API** | 27 controllers. Every document is archived to Cloudinary **when it is created**; Print and Download open that stored file. Ten list screens export a real `.xlsx`. Accounting now has full CRUD, and posting an expense or voucher writes the ledger entry. |
-| **Screens** | 92 app pages. **89 on live data.** What is left is **3 dashboards** (accountant, order-dept, sales) and **6 hardcoded summary numbers** on 2 pages -- full list in `backend/database/db_ans.pdf`. |
-| **Gate** | `tsc` clean · eslint **0 errors, 65 warnings** (was 67) · `next build` **84 routes** · backend builds with 0 errors |
+| **Database** | Neon PostgreSQL 18, Singapore. PascalCase columns. Migrations **08** through **14** are applied. |
+| **API** | 29 controllers. Documents archived to Cloudinary on create. Ten `.xlsx` exports. Accounting has full CRUD. **Notifications write on 40 events and push to browsers.** **AI reads numbers the database worked out — it never calculates.** |
+| **Screens** | 95 app pages. **All four dashboards live.** Nothing renders a hard-coded business figure. |
+| **Gate** | `tsc` clean · eslint **0 errors, 65 warnings** · `next build` succeeds · backend builds with 0 errors |
 
 ### ⚠️ Read before touching ANY repo
 
@@ -29,6 +29,173 @@ day to day.
 **Always `git fetch` before staging — on the frontend as well as the backend.**
 A `--force` here would delete a day of his work. Both remotes were unchanged
 when this session pushed (`32fd4a2` / `aa510f1`).
+
+---
+
+## 2026-09-02 — The completion order: dashboards, notifications, AI
+
+Everything in the order shipped, plus one thing that was not in it and stopped
+the whole application dead.
+
+### Configuration lives in `appsettings.json` — by decision
+
+Earlier in this session the five credentials in `vizo-backend/appsettings.json`
+(the Neon connection string, the JWT signing key, both Cloudinary API secrets
+and the Gmail app password) were moved out to User Secrets / environment
+variables. **The project owner reversed that.** They are back in
+`appsettings.json`, which is committed, and that file is now the single source
+of truth again:
+
+- `Program.cs` no longer checks for missing secrets at startup, and its header
+  describes the arrangement as it actually is.
+- `UserSecretsId` is off the csproj and the local User Secrets store is empty,
+  so nothing silently overrides the file.
+- `SETUP.md` §6 documents `appsettings.json` as the place to look.
+- Frontend variables stay in `vizo-erp/.env.local`, which is not committed.
+  Copy `.env.example` and fill it in.
+
+**`NEXT_PUBLIC_VAPID_PUBLIC_KEY` in `.env.local` must be the exact pair of
+`VapidSettings:PrivateKey` in `appsettings.json`.** They match right now. If they
+ever drift, browsers subscribe successfully and every push to them is then
+rejected, which looks like push simply not working.
+
+What this means in practice: this repository is public, so the database
+password, the JWT signing key, both Cloudinary secrets and the Gmail app
+password are readable by anyone who opens it. That is the owner's call. If it is
+ever revisited, the values have to be rotated at Neon, Cloudinary and Google —
+taking them out of the file does not take them out of the history.
+
+### 🔴 The ledger was frozen
+
+The fiscal calendar ended 31 Aug 2026. On 1 September every posting in the
+application began failing:
+
+```
+No fiscal period covers 2026-09-02, so EXP-26-0029 cannot be posted.
+```
+
+Expense approval, voucher posting, journal entries — all of it. The guard was
+right; nobody had opened the next month. `database/14_fiscal_periods_forward.sql`
+opens them through 2027.
+
+**This will happen again when those run out.** The proper fix is for the
+period-close screen to open the next month when it closes one.
+
+### Admin email
+
+`admin@advpos.pk` → `vizo.com.pk@gmail.com`, in the live database and in
+`02_seed.sql`, `05_auth.sql`, `06_neon_auth.sql`, `API_CONTRACT.md` and
+`SETUP.md`. **The password hash was not touched** — it is still `Admin@1234`.
+
+### The three mock dashboards
+
+Accountant, order-dept and sales were built entirely from `@/data` files. They
+are the first screen each role sees, and every figure belonged to nobody. One
+endpoint each now (`/reports/dashboard/*`), and the sales one is scoped to the
+signed-in rep by the API rather than filtered in the page.
+
+"My customers" there means assigned to this rep **or** sold to by them. The
+assignment alone was too narrow — in this database plenty of orders are taken by
+somebody the customer is not assigned to.
+
+### Figures that were typed into the markup
+
+| Page | Said | Actually |
+|---|---|---|
+| `/parties/suppliers` | Open POs 8, Pending GRNs 2 | 3 and 3 |
+| `/purchases/grns` | 5 this week, 1,000 units | 1 and 3,945 |
+
+Both pages were otherwise entirely live, which is the worst place for an
+invented number — nobody checks a page that looks trustworthy.
+
+### Notifications, and Web Push
+
+The `Notification` table has existed since the first schema with a controller
+that could read it and **not one line anywhere that wrote to it**.
+`Services/PushNotificationService.cs` closes that: it writes the bell row, then
+tries the person's browsers. A failure never fails the request that caused it.
+
+**Every title reads `VIZO — <what happened>`** — "VIZO — Order created by
+Zara". The icon is the VIZO mark, generated from `public/vizo-logo.png` onto a
+square so the wordmark is not stretched; the badge is a separate
+white-on-transparent file because Android draws it as a silhouette.
+
+All **40** mapped trigger points are wired. Three could not be done as written,
+and say so instead of pretending:
+
+- **A4** "transfer sent" is not separable from "transfer created" — one action
+  does both. Needs a status column on `StockTransfer`.
+- **F3** nothing here finishes a backup; it creates the row. The notification
+  says "started".
+- **F4** there is no failed-attempt counter and no automatic lock. Failures are
+  counted in memory and the administrator is told, so they can lock the account
+  by hand. A real lockout wants a column on `Employee`.
+
+Per-user, per-kind on/off ships **with** it, not after — 42 kinds at
+`/profile/notifications`. Without it people mute everything inside a fortnight
+and the credit-limit alert goes quiet too.
+
+### AI — the model never calculates
+
+Every number is computed in SQL and handed over as finished JSON. The model only
+puts it in order and into a sentence. Ask a model "why did sales drop" without
+the numbers and it writes a fluent, convincing, invented answer that somebody
+then acts on.
+
+```
+GET /reports/sales-drop            100% SQL, no AI at all
+GET /reports/sales-drop/explain    the same numbers, explained
+GET /reports/recovery-priority     who to ring, by who will actually pay
+GET /reports/customers/at-risk     who is drifting away
+GET /reports/demand-forecast       moving average; AI only comments
+GET /reports/dead-stock/advice     what to do with what will not sell
+GET /reports/margin-watch          thin and negative margins
+GET /reports/month-end-summary     the month in one page
+POST /reports/ask                  a question, in Urdu or English
+```
+
+`/reports/ask` is the one to be careful with. The model is shown a **fixed menu**
+of reports (`Services/ReportCatalogue.cs`) and picks one. It never writes SQL and
+never sees a connection — a model that can write a query will eventually write a
+`DELETE` while sounding entirely reasonable.
+
+`NightlyInsightsService` runs once a night: the low-stock digest as one bundled
+message, and an anomaly check whose deviation maths is mean-and-standard-
+deviation over 90 days. AI only words the survivors. Asking a model "is anything
+wrong today" every night produces something wrong every night.
+
+**No Gemini key is set.** Every AI surface was verified with no key and with a
+bad one: the figures always arrive, `explanation` is null, and the panel says so.
+Set `Gemini:ApiKey` in user-secrets to switch it on.
+
+### Also
+
+- `AuthController` answered a failed sign-in with
+  `save C:/Program Files/Git/api/auth/login` — a Git-Bash path expansion that
+  got committed, and that users could see.
+- The `Filters` button in `FilterBar` is gone. It had no `onClick` on any of the
+  twelve pages that rendered it.
+- `lib/app-config.ts` holds the config client components need; importing from
+  `@/data/settings` was shipping 767 lines of seed data to the browser.
+- `.env.example` is no longer gitignored — it was the only record of which
+  variables exist, and `NEXT_PUBLIC_VAPID_PUBLIC_KEY` is invisible until push
+  silently fails.
+
+### Left undone, on purpose
+
+- **Push was never received on a real device.** The sandboxed preview browser
+  blocks notification permission, so the subscribe → receive round trip is
+  unproven. Everything either side of it is: the bell row is written on real
+  events, `/push/config` serves the key, preferences persist. Open
+  `/profile/notifications` in Chrome and press **Send a test notification**.
+- **iPhone needs the app on the Home Screen.** Safari has supported push since
+  16.4 but not from a plain tab. The page says so rather than offering a switch
+  that cannot work.
+- **`ReminderList` is still mock** (`@/data/reminders`). No dashboard renders it
+  any more, but the widget is still there.
+- **Test rows in the live database** — orders ORD-26-0154/0155, expenses
+  EXP-26-0027 to 0029, and the reversed/cancelled documents from proving the
+  endpoints. Correctly modelled, but not real business records.
 
 ---
 

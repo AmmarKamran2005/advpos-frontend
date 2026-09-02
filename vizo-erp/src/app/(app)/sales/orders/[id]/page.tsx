@@ -204,7 +204,10 @@ export default function OrderDetailPage() {
       await load();
       return res.data.pdfUrl;
     }, attachment);
-    if (!opened) toast.error("Could not open the bill", { description: "Try again in a moment." });
+    if (!opened) {
+      console.log(opened);
+      toast.error("Could not open the bill", { description: "Try again in a moment." });
+    }
   }
 
   if (loading) {
@@ -252,11 +255,13 @@ export default function OrderDetailPage() {
 
   /* The next step, worked out from where the order actually is. */
   const nextAction = (() => {
+
+    console.log(order.status)
     if (order.status === "DRAFT") {
       return { key: "SUBMITTED", label: "Send to Order Dept", icon: Send, forEveryone: true };
     }
     if (!runsTheFloor) return null;
-    if (order.status === "SUBMITTED") return { key: "CONFIRMED", label: "Confirm", icon: CheckCircle2 };
+    if (order.status === "SUBMITTED" || order.status === "INVOICED") return { key: "CONFIRMED", label: "Confirm", icon: CheckCircle2 };
     if (order.status === "CONFIRMED") return { key: "PACKED", label: "Pack", icon: Package };
     if (order.status === "PACKED") return { key: "DISPATCHED", label: "Dispatch", icon: Truck };
     if (order.status === "DISPATCHED") return { key: "DELIVERED", label: "Mark delivered", icon: CheckCircle2 };

@@ -59,8 +59,16 @@ function apiMessage(e: unknown, fallback: string) {
 import { formatCompact } from "@/lib/format";
 import { useSession } from "@/components/providers/session-provider";
 import { cn } from "@/lib/utils";
+import { AtRiskCustomers } from "@/components/widgets/at-risk-customers";
+
+type Tab = "all" | "at-risk";
 
 export default function CustomersPage() {
+  /* Two views of the same people. "At risk" is a different question -- who is
+     drifting away -- and it comes from its own endpoint, so it is a tab rather
+     than a filter on the list below. */
+  const [tab, setTab] = React.useState<Tab>("all");
+
   const [search, setSearch] = React.useState("");
   const [rows, setRows] = React.useState<Party[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -202,6 +210,33 @@ export default function CustomersPage() {
       )}
 
 
+      <div className="flex items-center gap-1 mb-5 border-b border-slate-200 dark:border-navy-700">
+        {([
+          { key: "all", label: "All customers" },
+          { key: "at-risk", label: "At risk" },
+        ] as { key: Tab; label: string }[]).map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className={cn(
+              "relative inline-flex items-center px-3.5 py-2.5 text-sm font-medium transition-colors -mb-px outline-none",
+              tab === t.key
+                ? "text-navy-900 dark:text-white"
+                : "text-slate-500 hover:text-navy-900 dark:text-slate-400 dark:hover:text-white"
+            )}
+          >
+            {t.label}
+            {tab === t.key && (
+              <span className="absolute left-2 right-2 -bottom-px h-0.5 bg-brand-yellow rounded-t-full" />
+            )}
+          </button>
+        ))}
+      </div>
+
+      {tab === "at-risk" ? (
+        <AtRiskCustomers />
+      ) : (
+      <>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <Card className="p-4">
           <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">
@@ -260,6 +295,8 @@ export default function CustomersPage() {
           <DataTable columns={columns} data={filtered} rowHref={(p) => `/parties/${p.id}`} />
         )}
       </Card>
+      </>
+      )}
     </>
   );
 }

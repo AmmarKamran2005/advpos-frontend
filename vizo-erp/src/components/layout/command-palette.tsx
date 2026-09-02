@@ -66,6 +66,9 @@ export function CommandPalette() {
   ] as (Action & { perm: string | null })[]).filter((a) => a.perm === null || can(a.perm));
 
   const actions: Action[] = ([
+    /* The question box. First in the list because Cmd+K is where people
+       already go when they do not know which screen holds the answer. */
+    { label: "Ask a question",           icon: Sparkles, href: "/reports/ask",         shortcut: "?", keywords: "ask ai question sawal report why kyun", perm: "reports.view" },
     { label: "Create New Order",         icon: Plus, href: "/sales/orders/new",        shortcut: "O", keywords: "new order create",             perm: "orders.create" },
     { label: "Create New Invoice",       icon: Plus, href: "/sales/invoices/new",      shortcut: "I", keywords: "new invoice create",           perm: "invoices.create" },
     { label: "Create New Purchase Order",icon: Plus, href: "/purchases/orders/new",    shortcut: "P", keywords: "new po purchase",              perm: "purchases.manage" },

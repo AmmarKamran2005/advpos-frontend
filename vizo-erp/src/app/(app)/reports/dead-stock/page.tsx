@@ -4,6 +4,7 @@ import * as React from "react";
 import axios from "axios";
 import { Archive, Package, AlertCircle } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
+import { AiInsight } from "@/components/widgets/ai-insight";
 import { ReportToolbar } from "@/components/widgets/report-toolbar";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -209,6 +210,16 @@ export default function DeadStockPage() {
           <DataTable columns={columns} data={data.items} rowHref={(p) => `/inventory/products/${p.id}`} pageSize={15} />
         )}
       </Card>
+
+      {/* Feature #5. The report already knows what is dead; this says what to
+          do with each -- a discount it can survive, a bundle, or send it back. */}
+      <AiInsight
+        className="mt-6"
+        endpoint="/reports/dead-stock/advice"
+        params={{ days }}
+        label="What should I do with this?"
+        hint="Uses each item's margin to suggest a discount it can actually take, or a bundle, or a return."
+      />
     </>
   );
 }

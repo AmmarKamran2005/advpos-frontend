@@ -145,6 +145,26 @@ export function TopBar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
 
   const visibleQuickCreate = quickCreate.filter((qc) => can(qc.perm));
 
+
+  function formatDate(isoString: string) {
+  if (!isoString) return "";
+
+  // Trim extra microsecond digits to standard 3-digit milliseconds
+  let safeIso = isoString.replace(/(\.\d{3})\d+/, "$1");
+
+  // Agar timezone info nahi hai, backend UTC bhej raha hai to Z add kardo
+  if (!/Z$|[+-]\d\d:\d\d$/.test(safeIso)) {
+    safeIso += "Z";
+  }
+
+  const date = new Date(safeIso);
+
+  return new Intl.DateTimeFormat("en-US", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(date);
+}
+
   return (
     <header className="sticky top-0 z-20 h-16 bg-white dark:bg-navy-950 border-b border-slate-200 dark:border-navy-800 flex items-center px-3 sm:px-4 gap-2 flex-shrink-0">
       {/* Mobile menu */}
@@ -265,7 +285,7 @@ export function TopBar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
                         {n.body}
                       </div>
                       <div className="text-2xs text-slate-400 dark:text-slate-500 mt-0.5">
-                        {ago(n.createdAt)}
+                        {formatDate(n.createdAt)}
                       </div>
                     </div>
                     {!n.isRead && (

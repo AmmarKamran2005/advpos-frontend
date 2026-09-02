@@ -114,6 +114,13 @@ export function proxy(req: NextRequest) {
     return NextResponse.redirect(url);
   }
 
+  if (
+  req.nextUrl.pathname === "/sw.js" ||
+  req.nextUrl.pathname.startsWith("/_next")
+) {
+  return NextResponse.next();
+}
+
   if (PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {
     return NextResponse.next();
   }

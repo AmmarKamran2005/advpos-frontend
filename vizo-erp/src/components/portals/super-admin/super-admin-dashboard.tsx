@@ -19,6 +19,7 @@ import { toast } from "@/components/ui/toaster";
 import { API_BASE_URL, authHeader, useSession } from "@/components/providers/session-provider";
 import { formatMoney, formatCompact, formatDate, formatRelative } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { AiInsight } from "@/components/widgets/ai-insight";
 
 /* ─────────────────────────── shapes from the API ─────────────────────────── */
 
@@ -410,6 +411,14 @@ export function SuperAdminDashboard() {
           </div>
         </>
       )}
+
+      {/* Feature #1, where the owner actually looks. Fires only when
+          pressed -- see components/widgets/ai-insight.tsx. */}
+      <AiInsight
+        endpoint="/reports/sales-drop/explain"
+        label="Explain the numbers"
+        hint="Breaks this month against last into customers, products, stock-outs, pricing and costs, then says which of them account for the change."
+      />
 
       <ConfirmDialog
         open={approving !== null}
