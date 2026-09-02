@@ -16,6 +16,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
 import { formatCompact } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { AiInsight } from "@/components/widgets/ai-insight";
 
 /* GET /reports -> headline numbers for this landing page, so it shows something
    real rather than being a menu of links. */
@@ -201,6 +202,15 @@ export default function ReportsPage() {
           </div>
         </div>
       ))}
+      {/* Feature #9. The month in one page, so the owner does not have to log
+          in every day to know how it went. */}
+      <AiInsight
+        className="mt-6"
+        endpoint="/reports/month-end-summary"
+        label="Summarise this month"
+        hint="Revenue against last month, best customers and products, where the money went, and what to watch."
+      />
+
     </>
   );
 }

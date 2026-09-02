@@ -4,6 +4,7 @@ import * as React from "react";
 import axios from "axios";
 import { MessageSquare, AlertCircle } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
+import { AiInsight } from "@/components/widgets/ai-insight";
 import { ReportToolbar } from "@/components/widgets/report-toolbar";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -221,6 +222,15 @@ export default function CustomerAgingPage() {
           </div>
         )}
       </Card>
+
+      {/* Feature #6. Ordered by who is likely to pay rather than who is
+          oldest, and it drafts the WhatsApp message for the first name. */}
+      <AiInsight
+        className="mt-6"
+        endpoint="/reports/recovery-priority"
+        label="Who should I call first?"
+        hint="Weighs the amount, how late it is, and whether they have paid before -- not simply oldest first."
+      />
     </>
   );
 }

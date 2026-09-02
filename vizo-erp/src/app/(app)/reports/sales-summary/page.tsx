@@ -4,6 +4,7 @@ import * as React from "react";
 import axios from "axios";
 import { AlertCircle } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
+import { AiInsight } from "@/components/widgets/ai-insight";
 import { ReportToolbar } from "@/components/widgets/report-toolbar";
 import { Card, CardBody } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -201,6 +202,15 @@ export default function SalesSummaryPage() {
           )}
         </CardBody>
       </Card>
+
+      {/* Feature #1. The numbers above are SQL; this asks what they mean.
+          It fires only when pressed -- see components/widgets/ai-insight.tsx. */}
+      <AiInsight
+        className="mt-6"
+        endpoint="/reports/sales-drop/explain"
+        label="Why did this change?"
+        hint="Compares this month with last, then says which customers, products or stock-outs account for the difference."
+      />
     </>
   );
 }
