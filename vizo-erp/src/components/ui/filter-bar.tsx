@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Search, Filter, X } from "lucide-react";
+import { Search, X } from "lucide-react";
 import { Input } from "./input";
 import { Button } from "./button";
 import { Badge } from "./badge";
@@ -85,19 +85,14 @@ export function FilterBar({
         </div>
       )}
 
-      <div className="flex items-center gap-2 flex-shrink-0">
-        {/* The placeholder Filters button opens nothing. Where a page hands in
-            real filter controls it is worse than useless -- a dead button sat
-            next to the working ones -- so it only renders when there is
-            nothing better to show. */}
-        {!extraActions && (
-          <Button variant="secondary" size="md" className="gap-1.5">
-            <Filter />
-            <span>Filters</span>
-          </Button>
-        )}
-        {extraActions}
-      </div>
+      {/* There used to be a "Filters" button here. It opened nothing, on every
+          page in the app, since the day it was written -- it had no onClick at
+          all. Hiding it only where a page supplied real filters still left it
+          dead on twelve others, so it is gone. A page that wants filters passes
+          them in as extraActions; the ones that do not, show nothing. */}
+      {extraActions && (
+        <div className="flex items-center gap-2 flex-shrink-0">{extraActions}</div>
+      )}
     </div>
   );
 }

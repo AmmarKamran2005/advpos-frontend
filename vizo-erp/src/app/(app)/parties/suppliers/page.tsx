@@ -48,6 +48,14 @@ type Party = {
 
 type PartyPage = { total: number; page: number; pageSize: number; items: Party[] };
 
+/* GET /purchases/summary */
+type PurchasesSummary = {
+  openPos: number;
+  openPoValue: number;
+  pendingGrns: number;
+  payableTotal: number;
+};
+
 /** Every failure comes back as { message } -- show the wording the API chose. */
 function apiMessage(e: unknown, fallback: string) {
   if (axios.isAxiosError(e) && e.response) {
@@ -61,6 +69,10 @@ import { formatCompact, formatDate } from "@/lib/format";
 export default function SuppliersPage() {
   const [search, setSearch] = React.useState("");
   const [rows, setRows] = React.useState<Party[]>([]);
+  /* "Open POs" and "Pending GRNs" were typed into the markup on a page whose
+     every other figure is computed -- the worst place for a made-up number,
+     because nobody thinks to check it. */
+  const [summary, setSummary] = React.useState<PurchasesSummary | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -71,6 +83,18 @@ export default function SuppliersPage() {
         headers: authHeader(),
       });
       setRows(res.data.items);
+
+      /* Its own request on purpose. The counts are business-wide, not a
+         property of whichever page of suppliers is being shown, and a failure
+         here must not blank the list. */
+      try {
+        const sum = await axios.get<PurchasesSummary>(`${API_BASE_URL}/purchases/summary`, {
+          headers: authHeader(),
+        });
+        setSummary(sum.data);
+      } catch {
+        setSummary(null);
+      }
       setError(null);
     } catch (e) {
       setError(apiMessage(e, "Could not load the supplier list."));
@@ -230,13 +254,13 @@ export default function SuppliersPage() {
           <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">
             Open POs
           </div>
-          <div className="text-2xl tabular font-bold text-info mt-1">8</div>
+          <div className="text-2xl tabular font-bold text-info mt-1">{summary?.openPos ?? "—"}</div>
         </Card>
         <Card className="p-4">
           <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">
             Pending GRNs
           </div>
-          <div className="text-2xl tabular font-bold text-navy-900 dark:text-white mt-1">2</div>
+          <div className="text-2xl tabular font-bold text-navy-900 dark:text-white mt-1">{summary?.pendingGrns ?? "—"}</div>
         </Card>
       </div>
 

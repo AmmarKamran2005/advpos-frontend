@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import axios from "axios";
-import type { RoleKey } from "@/data/settings";
+import type { RoleKey } from "@/lib/app-config";
 
 /**
  * ─────────────────────────────────────────────────────────────────────────────

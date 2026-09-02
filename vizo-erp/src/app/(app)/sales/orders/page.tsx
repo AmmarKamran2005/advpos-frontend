@@ -17,7 +17,7 @@ import axios from "axios";
 import { AlertCircle } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
-import { getChannel, type ChannelKey } from "@/data/settings";
+import { getChannel, type ChannelKey } from "@/lib/app-config";
 
 /* GET /sales/orders -> { total, page, pageSize, items }.
 
