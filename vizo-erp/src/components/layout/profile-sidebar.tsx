@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { User, Lock, Settings } from "lucide-react";
+import { User, Lock, Settings, Bell } from "lucide-react";
 import { Card, CardBody } from "@/components/ui/card";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -17,6 +17,7 @@ const ITEMS = [
   { href: "/profile",             label: "Profile",     icon: User },
   { href: "/profile/security",    label: "Security",    icon: Lock },
   { href: "/profile/preferences", label: "Preferences", icon: Settings },
+  { href: "/profile/notifications", label: "Notifications", icon: Bell },
 ];
 
 export function ProfileSidebar() {
