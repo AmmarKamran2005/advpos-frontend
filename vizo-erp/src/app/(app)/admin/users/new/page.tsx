@@ -144,7 +144,7 @@ function UserForm() {
       locationIds: d.locationIds,
       isActive: d.isActive,
       sendInvite: d.sendInvite,
-      password: null,
+      password: "Warehouse@1234",
     };
 
     try {

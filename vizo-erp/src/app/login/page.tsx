@@ -68,6 +68,8 @@ const PANELS: Panel[] = [
     blurb: "Records money in and out, keeps the ledgers and statements." },
   { role: "super-admin", label: "Super Admin", person: "Umer Memon", email: "vizo.com.pk@gmail.com",
     blurb: "Sees everything, plus users, setup and backup." },
+    { role: "warehouse-keeper", label: "Warehouse Keeper", person: "Umer Memon", email: "muhammadtalhabinsuhail@gmail.com",
+    blurb: "Manages inventory and oversees warehouse operations." },
 ];
 
 function LoginForm() {
