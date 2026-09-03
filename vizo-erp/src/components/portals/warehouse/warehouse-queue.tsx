@@ -4,7 +4,8 @@ import * as React from "react";
 import Link from "next/link";
 import axios from "axios";
 import {
-  Boxes, AlertCircle, RefreshCw, Truck, ChevronDown, Loader2, PackageCheck, TriangleAlert,
+  Boxes, AlertCircle, RefreshCw, Truck, ChevronDown, Loader2, PackageCheck,
+  TriangleAlert, Eye, FileText,
 } from "lucide-react";
 import { Card, CardBody } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -19,9 +20,9 @@ import { cn } from "@/lib/utils";
 /* ───────────────────────────────────────────────────────────────────────────
    THE WAREHOUSE KEEPER'S WHOLE SCREEN
 
-   One job, one page: here are the orders the owner has confirmed, here is what
-   is on each of them, here is whether the shelf can actually cover it, and
-   here is the button that sends it to the order department.
+   One job, one page: here are the orders the office has invoiced, here is what
+   is on each of them, here is whether the shelf can actually cover it, and here
+   are the two buttons this role has -- mark it seen, then send it on.
 
    No prices anywhere. The keeper is picking stock, not selling it, and a
    picking list cluttered with rates and margins is a picking list somebody
@@ -50,6 +51,7 @@ type QueueOrder = {
   statusName: string;
   salesPerson: string | null;
   invoiceNo: string | null;
+  invoiceId: number | null;
   lines: QueueLine[];
 };
 
@@ -90,18 +92,32 @@ export function WarehouseQueue() {
     void load();
   }, [load]);
 
-  async function send(o: QueueOrder) {
+  /* THE KEEPER'S TWO MOVES, AND ONLY THESE TWO.
+
+     An invoiced order is acknowledged first -- "Seen by Warehouse" -- and then
+     sent. Two steps rather than one because they answer different questions:
+     the first says somebody has the order in hand, the second says the goods
+     have physically left for the order desk. Between them is the picking, which
+     can take an afternoon, and during it everybody else can see that the order
+     is being worked on rather than sitting untouched.
+
+     The server holds the same rule (Services/OrderWorkflow.cs) and refuses
+     anything else from this role, so these buttons are the UI for a rule rather
+     than the rule itself. */
+  async function move(o: QueueOrder, statusKey: string, saying: string) {
     setSending(o.id);
     try {
       const res = await axios.patch<{ message: string }>(
         `${API_BASE_URL}/sales/orders/${o.id}/status`,
-        { statusKey: "TO_ORDER_DEPT", reason: null },
+        { statusKey, reason: null },
         { headers: authHeader() }
       );
-      toast.success("On its way", { description: res.data.message });
+      toast.success(saying, { description: res.data.message });
       await load();
     } catch (e) {
-      toast.error("Could not send it", { description: apiMessage(e, "Please try again.") });
+      toast.error("Could not update the order", {
+        description: apiMessage(e, "Please try again."),
+      });
     } finally {
       setSending(null);
     }
@@ -141,7 +157,7 @@ export function WarehouseQueue() {
       <EmptyState
         icon={PackageCheck}
         title="Nothing waiting"
-        description="Every confirmed order has been sent to the order department. You will see the next one here the moment the owner confirms it."
+        description="Every invoiced order has been sent to the order department. The next one appears here as soon as the office bills it."
       />
     );
   }
@@ -207,6 +223,9 @@ export function WarehouseQueue() {
                       <StatusPill variant={o.status === "INVOICED" ? "success" : "info"}>
                         {o.statusName}
                       </StatusPill>
+                      {o.invoiceNo && (
+                        <span className="text-2xs tabular text-slate-400">{o.invoiceNo}</span>
+                      )}
                       {short.length > 0 && (
                         <Badge variant="warning">
                           <TriangleAlert className="size-3" />
@@ -233,16 +252,39 @@ export function WarehouseQueue() {
                   <Button variant="ghost" size="sm" asChild>
                     <Link href={`/sales/orders/${o.id}`}>Open</Link>
                   </Button>
-                  <Button
-                    variant="accent"
-                    size="sm"
-                    className="gap-1.5"
-                    disabled={sending !== null}
-                    onClick={() => void send(o)}
-                  >
-                    {sending === o.id ? <Loader2 className="size-4 animate-spin" /> : <Truck />}
-                    Send to Order Dept
-                  </Button>
+
+                  {/* The bill, so the picking can be checked against what was
+                      actually charged for. Read-only -- the keeper never edits
+                      an invoice. */}
+                  {o.invoiceId !== null && (
+                    <Button variant="ghost" size="icon-sm" aria-label={`Invoice ${o.invoiceNo ?? ""}`} asChild>
+                      <Link href={`/sales/invoices/${o.invoiceId}`}><FileText /></Link>
+                    </Button>
+                  )}
+
+                  {o.status === "INVOICED" ? (
+                    <Button
+                      variant="accent"
+                      size="sm"
+                      className="gap-1.5"
+                      disabled={sending !== null}
+                      onClick={() => void move(o, "SEEN_BY_WAREHOUSE", "Marked as seen")}
+                    >
+                      {sending === o.id ? <Loader2 className="size-4 animate-spin" /> : <Eye />}
+                      Seen by Warehouse
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="accent"
+                      size="sm"
+                      className="gap-1.5"
+                      disabled={sending !== null}
+                      onClick={() => void move(o, "TO_ORDER_DEPT", "On its way")}
+                    >
+                      {sending === o.id ? <Loader2 className="size-4 animate-spin" /> : <Truck />}
+                      Send to Order Dept
+                    </Button>
+                  )}
                 </div>
               </div>
 

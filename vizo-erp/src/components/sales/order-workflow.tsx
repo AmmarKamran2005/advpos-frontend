@@ -236,9 +236,15 @@ export function OrderWorkflowActions({
       )}
 
       {/* The Super Admin's dropdown: any status, forward or backward. Everyone
-          else sees only the moves that are theirs to make, which is usually
-          none once the next-step button above has taken the obvious one. */}
-      {workflow.allowed.length > 0 && (
+          else sees only the moves that are theirs to make.
+
+          Hidden when it would only repeat the button beside it. The warehouse
+          keeper has exactly one move available at a time, and a "Set status"
+          menu whose single entry is the button already on screen is a second
+          way to do the same thing -- which reads as though there must be a
+          difference between them. */}
+      {workflow.allowed.length > 0 &&
+       !(workflow.allowed.length === 1 && workflow.allowed[0].key === workflow.next) && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="md" className="gap-1.5" disabled={disabled}>

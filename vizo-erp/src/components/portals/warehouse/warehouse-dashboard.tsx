@@ -20,7 +20,7 @@ export function WarehouseDashboard() {
     <>
       <PageHeader
         title={`Good to see you, ${firstName}`}
-        subtitle="Orders the owner has confirmed. Pick the stock, then send each one to the order department."
+        subtitle="Invoiced orders. Mark each one seen, pick the stock, then send it to the order department."
       />
       <WarehouseQueue />
     </>

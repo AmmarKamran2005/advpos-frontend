@@ -79,6 +79,10 @@ type Notification = {
   body: string;
   createdAt: string;
   isRead: boolean;
+  /* Where this notification is about, as an in-app path. Null for the few
+     that have no page -- a backup finishing, say -- and those rows are not
+     clickable through. */
+  url: string | null;
 };
 
 /** "2 minutes ago" from a timestamp, so the API can send a real one. */
@@ -98,6 +102,11 @@ export function TopBar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
 
   const [notifications, setNotifications] = React.useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = React.useState(0);
+
+  /* Controlled so that following a notification's link also shuts the panel.
+     Radix leaves it open on a click it did not recognise as a menu action, and
+     a dropdown hanging over the page you just navigated to reads as a bug. */
+  const [bellOpen, setBellOpen] = React.useState(false);
 
   const loadNotifications = React.useCallback(async () => {
     try {
@@ -231,7 +240,7 @@ export function TopBar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
         </DropdownMenu>
 
         {/* Notifications */}
-        <DropdownMenu>
+        <DropdownMenu open={bellOpen} onOpenChange={setBellOpen}>
           <DropdownMenuTrigger asChild>
             <Button
               variant="ghost"
@@ -268,18 +277,20 @@ export function TopBar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
               )}
               {notifications.map((n) => {
                 const Icon = ICON_MAP[n.icon] ?? Bell;
-                return (
-                  <div
-                    key={n.id}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => { if (!n.isRead) void markRead(n.id); }}
-                    onKeyDown={(e) => { if (e.key === "Enter" && !n.isRead) void markRead(n.id); }}
-                    className={cn(
-                      "flex gap-3 p-3 hover:bg-slate-50 dark:hover:bg-navy-700 cursor-pointer transition-colors",
-                      !n.isRead && "bg-brand-yellow-50/50 dark:bg-brand-yellow/5"
-                    )}
-                  >
+
+                /* CLICKING A NOTIFICATION OPENS THE THING IT IS ABOUT.
+
+                   It used to mark the row read and stop there -- the bell told
+                   you an order had been confirmed and left you to go and find
+                   it. The link has existed on the server all along; it simply
+                   never reached this list. It does now, and the row is a real
+                   anchor rather than an onClick, so middle-click, "open in new
+                   tab" and the status-bar preview all work.
+
+                   Rows with no page to open keep the old behaviour: click to
+                   mark read, and nowhere to go. */
+                const body = (
+                  <>
                     <div
                       className={cn(
                         "size-8 rounded-full flex items-center justify-center flex-shrink-0",
@@ -302,6 +313,41 @@ export function TopBar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
                     {!n.isRead && (
                       <span className="size-2 rounded-full bg-brand-yellow flex-shrink-0 mt-2" />
                     )}
+                  </>
+                );
+
+                const rowClass = cn(
+                  "flex gap-3 p-3 hover:bg-slate-50 dark:hover:bg-navy-700 cursor-pointer transition-colors",
+                  !n.isRead && "bg-brand-yellow-50/50 dark:bg-brand-yellow/5"
+                );
+
+                /* Marked read on the way out, not after the navigation -- the
+                   dropdown unmounts as soon as the route changes, and a request
+                   fired from a component that is going away is a request that
+                   may never leave. */
+                const open = () => {
+                  setBellOpen(false);
+                  if (!n.isRead) void markRead(n.id);
+                };
+
+                if (n.url) {
+                  return (
+                    <Link key={n.id} href={n.url} className={rowClass} onClick={open}>
+                      {body}
+                    </Link>
+                  );
+                }
+
+                return (
+                  <div
+                    key={n.id}
+                    role="button"
+                    tabIndex={0}
+                    onClick={open}
+                    onKeyDown={(e) => { if (e.key === "Enter") open(); }}
+                    className={rowClass}
+                  >
+                    {body}
                   </div>
                 );
               })}

@@ -221,9 +221,14 @@ export default function OrdersPage() {
               {exporting ? <Loader2 className="size-4 animate-spin" /> : <Download />}
               <span className="hidden sm:inline">{exporting ? "Exporting…" : "Export"}</span>
             </Button>
-            <Button variant="accent" size="md" className="gap-1.5" asChild>
-              <Link href="/sales/orders/new"><Plus /> New Order</Link>
-            </Button>
+            {/* The warehouse and anybody else without orders.create reads this
+                screen; they do not write to it. Hiding the button is courtesy --
+                the API refuses the POST either way. */}
+            {can("orders.create") && (
+              <Button variant="accent" size="md" className="gap-1.5" asChild>
+                <Link href="/sales/orders/new"><Plus /> New Order</Link>
+              </Button>
+            )}
           </>
         }
       />
@@ -287,9 +292,11 @@ export default function OrdersPage() {
             title="Nothing here"
             description="No orders match this filter."
             action={
-              <Button variant="accent" asChild>
-                <Link href="/sales/orders/new"><Plus /> New Order</Link>
-              </Button>
+              can("orders.create") ? (
+                <Button variant="accent" asChild>
+                  <Link href="/sales/orders/new"><Plus /> New Order</Link>
+                </Button>
+              ) : undefined
             }
           />
         </Card>
