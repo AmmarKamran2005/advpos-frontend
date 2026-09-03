@@ -25,11 +25,19 @@ const STATUS_LABELS: Record<string, string> = {
   /* The client asked for this one by name: "void" reads as nothing to them. */
   VOID: "Deleted",
 
-  /* Customer orders */
-  SUBMITTED: "Sent to Order Dept",
+  /* Customer orders. SUBMITTED used to read "Sent to Order Dept", which was
+     true when that was the next thing that happened to an order. It is not any
+     more: a submitted order is waiting on the owner, and the order department
+     does not see it until the warehouse has picked it. There is now a step
+     called TO_ORDER_DEPT that means what the old label claimed. */
+  SUBMITTED: "Waiting to be confirmed",
   CREDIT_HOLD: "Limit Cross",
+  DECLINED: "Declined",
   PROCESSING: "Being Prepared",
   PACKED: "Packed",
+  TO_ORDER_DEPT: "On way to Order Dept",
+  AT_ORDER_DEPT: "Received at Order Dept",
+  PACKAGING: "Packaging",
   DISPATCHED: "Dispatched",
   INVOICED: "Invoiced",
   DELIVERED: "Delivered",

@@ -10,7 +10,7 @@ import { z } from "zod";
 import axios from "axios";
 import {
   Mail, Lock, Eye, EyeOff, Loader2, AlertCircle, ArrowRight,
-  ShoppingCart, ClipboardList, Wallet, Shield, Check,
+  ShoppingCart, ClipboardList, Wallet, Shield, Check, Boxes,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from "@/components/ui/form";
@@ -41,6 +41,7 @@ const PANEL_ICON: Record<RoleKey, typeof ShoppingCart> = {
   "order-dept": ClipboardList,
   accountant: Wallet,
   "super-admin": Shield,
+  "warehouse-keeper": Boxes,
 };
 
 const PANEL_TONE: Record<RoleKey, { ring: string; chip: string }> = {
@@ -48,6 +49,7 @@ const PANEL_TONE: Record<RoleKey, { ring: string; chip: string }> = {
   "order-dept": { ring: "border-success bg-success/5", chip: "bg-success/15 text-success" },
   accountant: { ring: "border-info bg-info/5", chip: "bg-info/15 text-info" },
   "super-admin": { ring: "border-navy-900 dark:border-white bg-slate-100 dark:bg-navy-800", chip: "bg-slate-200 dark:bg-navy-700 text-navy-900 dark:text-white" },
+  "warehouse-keeper": { ring: "border-warning bg-warning/5", chip: "bg-warning/15 text-warning-dark dark:text-warning" },
 };
 
 /**
@@ -64,7 +66,7 @@ const PANELS: Panel[] = [
     blurb: "Checks stock, packs orders, moves goods and books deliveries." },
   { role: "accountant", label: "Accountant", person: "Hassan Raza", email: "accounts@advpos.pk",
     blurb: "Records money in and out, keeps the ledgers and statements." },
-  { role: "super-admin", label: "Super Admin", person: "Umer Memon", email: "admin@advpos.pk",
+  { role: "super-admin", label: "Super Admin", person: "Umer Memon", email: "vizo.com.pk@gmail.com",
     blurb: "Sees everything, plus users, setup and backup." },
 ];
 

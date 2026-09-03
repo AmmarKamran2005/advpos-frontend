@@ -5,9 +5,9 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import axios from "axios";
 import {
-  MoreHorizontal, AlertCircle, CheckCircle2, Truck, Package,
+  MoreHorizontal, AlertCircle, CheckCircle2,
   FileText, Clock, MapPin, Phone, AlertTriangle, ArrowRight, Printer,
-  MessageCircle, Send, Download, RefreshCw, ShieldCheck, XCircle, Loader2, User as UserIcon,
+  MessageCircle, Download, RefreshCw, ShieldCheck, XCircle, Loader2, User as UserIcon,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardBody } from "@/components/ui/card";
@@ -28,6 +28,10 @@ import { formatMoney, formatDate, formatNumber, formatRelative } from "@/lib/for
 import { toast } from "@/components/ui/toaster";
 import { cn } from "@/lib/utils";
 import { statusLabel } from "@/lib/labels";
+import {
+  OrderChain, OrderWorkflowActions,
+  type Workflow, type OrderPermissions,
+} from "@/components/sales/order-workflow";
 
 /* GET /sales/orders/{id} -- one call carries the header, the real line items,
    what has been paid, where the delivery got to, the invoice if one exists and
@@ -66,12 +70,17 @@ type OrderDetail = {
   activity: Activity[];
 };
 
-const STATE_FLOW = ["DRAFT", "SUBMITTED", "CONFIRMED", "PACKED", "DISPATCHED", "DELIVERED"];
+/* The chain used to be a six-entry array right here, listing a PACKED status
+   the workflow does not have and missing the four it does. It now comes from
+   GET /sales/orders/{id}/workflow, which is the only place the chain is
+   written down. See components/sales/order-workflow.tsx. */
 
 const ORDER_STATUS_VARIANT: Record<string, "success" | "warning" | "danger" | "info" | "muted"> = {
   DRAFT: "muted", SUBMITTED: "info", CREDIT_HOLD: "warning", CONFIRMED: "info",
   PROCESSING: "info", PACKED: "info", DISPATCHED: "info", INVOICED: "success",
   DELIVERED: "success", CANCELLED: "danger", RETURNED: "warning",
+  TO_ORDER_DEPT: "info", AT_ORDER_DEPT: "info", PACKAGING: "info",
+  DECLINED: "danger",
 };
 
 /** What each activity row should look like. Unknown actions still render. */
@@ -105,6 +114,8 @@ export default function OrderDetailPage() {
   const { can } = useSession();
 
   const [order, setOrder] = React.useState<OrderDetail | null>(null);
+  const [workflow, setWorkflow] = React.useState<Workflow | null>(null);
+  const [perms, setPerms] = React.useState<OrderPermissions | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
@@ -117,8 +128,18 @@ export default function OrderDetailPage() {
   const load = React.useCallback(async () => {
     if (!Number.isFinite(id)) { setLoading(false); return; }
     try {
-      const res = await axios.get<OrderDetail>(`${API_BASE_URL}/sales/orders/${id}`, { headers: authHeader() });
+      /* Three calls, in parallel, because the header cannot be drawn until it
+         knows all three -- what the order is, where it can go, and what this
+         person is allowed to do to it. Sequentially that is three round trips
+         before anything appears. */
+      const [res, wf, mine] = await Promise.all([
+        axios.get<OrderDetail>(`${API_BASE_URL}/sales/orders/${id}`, { headers: authHeader() }),
+        axios.get<Workflow>(`${API_BASE_URL}/sales/orders/${id}/workflow`, { headers: authHeader() }),
+        axios.get<OrderPermissions>(`${API_BASE_URL}/sales/orders/${id}/my-permissions`, { headers: authHeader() }),
+      ]);
       setOrder(res.data);
+      setWorkflow(wf.data);
+      setPerms(mine.data);
       setError(null);
     } catch (e) {
       if (axios.isAxiosError(e) && e.response?.status === 404) {
@@ -248,25 +269,12 @@ export default function OrderDetailPage() {
   }
 
   const isCreditHold = order.status === "CREDIT_HOLD";
-  const currentStateIndex = STATE_FLOW.indexOf(order.status);
   const runsTheFloor = can("orders.approve");
   const units = order.lines.reduce((s, l) => s + l.qty, 0);
   const phone = order.customerPhone ?? order.customerAltPhone ?? "";
 
-  /* The next step, worked out from where the order actually is. */
-  const nextAction = (() => {
-
-    console.log(order.status)
-    if (order.status === "DRAFT") {
-      return { key: "SUBMITTED", label: "Send to Order Dept", icon: Send, forEveryone: true };
-    }
-    if (!runsTheFloor) return null;
-    if (order.status === "SUBMITTED" || order.status === "INVOICED") return { key: "CONFIRMED", label: "Confirm", icon: CheckCircle2 };
-    if (order.status === "CONFIRMED") return { key: "PACKED", label: "Pack", icon: Package };
-    if (order.status === "PACKED") return { key: "DISPATCHED", label: "Dispatch", icon: Truck };
-    if (order.status === "DISPATCHED") return { key: "DELIVERED", label: "Mark delivered", icon: CheckCircle2 };
-    return null;
-  })();
+  /* What comes next is the server's answer now, not a ladder of ifs here --
+     see OrderWorkflowActions. */
 
   return (
     <>
@@ -294,16 +302,25 @@ export default function OrderDetailPage() {
               <Button variant="accent" size="md" className="gap-1.5" onClick={() => setOverride(true)} disabled={busy}>
                 <ShieldCheck />Release hold
               </Button>
-            ) : !order.invoiceId && !isCreditHold && order.status !== "DRAFT" && order.status !== "CANCELLED" && runsTheFloor ? (
-              <Button variant="accent" size="md" className="gap-1.5" onClick={raiseInvoice} disabled={busy}>
-                {busy ? <Loader2 className="size-4 animate-spin" /> : <FileText />}Raise invoice
+            ) : (
+              /* Every other case -- the next step, the free-choice dropdown,
+                 edit, delete, and the rep's application for permission. */
+              <OrderWorkflowActions
+                orderId={order.id}
+                orderNo={order.orderNo}
+                workflow={workflow}
+                permissions={perms}
+                busy={busy}
+                onChanged={load}
+              />
+            )}
+
+            {!order.invoiceId && !isCreditHold && order.status === "CONFIRMED" && (
+              <Button variant="ghost" size="md" className="gap-1.5" onClick={raiseInvoice} disabled={busy}>
+                {busy ? <Loader2 className="size-4 animate-spin" /> : <FileText />}
+                <span className="hidden sm:inline">Raise invoice</span>
               </Button>
-            ) : nextAction ? (
-              <Button variant="accent" size="md" className="gap-1.5" onClick={() => void setStatus(nextAction.key)} disabled={busy}>
-                {busy ? <Loader2 className="size-4 animate-spin" /> : <nextAction.icon />}
-                {nextAction.label}
-              </Button>
-            ) : null}
+            )}
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -363,50 +380,14 @@ export default function OrderDetailPage() {
         </Card>
       )}
 
-      {/* State pipeline */}
-      {!["DRAFT", "CANCELLED", "CREDIT_HOLD"].includes(order.status) && (
+      {/* The nine steps, drawn from the server's own chain. */}
+      {workflow && workflow.step !== null && (
         <Card className="mb-6">
           <CardBody>
-            <div className="flex items-center justify-between gap-2">
-              {STATE_FLOW.map((s, i) => {
-                /* INVOICED sits off the main line -- an invoiced order has
-                   passed confirmation but has not necessarily shipped. */
-                const idx = order.status === "INVOICED" ? STATE_FLOW.indexOf("CONFIRMED") : currentStateIndex;
-                const passed = i <= idx;
-                const current = i === idx;
-                return (
-                  <React.Fragment key={s}>
-                    <div className="flex flex-col items-center gap-1.5 flex-1">
-                      <div className={cn(
-                        "size-9 rounded-full flex items-center justify-center text-xs font-bold transition-colors",
-                        current
-                          ? "bg-brand-yellow text-navy-900 ring-4 ring-brand-yellow/20"
-                          : passed
-                          ? "bg-success text-white"
-                          : "bg-slate-200 dark:bg-navy-700 text-slate-500"
-                      )}>
-                        {passed && !current ? <CheckCircle2 className="size-4" /> : i + 1}
-                      </div>
-                      <div className={cn(
-                        "text-2xs font-semibold uppercase tracking-wider text-center",
-                        passed ? "text-navy-900 dark:text-white" : "text-slate-400"
-                      )}>
-                        {s.replace("_", " ")}
-                      </div>
-                    </div>
-                    {i < STATE_FLOW.length - 1 && (
-                      <div className={cn("flex-1 h-0.5 -mt-6",
-                        i < idx ? "bg-success" : "bg-slate-200 dark:bg-navy-700"
-                      )} />
-                    )}
-                  </React.Fragment>
-                );
-              })}
-            </div>
+            <OrderChain workflow={workflow} />
           </CardBody>
         </Card>
       )}
-
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Items + Totals */}
         <div className="lg:col-span-2 space-y-6">

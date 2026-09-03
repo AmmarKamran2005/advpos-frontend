@@ -20,6 +20,7 @@ import { API_BASE_URL, authHeader, useSession } from "@/components/providers/ses
 import { formatMoney, formatCompact, formatDate, formatRelative } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { AiInsight } from "@/components/widgets/ai-insight";
+import { OwnerDecisions } from "./owner-decisions";
 
 /* ─────────────────────────── shapes from the API ─────────────────────────── */
 
@@ -244,6 +245,10 @@ export function SuperAdminDashboard() {
               href="/reports/aging/supplier"
             />
           </div>
+
+          {/* Orders waiting on a confirm, and reps asking to change one.
+              Their own component so a slow queue never delays the figures. */}
+          <OwnerDecisions />
 
           {/* Needs your decision */}
           {limitCrossed.length > 0 && (

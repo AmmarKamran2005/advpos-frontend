@@ -11,6 +11,7 @@ import {
   PackageCheck,
   PackageX,
   Settings2,
+  Boxes,
 } from "lucide-react";
 
 export type NavBadge = {
@@ -76,6 +77,18 @@ export const navigation: NavNode[] = [
   },
 
 
+
+  {
+    /* The warehouse keeper's whole job. Gated on orders.warehouse, so it
+       appears for them and for anybody the Super Admin gives that right to,
+       and for nobody else. */
+    type: "item",
+    label: "Warehouse",
+    icon: Boxes,
+    href: "/warehouse",
+    match: "warehouse",
+    perms: ["orders.warehouse"],
+  },
 
     { type: "section", label: "Stock" },
   {

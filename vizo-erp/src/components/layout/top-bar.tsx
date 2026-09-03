@@ -45,6 +45,7 @@ import {
   API_BASE_URL,
   authHeader,
 } from "@/components/providers/session-provider";
+import { useLiveNotifications } from "@/lib/use-live-notifications";
 import { cn } from "@/lib/utils";
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -120,6 +121,16 @@ export function TopBar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
        than globally so the rule still catches the cases worth fixing. */
     void loadNotifications();
   }, [user, loadNotifications]);
+
+  /* Live, over SignalR. The row is not spliced into state from the wire --
+     the hub sends a severity ID and this list wants a severity NAME, and a
+     bell that shows a subtly different shape for new items than for old ones
+     is worse than one that costs a round trip. The count moves at once so the
+     badge is instant; the list catches up a moment later. */
+  useLiveNotifications(Boolean(user), React.useCallback(() => {
+    setUnreadCount((n) => n + 1);
+    void loadNotifications();
+  }, [loadNotifications]));
 
   async function markAllRead() {
     try {

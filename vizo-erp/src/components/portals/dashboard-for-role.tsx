@@ -6,6 +6,7 @@ import { SalesDashboard } from "./sales/sales-dashboard";
 import { OrderDeptDashboard } from "./order-dept/order-dept-dashboard";
 import { AccountantDashboard } from "./accountant/accountant-dashboard";
 import { SuperAdminDashboard } from "./super-admin/super-admin-dashboard";
+import { WarehouseDashboard } from "./warehouse/warehouse-dashboard";
 
 /**
  * Each role opens on the work it actually does. Sales sees orders and money;
@@ -21,5 +22,6 @@ export function DashboardForRole({ children }: { children?: React.ReactNode }) {
   if (role === "order-dept") return <OrderDeptDashboard />;
   if (role === "accountant") return <AccountantDashboard />;
   if (role === "super-admin") return <SuperAdminDashboard />;
+  if (role === "warehouse-keeper") return <WarehouseDashboard />;
   return <>{children ?? null}</>;
 }

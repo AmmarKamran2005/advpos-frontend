@@ -7,7 +7,7 @@
  * rule 5, "keep data modules out of client components once the API exists".
  *
  * The constants below are not business data. They are shape: the four delivery
- * channels this company actually operates, and the four role keys the JWT can
+ * channels this company actually operates, and the role keys the JWT can
  * carry. Both are decided by how the business is organised, not by a row in a
  * table, so they belong in the bundle. Everything else stays behind the API.
  *
@@ -17,8 +17,19 @@
 
 /* ─────────────────────────────── Roles ─────────────────────────────── */
 
-/** The four staff roles. Mirrors "Role".RoleKey for ids 1-4 in the database. */
-export type RoleKey = "super-admin" | "accountant" | "order-dept" | "sales";
+/**
+ * The staff roles. Mirrors "Role".RoleKey in the database.
+ *
+ * warehouse-keeper is role id 9, added with the order workflow: the person who
+ * picks the stock off the shelf once the owner has confirmed an order and sends
+ * it to the order department. See backend/database/15_order_workflow.sql.
+ */
+export type RoleKey =
+  | "super-admin"
+  | "accountant"
+  | "order-dept"
+  | "sales"
+  | "warehouse-keeper";
 
 /* ────────────────────────── Delivery channels ────────────────────────── */
 

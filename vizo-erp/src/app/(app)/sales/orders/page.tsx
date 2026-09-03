@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Plus, Download, Search, Send, Check, Truck, ChevronRight , Loader2} from "lucide-react";
+import { Plus, Download, Search, Send, Check, Truck, ChevronRight, Loader2, Printer } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardBody } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,7 @@ import { AlertCircle } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
 import { getChannel, type ChannelKey } from "@/lib/app-config";
+import { openDocumentWhenReady } from "@/lib/documents";
 
 /* GET /sales/orders -> { total, page, pageSize, items }.
 
@@ -294,14 +295,14 @@ export default function OrdersPage() {
         </Card>
       ) : (
         <div className="space-y-2">
-          {rows.map((o) => <OrderCard key={o.id} order={o} />)}
+          {rows.map((o) => <OrderCard key={o.id} order={o} onDone={load} />)}
         </div>
       )}
     </>
   );
 }
 
-function OrderCard({ order }: { order: Order }) {
+function OrderCard({ order, onDone }: { order: Order; onDone: () => void | Promise<void> }) {
   const channel = order.channel ? getChannel(order.channel) : null;
   const balance = order.total - order.paidAmount;
   const paidPct = order.total > 0 ? Math.round((order.paidAmount / order.total) * 100) : 0;
@@ -364,7 +365,7 @@ function OrderCard({ order }: { order: Order }) {
                     : "Unpaid"}
               </div>
             </div>
-            <QuickAction order={order} />
+            <QuickAction order={order} onDone={onDone} />
           </div>
         </div>
       </CardBody>
@@ -372,13 +373,78 @@ function OrderCard({ order }: { order: Order }) {
   );
 }
 
-/** One button that does the obvious next thing for this order. */
-function QuickAction({ order }: { order: Order }) {
+/**
+ * One button that does the obvious next thing for this order -- and actually
+ * does it.
+ *
+ * Send and Delivered used to call toast.success and nothing else. The screen
+ * said "Sent to Order Department", the order stayed exactly where it was, and
+ * the only way to find out was to reload the page. Both now PATCH the status
+ * and reload the list; the API decides whether the move is allowed and says so
+ * if it is not.
+ *
+ * Print is new, and is the reason the row needed a third button: an order that
+ * has been invoiced is one somebody wants to print from the list, not after
+ * two more clicks.
+ */
+function QuickAction({ order, onDone }: { order: Order; onDone: () => void | Promise<void> }) {
+  const [busy, setBusy] = React.useState(false);
+
+  async function move(statusKey: string, saying: string) {
+    setBusy(true);
+    try {
+      const res = await axios.patch<{ message: string }>(
+        `${API_BASE_URL}/sales/orders/${order.id}/status`,
+        { statusKey, reason: null },
+        { headers: authHeader() }
+      );
+      toast.success(saying, { description: res.data.message });
+      await onDone();
+    } catch (e) {
+      toast.error("Could not update the order", { description: apiMessage(e, "Please try again.") });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /* The bill. window.open carries no Authorization header, so the stored
+     Cloudinary link is opened directly when there is one, and the API is asked
+     to build the document first when there is not. */
+  async function printBill() {
+    if (!order.invoiceId) return;
+    setBusy(true);
+    try {
+      const opened = await openDocumentWhenReady(async () => {
+        const res = await axios.post<{ pdfUrl: string | null }>(
+          `${API_BASE_URL}/sales/invoices/${order.invoiceId}/pdf`, {}, { headers: authHeader() });
+        return res.data.pdfUrl;
+      });
+      if (!opened) {
+        toast.error("Could not open the bill", { description: "Try again in a moment." });
+      }
+    } catch (e) {
+      toast.error("Could not open the bill", { description: apiMessage(e, "Please try again.") });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const spinner = <Loader2 className="size-4 animate-spin" />;
+
   if (order.status === "DRAFT") {
     return (
       <Button variant="accent" size="sm" className="gap-1 flex-shrink-0"
-        onClick={() => toast.success("Sent to Order Department", { description: order.orderNo })}>
-        <Send /> Send
+        disabled={busy} onClick={() => void move("SUBMITTED", "Sent for confirmation")}>
+        {busy ? spinner : <Send />} Send
+      </Button>
+    );
+  }
+
+  if (order.status === "DISPATCHED") {
+    return (
+      <Button variant="accent" size="sm" className="gap-1 flex-shrink-0"
+        disabled={busy} onClick={() => void move("DELIVERED", "Marked delivered")}>
+        {busy ? spinner : <Check />} Delivered
       </Button>
     );
   }
@@ -392,8 +458,8 @@ function QuickAction({ order }: { order: Order }) {
   if (order.channel === "local" && inFlight) {
     return (
       <Button variant="accent" size="sm" className="gap-1 flex-shrink-0"
-        onClick={() => toast.success("Marked delivered", { description: order.orderNo })}>
-        <Check /> Delivered
+        disabled={busy} onClick={() => void move("DELIVERED", "Marked delivered")}>
+        {busy ? spinner : <Check />} Delivered
       </Button>
     );
   }
@@ -402,6 +468,16 @@ function QuickAction({ order }: { order: Order }) {
     return (
       <Button variant="secondary" size="sm" className="gap-1 flex-shrink-0" asChild>
         <Link href={`/sales/orders/${order.id}`}><Truck /> Track</Link>
+      </Button>
+    );
+  }
+
+  if (order.invoiceId) {
+    return (
+      <Button variant="secondary" size="sm" className="gap-1 flex-shrink-0"
+        disabled={busy} onClick={() => void printBill()}
+        aria-label={`Print bill ${order.invoiceNo ?? ""}`}>
+        {busy ? spinner : <Printer />} Print
       </Button>
     );
   }

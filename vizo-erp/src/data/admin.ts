@@ -64,7 +64,7 @@ const u = (
 });
 
 export const users: User[] = [
-  u(1,  "Umer Memon",    "admin@advpos.pk"   ,   "0300 7287607", "EMP-001", ["Super Admin"],      ["LOC-01", "LOC-02", "LOC-03"], true,  "2 min ago"),
+  u(1,  "Umer Memon",    "vizo.com.pk@gmail.com"   ,   "0300 7287607", "EMP-001", ["Super Admin"],      ["LOC-01", "LOC-02", "LOC-03"], true,  "2 min ago"),
   u(2,  "Hassan Raza",   "accounts@advpos.pk", "0321 1234567", "EMP-002", ["Accountant"],       ["LOC-01", "LOC-02", "LOC-03"], true,  "12 min ago"),
   u(3,  "Nadia Hussain", "nadia@vizo.com.pk",  "0301 8901234", "EMP-003", ["Accountant"],       ["LOC-02"],                     true,  "1 day ago"),
   u(4,  "Bilal Ahmed",   "order@advpos.pk"   ,  "0333 3456789", "EMP-004", ["Order Department"], ["LOC-01", "LOC-02"],           true,  "1 hour ago"),

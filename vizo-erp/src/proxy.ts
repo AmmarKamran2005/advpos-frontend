@@ -19,12 +19,23 @@ import { NextResponse, type NextRequest } from "next/server";
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
-type RoleKey = "super-admin" | "accountant" | "order-dept" | "sales";
+type RoleKey =
+  | "super-admin"
+  | "accountant"
+  | "order-dept"
+  | "sales"
+  | "warehouse-keeper";
 
 const TOKEN_COOKIE = "advpos_token";
 const ROLE_COOKIE = "advpos_role";
 
-const ALL: RoleKey[] = ["super-admin", "accountant", "order-dept", "sales"];
+const ALL: RoleKey[] = [
+  "super-admin",
+  "accountant",
+  "order-dept",
+  "sales",
+  "warehouse-keeper",
+];
 
 /** Reachable without signing in. */
 const PUBLIC_PATHS = [
@@ -40,24 +51,63 @@ const PUBLIC_PATHS = [
  * First match wins, so the specific entries sit above the general ones.
  * /sales/credit-holds is listed before /sales on purpose: approving a limit
  * cross is not something a sales rep may do.
+ *
+ * `roles` is who reaches the screen by virtue of the job they hold. `perm` is
+ * the escape hatch: name a permission and anybody the Super Admin has GRANTED
+ * that permission gets in as well, whatever their role.
+ *
+ * That second field exists because without it the permission screen in Setup
+ * was decoration. Ticking "Handle sales returns" for the Sales role saved
+ * happily, the API said yes -- and this file still bounced the rep to
+ * /forbidden, because their role was not on a list written months earlier.
+ *
+ * What it does NOT do is widen what they can see once they are in. The API
+ * scopes a rep to their own orders, their own invoices and the returns against
+ * them; see SalesController.SalesScopeUserId.
  */
-const ROUTE_RULES: { prefix: string; roles: RoleKey[] }[] = [
+const ROUTE_RULES: { prefix: string; roles: RoleKey[]; perm?: string }[] = [
   { prefix: "/admin", roles: ["super-admin"] },
 
   { prefix: "/accounting", roles: ["super-admin", "accountant"] },
 
   { prefix: "/sales/credit-holds", roles: ["super-admin", "accountant"] },
   { prefix: "/sales/direct", roles: ["super-admin", "order-dept"] },
-  { prefix: "/sales/returns", roles: ["super-admin", "accountant", "order-dept"] },
-  { prefix: "/sales/invoices", roles: ["super-admin", "accountant", "order-dept"] },
+  {
+    prefix: "/sales/returns",
+    roles: ["super-admin", "accountant", "order-dept"],
+    perm: "returns.sales",
+  },
+  {
+    prefix: "/sales/invoices",
+    roles: ["super-admin", "accountant", "order-dept"],
+    perm: "invoices.view",
+  },
   { prefix: "/sales", roles: ALL },
 
-  { prefix: "/purchases", roles: ["super-admin", "accountant", "order-dept"] },
-  { prefix: "/inventory", roles: ["super-admin", "accountant", "order-dept"] },
+  { prefix: "/warehouse", roles: ["super-admin", "warehouse-keeper"] },
+
+  {
+    prefix: "/purchases",
+    roles: ["super-admin", "accountant", "order-dept"],
+    perm: "purchases.view",
+  },
+  {
+    prefix: "/inventory",
+    roles: ["super-admin", "accountant", "order-dept", "warehouse-keeper"],
+    perm: "stock.view",
+  },
   { prefix: "/packing", roles: ["super-admin", "order-dept"] },
   { prefix: "/dispatch", roles: ["super-admin", "order-dept"] },
-  { prefix: "/delivery", roles: ["super-admin", "order-dept", "accountant"] },
-  { prefix: "/claims", roles: ["super-admin", "order-dept", "accountant"] },
+  {
+    prefix: "/delivery",
+    roles: ["super-admin", "order-dept", "accountant"],
+    perm: "delivery.view",
+  },
+  {
+    prefix: "/claims",
+    roles: ["super-admin", "order-dept", "accountant"],
+    perm: "claims.view",
+  },
 
   { prefix: "/parties/suppliers", roles: ["super-admin", "accountant", "order-dept"] },
   { prefix: "/parties", roles: ALL },
@@ -66,6 +116,31 @@ const ROUTE_RULES: { prefix: string; roles: RoleKey[] }[] = [
   { prefix: "/dashboard", roles: ALL },
   { prefix: "/profile", roles: ALL },
 ];
+
+/**
+ * The permissions carried in the token's `perm` claim.
+ *
+ * Read WITHOUT verifying the signature, exactly like `isExpired` above and for
+ * the same reason: a forged claim buys nothing, because every endpoint behind
+ * the screen checks the real signature on every call. Getting this wrong shows
+ * somebody an empty page, not somebody else's data.
+ */
+function permissions(token: string): string[] {
+  try {
+    const body = token.split(".")[1];
+    if (!body) return [];
+
+    const json = JSON.parse(
+      atob(body.replace(/-/g, "+").replace(/_/g, "/"))
+    ) as Record<string, unknown>;
+
+    const raw = json.perm;
+    if (Array.isArray(raw)) return raw.filter((p): p is string => typeof p === "string");
+    return typeof raw === "string" ? [raw] : [];
+  } catch {
+    return [];
+  }
+}
 
 /**
  * Reads the `exp` claim without verifying the signature. An expired token is
@@ -151,7 +226,12 @@ export function proxy(req: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  if (!rule.roles.includes(role)) {
+  /* The role opens it, or a permission the Super Admin granted does. */
+  const allowed =
+    rule.roles.includes(role) ||
+    (rule.perm !== undefined && permissions(token!).includes(rule.perm));
+
+  if (!allowed) {
     const url = req.nextUrl.clone();
     url.pathname = "/forbidden";
     url.search = "";
