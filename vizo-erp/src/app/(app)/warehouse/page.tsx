@@ -17,7 +17,7 @@ export default function WarehousePage() {
       <PageHeader
         breadcrumbs={[{ label: "Warehouse" }]}
         title="Stock to prepare"
-        subtitle="Confirmed orders waiting to be picked and sent to the order department."
+        subtitle="Invoiced orders waiting to be picked and sent to the order department."
       />
       <WarehouseQueue />
     </>

@@ -79,6 +79,7 @@ const ORDER_STATUS_VARIANT: Record<string, "success" | "warning" | "danger" | "i
   DRAFT: "muted", SUBMITTED: "info", CREDIT_HOLD: "warning", CONFIRMED: "info",
   PROCESSING: "info", PACKED: "info", DISPATCHED: "info", INVOICED: "success",
   DELIVERED: "success", CANCELLED: "danger", RETURNED: "warning",
+  SEEN_BY_WAREHOUSE: "info",
   TO_ORDER_DEPT: "info", AT_ORDER_DEPT: "info", PACKAGING: "info",
   DECLINED: "danger",
 };
@@ -340,7 +341,13 @@ export default function OrderDetailPage() {
                 <DropdownMenuItem asChild>
                   <Link href={`/parties/${order.customerId}`}><UserIcon />Customer profile</Link>
                 </DropdownMenuItem>
-                {order.status !== "CANCELLED" && !order.invoiceId && (
+                {/* Cancelling is a move like any other, so the server decides
+                    who may make it. The warehouse and the order desk never can,
+                    and a button that always answers 403 is worse than no
+                    button. */}
+                {order.status !== "CANCELLED" && !order.invoiceId &&
+                 (workflow?.canSetAnything ||
+                  (workflow?.allowed ?? []).some((a) => a.key === "CANCELLED")) && (
                   <>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem danger onClick={() => setCancel(true)}><XCircle />Cancel order</DropdownMenuItem>

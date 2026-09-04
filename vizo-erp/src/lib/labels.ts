@@ -31,6 +31,7 @@ const STATUS_LABELS: Record<string, string> = {
      does not see it until the warehouse has picked it. There is now a step
      called TO_ORDER_DEPT that means what the old label claimed. */
   SUBMITTED: "Waiting to be confirmed",
+  SEEN_BY_WAREHOUSE: "Seen by Warehouse",
   CREDIT_HOLD: "Limit Cross",
   DECLINED: "Declined",
   PROCESSING: "Being Prepared",

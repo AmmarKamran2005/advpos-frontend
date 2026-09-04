@@ -498,6 +498,9 @@ export const rolePermissions: Record<RoleKey, string[]> = {
   "warehouse-keeper": [
     "orders.view",
     "orders.warehouse",
+    /* Reads the bill against what is being picked. Viewing only -- there is
+       no invoices.create here, and there will not be. */
+    "invoices.view",
     "stock.view",
     "stock.transfer",
     "delivery.view",
