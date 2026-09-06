@@ -86,6 +86,7 @@ function apiMessage(e: unknown, fallback: string) {
     return (e.response.data as { message?: string })?.message ?? fallback;
   }
   return "Cannot reach the server.";
+  // cannot reach to the server 
 }
 
 import { formatMoney } from "@/lib/format";
