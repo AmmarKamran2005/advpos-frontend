@@ -19,6 +19,7 @@ import { useSession } from "@/components/providers/session-provider";
 import axios from "axios";
 import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
 import { cn } from "@/lib/utils";
+import { PARTY_TAX, type PartyOrigin, type PartyTaxField } from "@/lib/party-tax";
 
 /* GET /parties/lookups -- categories, cities, hold policies, locations and
    sales reps, all from the database. The form used to carry these as hardcoded
@@ -66,7 +67,10 @@ function apiMessage(e: unknown, fallback: string) {
    written the way they appear on an export invoice.
    ─────────────────────────────────────────────────────────────────────────── */
 
-type Origin = "PK" | "CN";
+/* The tax field names themselves live in @/lib/party-tax, because the party
+   PROFILE has to label the same three columns and two copies of those words is
+   how a supplier gets saved as a USCC and displayed as an "NTN". */
+type Origin = PartyOrigin;
 
 const COPY: Record<Origin, {
   label: string;
@@ -78,7 +82,7 @@ const COPY: Record<Origin, {
   altPhone: string;
   email: string;
   address: string;
-  tax: { key: "ntn" | "strn" | "cnic"; label: string; hint: string; placeholder: string }[];
+  tax: PartyTaxField[];
 }> = {
   PK: {
     label: "Pakistani",
@@ -90,11 +94,7 @@ const COPY: Record<Origin, {
     altPhone: "Optional",
     email: "contact@example.pk",
     address: "Shop #28, Hafeez Center, Liberty",
-    tax: [
-      { key: "ntn",  label: "NTN",  hint: "National Tax Number",  placeholder: "1234567-8" },
-      { key: "strn", label: "STRN", hint: "Sales Tax Registration", placeholder: "32-77-8901-234-56" },
-      { key: "cnic", label: "CNIC", hint: "For sole proprietors",  placeholder: "00000-0000000-0" },
-    ],
+    tax: PARTY_TAX.PK,
   },
   CN: {
     label: "Chinese",
@@ -106,14 +106,7 @@ const COPY: Record<Origin, {
     altPhone: "+86 755 8888 6666 (optional)",
     email: "contact@example.cn",
     address: "Room 1201, Block B, Huaqiang North Road, Futian District",
-    /* Same three database columns, different three numbers. Renaming the
-       columns would mean touching every report that reads them, to gain
-       nothing a label does not already give. */
-    tax: [
-      { key: "ntn",  label: "USCC",    hint: "Unified Social Credit Code",   placeholder: "91440300MA5EDK8T5H" },
-      { key: "strn", label: "VAT No.", hint: "General taxpayer registration", placeholder: "440300123456789" },
-      { key: "cnic", label: "ID Card", hint: "Resident ID, for sole traders", placeholder: "440301199001011234" },
-    ],
+    tax: PARTY_TAX.CN,
   },
 };
 

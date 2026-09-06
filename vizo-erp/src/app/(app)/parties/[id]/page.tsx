@@ -21,6 +21,7 @@ import { toast } from "@/components/ui/toaster";
 import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
 import { formatMoney, formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { PARTY_TAX, partyOrigin } from "@/lib/party-tax";
 
 /* GET /parties/{id}. The whole page ran off getParty() in src/data/parties
    before, so a customer created on /parties/new opened a "not found" screen. */
@@ -29,6 +30,9 @@ type Party = {
   legalName: string; displayName: string; initials: string;
   phone: string | null; altPhone: string | null; email: string | null;
   cityId: number | null; city: string | null; province: string | null; addressLine: string | null;
+  /* "PK" or "CN", read from the city's province. It decides which three tax
+     numbers this party actually has -- see @/lib/party-tax. */
+  country: string | null;
   categoryId: number | null; category: string | null; categoryName: string | null;
   industry: string | null; ntn: string | null; strn: string | null; cnic: string | null;
   creditLimit: number; creditDays: number;
@@ -310,9 +314,14 @@ export default function PartyDetailPage() {
               <CardBody>
                 <h3 className="text-base font-semibold text-navy-900 dark:text-white mb-4">Tax &amp; Registration</h3>
                 <dl className="space-y-3 text-sm">
-                  <Row icon={Receipt} label="NTN" value={party.ntn ?? "—"} />
-                  <Row icon={Receipt} label="STRN" value={party.strn ?? "—"} />
-                  <Row icon={Receipt} label="CNIC" value={party.cnic ?? "—"} />
+                  {/* A Chinese supplier's numbers are not an NTN and an STRN and
+                      a CNIC, so they are not labelled as such. Same three
+                      columns, different three names -- the words come from the
+                      one place that holds them, so this screen and the form
+                      that filled it in cannot drift apart. */}
+                  {PARTY_TAX[partyOrigin(party.country)].map((t) => (
+                    <Row key={t.key} icon={Receipt} label={t.label} value={party[t.key] ?? "—"} />
+                  ))}
                   <Row icon={FileText} label="Opened" value={formatDate(party.createdAt)} />
                   <Row icon={FileText} label="Opening balance" value={formatMoney(party.openingBalance)} />
                 </dl>
