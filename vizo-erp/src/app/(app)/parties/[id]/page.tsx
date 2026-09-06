@@ -6,7 +6,7 @@ import { useParams } from "next/navigation";
 import axios from "axios";
 import {
   AlertCircle, Phone, Mail, MapPin, Building2, FileText, Receipt,
-  RefreshCw, Loader2, Power, CreditCard, Star, User,
+  RefreshCw, Loader2, Power, CreditCard, Star, User, Pencil,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardBody } from "@/components/ui/card";
@@ -18,7 +18,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { toast } from "@/components/ui/toaster";
-import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
+import { API_BASE_URL, authHeader, useSession } from "@/components/providers/session-provider";
 import { formatMoney, formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { PARTY_TAX, partyOrigin } from "@/lib/party-tax";
@@ -79,6 +79,8 @@ function apiMessage(e: unknown, fallback: string) {
 export default function PartyDetailPage() {
   const params = useParams<{ id: string }>();
   const partyId = parseInt(params.id ?? "0", 10);
+
+  const { can } = useSession();
 
   const [party, setParty] = React.useState<Party | null>(null);
   const [statement, setStatement] = React.useState<Statement | null>(null);
@@ -251,6 +253,15 @@ export default function PartyDetailPage() {
             <Button variant="secondary" className="gap-1.5" asChild>
               <Link href={`/parties/${party.id}/statement`}><FileText />Statement</Link>
             </Button>
+            {/* PUT /parties/{id} had existed since the controller was written
+                and nothing called it -- there was no way in. Gated on the same
+                permission that lets somebody open an account in the first
+                place. */}
+            {can("customers.manage") && (
+              <Button variant="secondary" className="gap-1.5" asChild>
+                <Link href={`/parties/${party.id}/edit`}><Pencil />Edit</Link>
+              </Button>
+            )}
             <Button variant={party.isActive ? "ghost" : "accent"} className="gap-1.5" onClick={() => void toggleActive()} disabled={toggling}>
               {toggling ? <Loader2 className="size-4 animate-spin" /> : <Power className="size-4" />}
               {party.isActive ? "Deactivate" : "Reactivate"}

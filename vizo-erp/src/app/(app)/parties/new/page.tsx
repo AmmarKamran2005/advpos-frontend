@@ -19,7 +19,7 @@ import { useSession } from "@/components/providers/session-provider";
 import axios from "axios";
 import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
 import { cn } from "@/lib/utils";
-import { PARTY_TAX, type PartyOrigin, type PartyTaxField } from "@/lib/party-tax";
+import { PARTY_COPY, refineParty, type PartyOrigin } from "@/lib/party-tax";
 
 /* GET /parties/lookups -- categories, cities, hold policies, locations and
    sales reps, all from the database. The form used to carry these as hardcoded
@@ -48,82 +48,13 @@ function apiMessage(e: unknown, fallback: string) {
   return "Cannot reach the server.";
 }
 
-/* ───────────────────────────────────────────────────────────────────────────
-   A PAKISTANI PARTY AND A CHINESE ONE ARE NOT THE SAME FORM
-
-   The stock comes from Shenzhen and Guangzhou as often as from Karachi, and a
-   Chinese supplier has none of the three numbers this form used to insist on.
-   It has a Unified Social Credit Code, a VAT registration and a Resident ID
-   card, and all three look nothing like an NTN, an STRN or a CNIC.
-
-   So everything that differs between the two lives in one table rather than
-   being scattered through the markup as ternaries. Adding a third country one
-   day means adding a third entry here.
-
-   THE EXAMPLES ARE IN ENGLISH LETTERS ON PURPOSE. A placeholder exists to show
-   somebody the shape of the thing they are about to type. Nobody at this
-   company reads Chinese characters, so a placeholder in them would show the
-   shape of nothing -- these are real Chinese addresses, companies and numbers,
-   written the way they appear on an export invoice.
-   ─────────────────────────────────────────────────────────────────────────── */
-
-/* The tax field names themselves live in @/lib/party-tax, because the party
-   PROFILE has to label the same three columns and two copies of those words is
-   how a supplier gets saved as a USCC and displayed as an "NTN". */
+/* Everything that differs between a Pakistani party and a Chinese one -- the
+   placeholders, the three tax fields, the phone and number shapes -- lives in
+   @/lib/party-tax, because THREE screens now need it: this one, the profile
+   that shows it back, and the edit form. Two copies of those words is how a
+   supplier gets saved as a USCC and displayed as an "NTN". */
 type Origin = PartyOrigin;
-
-const COPY: Record<Origin, {
-  label: string;
-  blurb: string;
-  legalName: string;
-  displayName: string;
-  industry: string;
-  phone: string;
-  altPhone: string;
-  email: string;
-  address: string;
-  tax: PartyTaxField[];
-}> = {
-  PK: {
-    label: "Pakistani",
-    blurb: "NTN, STRN and CNIC",
-    legalName: "e.g. Hafeez Center Shop #28",
-    displayName: "Same as legal name if blank",
-    industry: "e.g. Mobile Accessories",
-    phone: "03XXXXXXXXX or 021XXXXXXX",
-    altPhone: "Optional",
-    email: "contact@example.pk",
-    address: "Shop #28, Hafeez Center, Liberty",
-    tax: PARTY_TAX.PK,
-  },
-  CN: {
-    label: "Chinese",
-    blurb: "Social Credit Code, VAT and ID card",
-    legalName: "e.g. Shenzhen Huaqiang Electronics Co., Ltd",
-    displayName: "e.g. Huaqiang Electronics",
-    industry: "e.g. Consumer Electronics",
-    phone: "+86 138 0013 8000",
-    altPhone: "+86 755 8888 6666 (optional)",
-    email: "contact@example.cn",
-    address: "Room 1201, Block B, Huaqiang North Road, Futian District",
-    tax: PARTY_TAX.CN,
-  },
-};
-
-/* Digits and capitals, minus I, O, S, V and Z -- left out of the Chinese code
-   alphabet precisely because they are misread as 1, 0, 5, U and 2. */
-const CN_ALPHABET = /^[0-9A-HJ-NP-RTUW-Y]+$/;
-
-const isUscc  = (v: string) => v.length === 18 && CN_ALPHABET.test(v);
-const isCnVat = (v: string) => (v.length === 15 || v.length === 18) && CN_ALPHABET.test(v);
-const isCnId  = (v: string) => /^\d{17}[\dX]$/.test(v);
-
-/** Mainland mobile, or a landline with its area code. Spaces and dashes ignored. */
-const isCnPhone = (v: string) =>
-  /^(\+?86)?(1[3-9]\d{9}|0\d{9,11})$/.test(v.replace(/[\s-]/g, ""));
-
-const isPkPhone = (v: string) =>
-  /^(03\d{9}|\+923\d{9}|0(21|42|51|31)\d{7,8})$/.test(v.replace(/[\s-]/g, ""));
+const COPY = PARTY_COPY;
 
 const Schema = z.object({
   type: z.enum(["CUSTOMER", "SUPPLIER", "BOTH"]),
@@ -162,50 +93,10 @@ const Schema = z.object({
   salesPersonUserId: z.coerce.number().optional().or(z.literal("")),
   notes: z.string().max(500, "Max 500 characters").optional().or(z.literal("")),
 }).superRefine((d, ctx) => {
-  /* One place, both countries. The server runs the same rules on the way in
-     (PartiesController.CheckTax) -- a shape the browser happens to enforce is
-     not a shape the database is protected by. */
-  const cn = d.origin === "CN";
-
-  if (d.phone && !(cn ? isCnPhone(d.phone) : isPkPhone(d.phone))) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ["phone"],
-      message: cn
-        ? "Chinese number, e.g. +86 138 0013 8000 or 020 8888 6666"
-        : "Pakistani number, e.g. 03001234567 or 02134567890",
-    });
-  }
-
-  const ntn = (d.ntn ?? "").trim().toUpperCase();
-  const strn = (d.strn ?? "").trim().toUpperCase();
-  const cnic = (d.cnic ?? "").trim().toUpperCase();
-
-  if (cn) {
-    if (ntn && !isUscc(ntn)) ctx.addIssue({
-      code: z.ZodIssueCode.custom, path: ["ntn"],
-      message: "18 characters, e.g. 91440300MA5EDK8T5H",
-    });
-    if (strn && !isCnVat(strn)) ctx.addIssue({
-      code: z.ZodIssueCode.custom, path: ["strn"],
-      message: "15 or 18 characters, e.g. 440300123456789",
-    });
-    if (cnic && !isCnId(cnic)) ctx.addIssue({
-      code: z.ZodIssueCode.custom, path: ["cnic"],
-      message: "17 digits and a check character, e.g. 440301199001011234",
-    });
-    return;
-  }
-
-  if (ntn && !/^\d{7}-\d$/.test(ntn)) ctx.addIssue({
-    code: z.ZodIssueCode.custom, path: ["ntn"], message: "Format: 1234567-8",
-  });
-  if (strn && !/^\d{2}-\d{2}-\d{4}-\d{3}-\d{2}$/.test(strn)) ctx.addIssue({
-    code: z.ZodIssueCode.custom, path: ["strn"], message: "Format: 32-77-8901-234-56",
-  });
-  if (cnic && !/^\d{5}-\d{7}-\d$/.test(cnic)) ctx.addIssue({
-    code: z.ZodIssueCode.custom, path: ["cnic"], message: "Format: 00000-0000000-0",
-  });
+  /* One place, all three party forms, and the server runs the same rules on
+     the way in. See refineParty in @/lib/party-tax. */
+  refineParty(d, (path, message) =>
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: [path], message }));
 });
 
 type Form = z.infer<typeof Schema>;
