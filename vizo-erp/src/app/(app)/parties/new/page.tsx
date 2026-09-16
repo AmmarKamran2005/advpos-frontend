@@ -19,6 +19,7 @@ import { useSession } from "@/components/providers/session-provider";
 import axios from "axios";
 import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
 import { cn } from "@/lib/utils";
+import { PARTY_COPY, refineParty, type PartyOrigin } from "@/lib/party-tax";
 
 /* GET /parties/lookups -- categories, cities, hold policies, locations and
    sales reps, all from the database. The form used to carry these as hardcoded
@@ -26,7 +27,10 @@ import { cn } from "@/lib/utils";
    ledger could not group and a city that did not exist. */
 type Lookups = {
   categories: { id: number; key: string; name: string }[];
-  cities: { id: number; name: string; province: string }[];
+  /* `country` is "PK" or "CN", read from the city's province. It is what
+     decides which set of tax numbers this party has -- see the COPY table
+     below and PartiesController.CheckTax on the server. */
+  cities: { id: number; name: string; province: string; country: string }[];
   holdPolicies: { id: number; key: string; name: string }[];
   locations: { id: number; code: string; name: string }[];
   salesPeople: { id: number; name: string }[];
@@ -44,16 +48,27 @@ function apiMessage(e: unknown, fallback: string) {
   return "Cannot reach the server.";
 }
 
+/* Everything that differs between a Pakistani party and a Chinese one -- the
+   placeholders, the three tax fields, the phone and number shapes -- lives in
+   @/lib/party-tax, because THREE screens now need it: this one, the profile
+   that shows it back, and the edit form. Two copies of those words is how a
+   supplier gets saved as a USCC and displayed as an "NTN". */
+type Origin = PartyOrigin;
+const COPY = PARTY_COPY;
+
 const Schema = z.object({
   type: z.enum(["CUSTOMER", "SUPPLIER", "BOTH"]),
+  /* Asked for a supplier or a customer-and-supplier. A customer is Pakistani
+     unless the city says otherwise -- see `origin` in the component. */
+  origin: z.enum(["PK", "CN"]).default("PK"),
   category: z.enum(["RETAILER", "WHOLESALER", "DISTRIBUTOR", "MANUFACTURER", "AGENT"]),
   legalName: z.string().min(2, "At least 2 characters").max(200, "Max 200 characters"),
   displayName: z.string().max(150).optional().or(z.literal("")),
   industry: z.string().max(100).optional().or(z.literal("")),
 
-  phone: z.string()
-    .min(11, "Pakistani number must be 11 digits")
-    .regex(/^(03\d{9}|\+923\d{9}|021|042|051|031)/, "Invalid Pakistan phone format"),
+  /* Checked in the refinement below, because which shape is right depends on
+     where the party is. */
+  phone: z.string().min(1, "Phone is required"),
   altPhone: z.string().optional().or(z.literal("")),
   email: z.string().email("Invalid email").optional().or(z.literal("")),
 
@@ -63,13 +78,12 @@ const Schema = z.object({
      rather than asked for. */
   cityId: z.coerce.number().min(1, "Pick a city"),
 
-  ntn: z.string()
-    .regex(/^\d{7}-\d$|^$/, "Format: 1234567-8")
-    .optional().or(z.literal("")),
+  /* All three are checked in the refinement below. Which three numbers these
+     actually are depends on the country -- NTN/STRN/CNIC here, Social Credit
+     Code / VAT / ID card there. */
+  ntn: z.string().optional().or(z.literal("")),
   strn: z.string().optional().or(z.literal("")),
-  cnic: z.string()
-    .regex(/^\d{5}-\d{7}-\d$|^$/, "Format: 00000-0000000-0")
-    .optional().or(z.literal("")),
+  cnic: z.string().optional().or(z.literal("")),
 
   creditLimit: z.coerce.number().min(0, "Cannot be negative").default(0),
   creditDays:  z.coerce.number().min(0).max(365, "Max 365 days").default(0),
@@ -78,6 +92,11 @@ const Schema = z.object({
   defaultLocationId: z.coerce.number(),
   salesPersonUserId: z.coerce.number().optional().or(z.literal("")),
   notes: z.string().max(500, "Max 500 characters").optional().or(z.literal("")),
+}).superRefine((d, ctx) => {
+  /* One place, all three party forms, and the server runs the same rules on
+     the way in. See refineParty in @/lib/party-tax. */
+  refineParty(d, (path, message) =>
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: [path], message }));
 });
 
 type Form = z.infer<typeof Schema>;
@@ -88,6 +107,7 @@ export default function NewPartyPage() {
     resolver: vizoResolver(Schema),
     defaultValues: {
       type: "CUSTOMER",
+      origin: "PK",
       category: "RETAILER",
       legalName: "",
       displayName: "",
@@ -143,6 +163,51 @@ export default function NewPartyPage() {
   const partyType = canChooseType ? form.watch("type") : "CUSTOMER";
   const isCustomer = partyType === "CUSTOMER" || partyType === "BOTH";
 
+  /* WHERE THE PARTY IS, AND WHO GETS ASKED.
+
+     The question is put for a supplier or a customer-and-supplier, because
+     those are the ones that turn out to be Chinese. A plain customer is a shop
+     in Pakistan and is not asked.
+
+     But the CITY is the real answer, not the button. It carries the country
+     through its province -- the same route the server takes -- so choosing
+     Guangzhou makes the party Chinese whether or not anybody pressed anything.
+     That matters for the customer who is never shown the buttons: if they pick
+     a Chinese city the form asks for Chinese numbers, which is what the API is
+     about to insist on anyway. A form that disagrees with the endpoint behind
+     it is worse than a form with one more question on it. */
+  const asksOrigin = canChooseType && (partyType === "SUPPLIER" || partyType === "BOTH");
+  const chosen = form.watch("origin");
+  const origin: Origin =
+    (chosenCity?.country === "CN" || chosenCity?.country === "PK")
+      ? (chosenCity.country as Origin)
+      : (asksOrigin ? chosen : "PK");
+  const copy = COPY[origin];
+
+  /* The refinement reads `origin` off the form, so what the city implies has to
+     be written back to it -- otherwise a Chinese city would be validated
+     against Pakistani rules. */
+  React.useEffect(() => {
+    if (form.getValues("origin") !== origin) {
+      form.setValue("origin", origin, { shouldValidate: form.formState.isSubmitted });
+    }
+  }, [origin, form]);
+
+  /* Once the admin has said where the supplier is, only that country's cities
+     are offered -- a Chinese supplier in Lahore is a typo, not a choice. The
+     customer path is untouched and still lists every city, exactly as before. */
+  const cities = asksOrigin
+    ? lookups.cities.filter((c) => c.country === chosen)
+    : lookups.cities;
+
+  /* Switching country strands whatever city was picked under the old one. */
+  React.useEffect(() => {
+    const id = Number(form.getValues("cityId"));
+    if (id && asksOrigin && !cities.some((c) => c.id === id)) {
+      form.setValue("cityId", 0, { shouldValidate: false });
+    }
+  }, [asksOrigin, cities, form]);
+
   /* The real thing. POST /parties writes the User row and the Party row inside
      one transaction, allocates the next VZ-C-#### code, and returns it. */
   async function onSubmit(d: Form) {
@@ -174,7 +239,13 @@ export default function NewPartyPage() {
           creditDays: d.creditDays,
           holdPolicyId: policy.id,
           openingBalance: 0,
-          salesPersonUserId: d.salesPersonUserId === "" ? null : Number(d.salesPersonUserId),
+          /* "> 0, or nothing". The check used to be `=== ""`, which never
+             matched: the field is z.coerce.number(), and coercing "" gives 0,
+             not "". So leaving Sales Rep on "— None —" sent 0, and 0 is not an
+             employee id -- every such save died on the foreign key with a 500.
+             Nothing to do with the country work; it just had to be fixed to be
+             able to save anything at all from this form. */
+          salesPersonUserId: Number(d.salesPersonUserId) > 0 ? Number(d.salesPersonUserId) : null,
           defaultLocationId: Number(d.defaultLocationId),
           rating: "C",
           notes: d.notes || null,
@@ -265,6 +336,47 @@ export default function NewPartyPage() {
               </Card>
               )}
 
+              {/* Where the party is. Only asked when it could be either. */}
+              {asksOrigin && (
+              <Card>
+                <CardBody>
+                  <h3 className="text-sm font-semibold text-navy-900 dark:text-white mb-1">
+                    Where is this party? <span className="text-danger">*</span>
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">
+                    It decides which tax numbers are asked for, and which cities are offered.
+                  </p>
+                  <FormField control={form.control} name="origin" render={({ field }) => (
+                    <FormItem>
+                      <div className="grid grid-cols-2 gap-3">
+                        {(["PK", "CN"] as const).map((o) => (
+                          <button
+                            key={o}
+                            type="button"
+                            onClick={() => field.onChange(o)}
+                            className={cn(
+                              "p-4 rounded-lg border-2 text-left transition-colors",
+                              field.value === o
+                                ? "border-brand-yellow bg-brand-yellow/5"
+                                : "border-slate-200 dark:border-navy-700 hover:border-slate-300 dark:hover:border-navy-600"
+                            )}
+                          >
+                            <div className="text-sm font-semibold text-navy-900 dark:text-white">
+                              {COPY[o].label}
+                            </div>
+                            <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                              {COPY[o].blurb}
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+                </CardBody>
+              </Card>
+              )}
+
               {/* Basic */}
               <Card>
                 <CardBody>
@@ -273,14 +385,14 @@ export default function NewPartyPage() {
                     <FormField control={form.control} name="legalName" render={({ field }) => (
                       <FormItem className="sm:col-span-2">
                         <FormLabel required>Legal Name</FormLabel>
-                        <FormControl><Input placeholder="e.g. Hafeez Center Shop #28" {...field} /></FormControl>
+                        <FormControl><Input placeholder={copy.legalName} {...field} /></FormControl>
                         <FormMessage />
                       </FormItem>
                     )} />
                     <FormField control={form.control} name="displayName" render={({ field }) => (
                       <FormItem>
                         <FormLabel>Display Name</FormLabel>
-                        <FormControl><Input placeholder="Same as legal name if blank" {...field} /></FormControl>
+                        <FormControl><Input placeholder={copy.displayName} {...field} /></FormControl>
                         <FormMessage />
                       </FormItem>
                     )} />
@@ -300,7 +412,7 @@ export default function NewPartyPage() {
                     <FormField control={form.control} name="industry" render={({ field }) => (
                       <FormItem className="sm:col-span-2">
                         <FormLabel>Industry</FormLabel>
-                        <FormControl><Input placeholder="e.g. Mobile Accessories" {...field} /></FormControl>
+                        <FormControl><Input placeholder={copy.industry} {...field} /></FormControl>
                         <FormMessage />
                       </FormItem>
                     )} />
@@ -316,21 +428,21 @@ export default function NewPartyPage() {
                     <FormField control={form.control} name="phone" render={({ field }) => (
                       <FormItem>
                         <FormLabel required>Phone</FormLabel>
-                        <FormControl><Input placeholder="03XXXXXXXXX or 021XXXXXXX" {...field} /></FormControl>
+                        <FormControl><Input placeholder={copy.phone} {...field} /></FormControl>
                         <FormMessage />
                       </FormItem>
                     )} />
                     <FormField control={form.control} name="altPhone" render={({ field }) => (
                       <FormItem>
                         <FormLabel>Alternate Phone</FormLabel>
-                        <FormControl><Input placeholder="Optional" {...field} /></FormControl>
+                        <FormControl><Input placeholder={copy.altPhone} {...field} /></FormControl>
                         <FormMessage />
                       </FormItem>
                     )} />
                     <FormField control={form.control} name="email" render={({ field }) => (
                       <FormItem className="sm:col-span-2">
                         <FormLabel>Email</FormLabel>
-                        <FormControl><Input type="email" placeholder="contact@example.pk" {...field} /></FormControl>
+                        <FormControl><Input type="email" placeholder={copy.email} {...field} /></FormControl>
                         <FormMessage />
                       </FormItem>
                     )} />
@@ -346,7 +458,7 @@ export default function NewPartyPage() {
                     <FormField control={form.control} name="addressLine1" render={({ field }) => (
                       <FormItem className="sm:col-span-2">
                         <FormLabel>Address Line 1</FormLabel>
-                        <FormControl><Input placeholder="Shop #28, Hafeez Center, Liberty" {...field} /></FormControl>
+                        <FormControl><Input placeholder={copy.address} {...field} /></FormControl>
                         <FormMessage />
                       </FormItem>
                     )} />
@@ -356,7 +468,7 @@ export default function NewPartyPage() {
                         <FormControl>
                           <SelectNative {...field}>
                             <option value={0}>— Select a city —</option>
-                            {lookups.cities.map((c) => (
+                            {cities.map((c) => (
                               <option key={c.id} value={c.id}>{c.name}</option>
                             ))}
                           </SelectNative>
@@ -380,32 +492,22 @@ export default function NewPartyPage() {
               {canFillTax && (
               <Card>
                 <CardBody>
-                  <h3 className="text-sm font-semibold text-navy-900 dark:text-white mb-4">Tax & Compliance</h3>
+                  <h3 className="text-sm font-semibold text-navy-900 dark:text-white mb-4">
+                    Tax &amp; Compliance
+                  </h3>
+                  {/* Three fields, three database columns, and which three
+                      numbers they are depends on where the party is. */}
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <FormField control={form.control} name="ntn" render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>NTN</FormLabel>
-                        <FormControl><Input placeholder="1234567-8" {...field} /></FormControl>
-                        <FormDescription>National Tax Number</FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    )} />
-                    <FormField control={form.control} name="strn" render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>STRN</FormLabel>
-                        <FormControl><Input placeholder="32-77-8901-234-56" {...field} /></FormControl>
-                        <FormDescription>Sales Tax Registration</FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    )} />
-                    <FormField control={form.control} name="cnic" render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>CNIC</FormLabel>
-                        <FormControl><Input placeholder="00000-0000000-0" {...field} /></FormControl>
-                        <FormDescription>For sole proprietors</FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    )} />
+                    {copy.tax.map((t) => (
+                      <FormField key={t.key} control={form.control} name={t.key} render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>{t.label}</FormLabel>
+                          <FormControl><Input placeholder={t.placeholder} {...field} /></FormControl>
+                          <FormDescription>{t.hint}</FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )} />
+                    ))}
                   </div>
                 </CardBody>
               </Card>
