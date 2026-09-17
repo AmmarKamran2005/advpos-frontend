@@ -9,6 +9,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { FilterBar } from "@/components/ui/filter-bar";
+import { SelectNative } from "@/components/ui/select-native";
 import { Skeleton } from "@/components/ui/skeleton";
 import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
 import { formatMoney, formatCompact } from "@/lib/format";
@@ -33,6 +34,9 @@ type StockRow = {
   locationId: number;
   locationCode: string;
   locationName: string;
+  locationKind: string;
+  cityId: number;
+  cityName: string;
   qty: number;
   packets: number;
   loose: number;
@@ -40,9 +44,19 @@ type StockRow = {
   status: "out" | "low" | "over" | "ok";
 };
 
-type StockResponse = { totalValue: number; totalUnits: number; items: StockRow[] };
+type CityStock = { cityId: number; city: string; units: number; value: number; locations: number };
 
-type LocationRef = { id: number; code: string; name: string };
+type StockResponse = {
+  totalValue: number;
+  totalUnits: number;
+  byCity: CityStock[];
+  items: StockRow[];
+};
+
+type LocationRef = {
+  id: number; code: string; name: string;
+  kind: string; kindLabel: string; cityId: number; city: string;
+};
 
 /* One line per product, with the per-location quantities folded in. */
 type PivotRow = {
@@ -66,23 +80,48 @@ function apiMessage(e: unknown, fallback: string) {
   return "Cannot reach the server.";
 }
 
+/* WHERE THE STOCK IS, AS THE BUSINESS THINKS OF IT.
+
+   The business keeps goods by CITY, not by shelf: Karachi has a warehouse and
+   an order department, Lahore has its own pair, and "how much do we hold in
+   Lahore" means both of them added together. This screen could only ever show
+   every location side by side, which answers a different question and gets
+   harder to read with every city added.
+
+   So the filter is the city, with "Whole system" as the default -- the
+   combined figure, which is the other half of what the owner needs. The
+   per-location columns stay, because inside a city it still matters whether
+   something is on the warehouse shelf or already at the order desk; there are
+   simply fewer of them once a city is chosen. */
+const WHOLE_SYSTEM = 0;
+
 export default function StockLevelsPage() {
   const [rows, setRows] = React.useState<StockRow[]>([]);
   const [locations, setLocations] = React.useState<LocationRef[]>([]);
+  const [byCity, setByCity] = React.useState<CityStock[]>([]);
   const [totals, setTotals] = React.useState({ totalValue: 0, totalUnits: 0 });
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [search, setSearch] = React.useState("");
   const [filter, setFilter] = React.useState<"all" | "low" | "out">("all");
+  const [cityId, setCityId] = React.useState<number>(WHOLE_SYSTEM);
 
   const load = React.useCallback(async () => {
     try {
+      /* The CITY is a server-side filter, not a client one. Rule 3 of
+         AGENTS.md: this business has 957 items across five locations today and
+         will have more of both -- pulling every balance and hiding most of them
+         in the browser is the shape that stops working quietly. */
       const [stock, lookups] = await Promise.all([
-        axios.get<StockResponse>(`${API_BASE_URL}/inventory/stock-levels`, { headers: authHeader() }),
+        axios.get<StockResponse>(`${API_BASE_URL}/inventory/stock-levels`, {
+          params: cityId === WHOLE_SYSTEM ? undefined : { cityId },
+          headers: authHeader(),
+        }),
         axios.get<{ locations: LocationRef[] }>(`${API_BASE_URL}/inventory/lookups`, { headers: authHeader() }),
       ]);
       setRows(stock.data.items);
       setTotals({ totalValue: stock.data.totalValue, totalUnits: stock.data.totalUnits });
+      setByCity(stock.data.byCity ?? []);
       setLocations(lookups.data.locations);
       setError(null);
     } catch (e) {
@@ -90,7 +129,7 @@ export default function StockLevelsPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [cityId]);
 
   React.useEffect(() => {
     /* eslint-disable-next-line react-hooks/set-state-in-effect --
@@ -136,6 +175,21 @@ export default function StockLevelsPage() {
   const lowCount = pivot.filter((r) => r.status === "low").length;
   const outCount = pivot.filter((r) => r.status === "out").length;
 
+  /* One column per shelf IN THE CHOSEN CITY. Showing Lahore's warehouse beside
+     Karachi's while the figures are Karachi-only would print a column of
+     zeroes and invite somebody to read it as "Lahore is empty". */
+  const shownLocations = React.useMemo(
+    () => (cityId === WHOLE_SYSTEM ? locations : locations.filter((l) => l.cityId === cityId)),
+    [locations, cityId]
+  );
+
+  const cityLabel =
+    cityId === WHOLE_SYSTEM
+      ? "the whole system"
+      : byCity.find((c) => c.cityId === cityId)?.city
+        ?? locations.find((l) => l.cityId === cityId)?.city
+        ?? "this city";
+
   const columns: Column<PivotRow>[] = [
     {
       key: "name",
@@ -153,12 +207,14 @@ export default function StockLevelsPage() {
         </div>
       ),
     },
-    ...locations.map<Column<PivotRow>>((loc) => ({
+    ...shownLocations.map<Column<PivotRow>>((loc) => ({
       key: `loc-${loc.id}`,
       header: (
         <div className="text-right">
           <div>{loc.name}</div>
-          <div className="text-2xs font-normal opacity-60 tabular">{loc.code}</div>
+          <div className="text-2xs font-normal opacity-60 tabular">
+            {cityId === WHOLE_SYSTEM ? loc.city : loc.kindLabel}
+          </div>
         </div>
       ),
       align: "right" as const,
@@ -201,9 +257,32 @@ export default function StockLevelsPage() {
   return (
     <>
       <PageHeader
-        breadcrumbs={[{ label: "Inventory" }, { label: "Stock Levels" }]}
-        title="Stock Levels"
-        subtitle="What is on each shelf, and what it is worth"
+        breadcrumbs={[{ label: "Inventory" }, { label: "Stock in Hand" }]}
+        title="Stock in Hand"
+        subtitle={`What is on each shelf in ${cityLabel}, and what it is worth`}
+        actions={
+          <div className="flex items-center gap-2">
+            <label htmlFor="stock-city" className="text-xs text-slate-500 dark:text-slate-400 hidden sm:inline">
+              Show
+            </label>
+            <SelectNative
+              id="stock-city"
+              className="min-w-52"
+              value={String(cityId)}
+              onChange={(e) => { setLoading(true); setCityId(Number(e.target.value)); }}
+            >
+              <option value={WHOLE_SYSTEM}>
+                Whole system &mdash; every city combined
+              </option>
+              {byCity.map((c) => (
+                <option key={c.cityId} value={c.cityId}>
+                  {c.city} &mdash; {c.units.toLocaleString()} units
+                  {c.locations > 1 ? ` across ${c.locations} places` : ""}
+                </option>
+              ))}
+            </SelectNative>
+          </div>
+        }
       />
 
       {error && (
@@ -218,10 +297,39 @@ export default function StockLevelsPage() {
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <Stat label="Products stocked" loading={loading} value={String(pivot.length)} />
-        <Stat label="Units on hand" loading={loading} value={totals.totalUnits.toLocaleString()} />
+        <Stat
+          label={cityId === WHOLE_SYSTEM ? "Units on hand \u2014 all cities" : `Units on hand \u2014 ${cityLabel}`}
+          loading={loading}
+          value={totals.totalUnits.toLocaleString()}
+        />
         <Stat label="Stock value" loading={loading} value={formatCompact(totals.totalValue)} />
         <Stat label="Low / Out" loading={loading} value={`${lowCount} / ${outCount}`} tone={outCount > 0 ? "text-danger" : "text-warning"} />
       </div>
+
+      {/* Every city, always, whatever the filter is set to. A breakdown that
+          moves when you pick one of its own rows is a breakdown nobody can
+          read -- and comparing two towns is most of why anybody opens this. */}
+      {byCity.length > 1 && (
+        <div className="flex flex-wrap items-center gap-2 mb-6">
+          {byCity.map((c) => (
+            <button
+              key={c.cityId}
+              type="button"
+              onClick={() => { setLoading(true); setCityId(cityId === c.cityId ? WHOLE_SYSTEM : c.cityId); }}
+              className={cn(
+                "px-3 py-1.5 rounded-lg text-xs transition-colors border",
+                cityId === c.cityId
+                  ? "bg-navy-900 text-brand-yellow border-navy-900 dark:bg-navy-800 dark:border-navy-700"
+                  : "bg-white dark:bg-navy-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-navy-700 hover:border-slate-300"
+              )}
+            >
+              <span className="font-semibold">{c.city}</span>
+              <span className="tabular opacity-70"> &middot; {c.units.toLocaleString()} units</span>
+              <span className="tabular opacity-70"> &middot; {formatCompact(c.value)}</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       <FilterBar
         searchPlaceholder="Product or SKU…"
@@ -257,7 +365,9 @@ export default function StockLevelsPage() {
           </div>
         ) : filtered.length === 0 ? (
           <div className="p-10 text-center text-sm text-slate-500 dark:text-slate-400">
-            Nothing matches those filters.
+            {cityId === WHOLE_SYSTEM
+              ? "Nothing matches those filters."
+              : `Nothing matches those filters in ${cityLabel}.`}
           </div>
         ) : (
           <DataTable columns={columns} data={filtered} pageSize={15} />

@@ -120,28 +120,51 @@ export default function NewSalesReturnPage() {
   const { fields, replace } = useFieldArray({ control: form.control, name: "items" });
   const items = form.watch("items");
 
+  /* TWO CALLS, SETTLED SEPARATELY -- not Promise.all.
+     
+     This screen used to fail as a unit: one Promise.all, one catch, one
+     message. And the invoice half was failing for every salesperson, because
+     the Sales role did not hold `invoices.view` and GET /sales/invoices
+     answered 403. So the whole screen collapsed into
+
+         "Could not load invoices and refund methods."
+
+     which named both halves and identified neither, and made a permissions
+     problem look like a broken feature. The permission is now granted
+     (database/18_sales_scope_returns_and_places.sql), but the reporting is
+     wrong either way: if one of the two ever fails again, the person in front
+     of it should be told WHICH, in the API's own words. */
   const load = React.useCallback(async () => {
-    try {
-      const [inv, look] = await Promise.all([
-        axios.get<{ items: InvoiceRow[] }>(`${API_BASE_URL}/sales/invoices`,
-          { params: { pageSize: 200, walkIn: "all" }, headers: authHeader() }),
-        axios.get<Lookups>(`${API_BASE_URL}/sales/lookups`, { headers: authHeader() }),
-      ]);
-      setInvoices(inv.data.items ?? []);
-      setLookups({
-        locations: look.data.locations ?? [],
-        paymentMethods: look.data.paymentMethods ?? [],
-        conditions: look.data.conditions ?? [],
-      });
-      form.setValue("locationId", look.data.locations?.[0]?.id ?? 0);
-      const creditNote = look.data.paymentMethods?.find((m) => m.key === "CREDIT_NOTE");
-      form.setValue("refundMethodId", creditNote?.id ?? look.data.paymentMethods?.[0]?.id ?? 0);
-      setError(null);
-    } catch (e) {
-      setError(apiMessage(e, "Could not load invoices and refund methods."));
-    } finally {
-      setLoading(false);
+    const [inv, look] = await Promise.allSettled([
+      axios.get<{ items: InvoiceRow[] }>(`${API_BASE_URL}/sales/invoices`,
+        { params: { pageSize: 200, walkIn: "all" }, headers: authHeader() }),
+      axios.get<Lookups>(`${API_BASE_URL}/sales/lookups`, { headers: authHeader() }),
+    ]);
+
+    const problems: string[] = [];
+
+    if (inv.status === "fulfilled") {
+      setInvoices(inv.value.data.items ?? []);
+    } else {
+      problems.push(apiMessage(inv.reason, "The invoice list could not be loaded."));
     }
+
+    if (look.status === "fulfilled") {
+      const d = look.value.data;
+      setLookups({
+        locations: d.locations ?? [],
+        paymentMethods: d.paymentMethods ?? [],
+        conditions: d.conditions ?? [],
+      });
+      form.setValue("locationId", d.locations?.[0]?.id ?? 0);
+      const creditNote = d.paymentMethods?.find((m) => m.key === "CREDIT_NOTE");
+      form.setValue("refundMethodId", creditNote?.id ?? d.paymentMethods?.[0]?.id ?? 0);
+    } else {
+      problems.push(apiMessage(look.reason, "Refund methods and conditions could not be loaded."));
+    }
+
+    setError(problems.length === 0 ? null : problems.join(" "));
+    setLoading(false);
   }, [form]);
 
   React.useEffect(() => {

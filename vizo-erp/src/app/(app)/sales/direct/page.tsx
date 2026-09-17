@@ -23,7 +23,7 @@ import {
 import { WhatsAppShareDialog } from "@/components/dialogs/whatsapp-share-dialog";
 import { toast } from "@/components/ui/toaster";
 import { useSession, API_BASE_URL, authHeader } from "@/components/providers/session-provider";
-import { openDocument, openDocumentWhenReady } from "@/lib/documents";
+import { openDocument, openDocumentWhenReady, viewableUrl } from "@/lib/documents";
 import { formatMoney } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -67,7 +67,7 @@ type SaleResult = {
   isWalkIn: boolean;
   customerName: string; customerPhone: string | null;
   subtotal: number; discount: number; tax: number; total: number;
-  pdfUrl: string | null; shareUrl: string | null;
+  pdfUrl: string | null; shareUrl: string | null; viewUrl: string | null;
   message: string;
 };
 
@@ -269,18 +269,19 @@ export default function CounterSalePage() {
     }
   }
 
-  /* Opens the bill's own file in the Cloudinary store -- the same one the
-     customer gets over WhatsApp. window.open carries no Authorization header,
-     so it must be the Cloudinary URL and not an API route. */
+  /* Opens the bill. window.open carries no Authorization header, so the link
+     must be one that needs none -- and the raw Cloudinary URL is not it: PDF
+     delivery is switched off on that account, so the stored link answers 401.
+     `viewUrl` is whichever of the two actually opens. See lib/documents.ts. */
   async function openBill(invoiceId: number, storedUrl?: string | null, attachment = false) {
     if (storedUrl) {
       openDocument(storedUrl, attachment);
       return;
     }
     const opened = await openDocumentWhenReady(async () => {
-      const res = await axios.post<{ pdfUrl: string | null }>(
+      const res = await axios.post<{ pdfUrl: string | null; shareUrl?: string | null; viewUrl?: string | null }>(
         `${API_BASE_URL}/sales/invoices/${invoiceId}/pdf`, {}, { headers: authHeader() });
-      return res.data.pdfUrl;
+      return viewableUrl(res.data);
     }, attachment);
     if (!opened) {
       toast.error("Could not open the bill", {
@@ -358,7 +359,7 @@ export default function CounterSalePage() {
                 </p>
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">
-                <Button variant="secondary" size="md" className="gap-1.5" onClick={() => printBill(sale.invoiceId, sale.pdfUrl)}>
+                <Button variant="secondary" size="md" className="gap-1.5" onClick={() => printBill(sale.invoiceId, sale.viewUrl)}>
                   <Printer />Print
                 </Button>
                 <Button variant="accent" size="md" className="gap-1.5" onClick={() => setShareOpen(true)}>
@@ -700,7 +701,7 @@ export default function CounterSalePage() {
               <div className="flex gap-1.5 mt-2">
                 <Button variant="secondary" size="sm" className="flex-1 gap-1"
                   disabled={!sale}
-                  onClick={() => sale && printBill(sale.invoiceId, sale.pdfUrl)}>
+                  onClick={() => sale && printBill(sale.invoiceId, sale.viewUrl)}>
                   <Printer /> Print
                 </Button>
                 <Button variant="secondary" size="sm" className="flex-1 gap-1"

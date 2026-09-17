@@ -19,7 +19,7 @@ import { RecordPaymentDialog } from "@/components/dialogs/record-payment-dialog"
 import { WhatsAppShareDialog } from "@/components/dialogs/whatsapp-share-dialog";
 import { toast } from "@/components/ui/toaster";
 import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
-import { openDocument, openDocumentWhenReady } from "@/lib/documents";
+import { openDocument, openDocumentWhenReady, viewableUrl } from "@/lib/documents";
 import { formatMoney, formatDate } from "@/lib/format";
 import { statusLabel } from "@/lib/labels";
 import { prettyPhone } from "@/lib/whatsapp";
@@ -51,7 +51,8 @@ type InvoiceDetail = {
   subtotal: number; discount: number; tax: number; total: number;
   status: string; statusName: string;
   methodId: number; paymentMethod: string; paymentMethodName: string;
-  createdBy: string; pdfUrl: string | null; shareUrl: string | null; notes: string | null;
+  createdBy: string; pdfUrl: string | null; shareUrl: string | null;
+  viewUrl: string | null; notes: string | null;
   paid: number; balance: number;
   lines: InvoiceLine[];
   company: LetterHead | null;
@@ -121,18 +122,22 @@ export default function InvoiceDetailPage() {
      print the app chrome and a layout nobody designed for A4; rendering a fresh
      PDF would mean the copy on screen was never the copy in the store.
 
-     The Cloudinary URL rather than an API route, because window.open carries no
-     Authorization header. */
+     Not an API route, because window.open carries no Authorization header —
+     and NOT the raw Cloudinary URL either, which is the mistake that made this
+     button useless: the upload succeeds and the delivery is refused, so the
+     stored link answers 401. `viewUrl` is whichever of the two actually opens.
+     See lib/documents.ts. */
   async function openBill(attachment = false) {
-    if (invoice?.pdfUrl) {
-      openDocument(invoice.pdfUrl, attachment);
+    const known = viewableUrl(invoice ?? {});
+    if (known) {
+      openDocument(known, attachment);
       return;
     }
     const opened = await openDocumentWhenReady(async () => {
-      const res = await axios.post<{ pdfUrl: string | null }>(
+      const res = await axios.post<{ pdfUrl: string | null; shareUrl?: string | null; viewUrl?: string | null }>(
         `${API_BASE_URL}/sales/invoices/${id}/pdf`, {}, { headers: authHeader() });
       await load();
-      return res.data.pdfUrl;
+      return viewableUrl(res.data);
     }, attachment);
     if (!opened) toast.error("Could not open the bill", { description: "Try again in a moment." });
   }

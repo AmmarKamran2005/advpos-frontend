@@ -18,7 +18,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { WhatsAppShareDialog } from "@/components/dialogs/whatsapp-share-dialog";
 import { toast } from "@/components/ui/toaster";
 import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
-import { openDocument, openDocumentWhenReady } from "@/lib/documents";
+import { openDocument, openDocumentWhenReady, viewableUrl } from "@/lib/documents";
 import { downloadXlsx, exportError } from "@/lib/export";
 import { formatMoney, formatCompact, formatDate } from "@/lib/format";
 import { statusLabel } from "@/lib/labels";
@@ -38,6 +38,7 @@ type Invoice = {
   subtotal: number; discount: number; tax: number; total: number;
   status: string; statusName: string;
   paymentMethod: string; pdfUrl: string | null; shareUrl: string | null;
+  viewUrl: string | null;
   itemCount: number; paid: number; balance: number;
 };
 
@@ -102,18 +103,20 @@ export default function InvoicesPage() {
     totalOutstanding: rows.reduce((s, i) => s + i.balance, 0),
   }), [rows]);
 
-  /* Opens the bill's own file in the Cloudinary store -- the same one the
-     customer gets over WhatsApp. window.open carries no Authorization header,
-     so it must be the Cloudinary URL and not an API route. */
+  /* Opens the bill. window.open carries no Authorization header, so this has
+     to be a link that needs none -- but NOT the raw Cloudinary URL, which needs
+     none and answers 401 anyway because PDF delivery is switched off on that
+     account. `viewUrl` is whichever of the two actually opens; see
+     lib/documents.ts. */
   async function openBill(invoiceId: number, storedUrl?: string | null, attachment = false) {
     if (storedUrl) {
       openDocument(storedUrl, attachment);
       return;
     }
     const opened = await openDocumentWhenReady(async () => {
-      const res = await axios.post<{ pdfUrl: string | null }>(
+      const res = await axios.post<{ pdfUrl: string | null; shareUrl?: string | null; viewUrl?: string | null }>(
         `${API_BASE_URL}/sales/invoices/${invoiceId}/pdf`, {}, { headers: authHeader() });
-      return res.data.pdfUrl;
+      return viewableUrl(res.data);
     }, attachment);
     if (!opened) {
       toast.error("Could not open the bill", {
@@ -180,7 +183,7 @@ export default function InvoicesPage() {
       cell: (i) => (
         /* stopPropagation so tapping Print does not also follow the row link. */
         <div className="flex items-center justify-end gap-1" onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}>
-          <Button variant="ghost" size="icon-sm" aria-label={`Print ${i.invoiceNo}`} onClick={() => void openBill(i.id, i.pdfUrl)}>
+          <Button variant="ghost" size="icon-sm" aria-label={`Print ${i.invoiceNo}`} onClick={() => void openBill(i.id, i.viewUrl)}>
             <Printer />
           </Button>
           <Button variant="ghost" size="icon-sm" aria-label={`Send ${i.invoiceNo} on WhatsApp`} onClick={() => setShare(i)}>

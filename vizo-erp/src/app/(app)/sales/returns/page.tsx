@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Plus , Loader2, Download} from "lucide-react";
+import { Plus, Loader2, Download, Printer } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -16,15 +16,22 @@ import { AlertCircle } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
 import { downloadXlsx, exportError } from "@/lib/export";
+import { openDocument, viewableUrl } from "@/lib/documents";
 
 /* GET /sales/returns. resalableQty / damagedQty come from the line
    ReturnCondition -- only resalable stock goes back on the shelf. */
 type Return = {
   id: number; returnNo: string; invoiceId: number; invoiceNo: string;
+  orderId: number | null; orderNo: string | null;
   customerId: number; customerName: string; customerInitials: string;
   location: string; returnDate: string; reason: string; refundMethod: string;
   status: string; statusName: string; itemCount: number; totalAmount: number;
   resalableQty: number; damagedQty: number;
+  createdBy: string; salesPerson: string;
+  /** The return's own credit note in the document store. */
+  pdfUrl: string | null;
+  /** The link that actually opens it — see lib/documents.ts. */
+  viewUrl: string | null;
 };
 
 /* Real "ReturnStatus".StatusKey values. */
@@ -77,7 +84,20 @@ export default function SalesReturnsPage() {
 
   const columns: Column<Return>[] = [
     { key: "returnNo", header: "Return #", cell: (r) => <span className="tabular text-sm font-medium text-navy-900 dark:text-white">{r.returnNo}</span> },
-    { key: "invoiceNo", header: "Invoice", cell: (r) => <span className="tabular text-xs text-slate-500 dark:text-slate-400">{r.invoiceNo}</span> },
+    {
+      key: "invoiceNo",
+      header: "Against",
+      /* WHICH ORDER, not just which invoice. The owner opening this screen off
+         the dashboard is looking for the ORDER that had goods come back --
+         "lists of orders which done sales returns" -- and an invoice number on
+         its own does not answer that. */
+      cell: (r) => (
+        <div>
+          <div className="tabular text-xs text-navy-900 dark:text-white">{r.orderNo ?? "Counter sale"}</div>
+          <div className="tabular text-2xs text-slate-500 dark:text-slate-400 mt-0.5">{r.invoiceNo}</div>
+        </div>
+      ),
+    },
     {
       key: "customerName",
       header: "Customer",
@@ -106,6 +126,31 @@ export default function SalesReturnsPage() {
     { key: "totalAmount", header: "Amount", align: "right", cell: (r) => <span className="tabular text-sm font-semibold text-warning">{formatMoney(r.totalAmount)}</span> },
     { key: "refundMethod", header: "Refund Via", cell: (r) => <Badge variant="info">{r.refundMethod}</Badge> },
     { key: "status", header: "Status", cell: (r) => <StatusPill variant={RETURN_STATUS_VARIANT[r.status]}>{statusLabel(r.status)}</StatusPill> },
+    {
+      key: "note",
+      header: "Note",
+      align: "right",
+      /* The return's own credit note. stopPropagation because the whole row is
+         a link to the return, and a Print button that also navigates is a
+         Print button that loses the tab it just opened. */
+      cell: (r) => (
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={`Print ${r.returnNo}`}
+          title="Print the return note"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const url = viewableUrl(r);
+            if (url) openDocument(url);
+            else toast.error("No return note yet", { description: "Open the return and print it from there." });
+          }}
+        >
+          <Printer className="size-4" />
+        </Button>
+      ),
+    },
   ];
 
   const [exporting, setExporting] = React.useState(false);

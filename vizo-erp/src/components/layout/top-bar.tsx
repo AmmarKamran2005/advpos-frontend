@@ -25,6 +25,7 @@ import {
   Database,
   Send,
 } from "lucide-react";
+import { appHref } from "@/lib/app-url";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar } from "@/components/ui/avatar";
@@ -330,9 +331,14 @@ export function TopBar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
                   if (!n.isRead) void markRead(n.id);
                 };
 
-                if (n.url) {
+                /* Absolute out of the API, and turned back into a path when
+                   it points at this very site -- otherwise clicking your own
+                   bell reloads the whole application. See lib/app-url.ts. */
+                const href = appHref(n.url);
+
+                if (href) {
                   return (
-                    <Link key={n.id} href={n.url} className={rowClass} onClick={open}>
+                    <Link key={n.id} href={href} className={rowClass} onClick={open}>
                       {body}
                     </Link>
                   );

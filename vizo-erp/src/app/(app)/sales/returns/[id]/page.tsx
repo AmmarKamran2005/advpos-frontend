@@ -17,7 +17,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ConfirmDialog } from "@/components/dialogs/confirm-dialog";
 import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
-import { openDocumentWhenReady } from "@/lib/documents";
+import { openDocument, openDocumentWhenReady, viewableUrl } from "@/lib/documents";
 import { formatMoney, formatDate, formatRelative } from "@/lib/format";
 import { toast } from "@/components/ui/toaster";
 import { cn } from "@/lib/utils";
@@ -41,6 +41,11 @@ type Activity = {
 type ReturnDetail = {
   id: number; returnNo: string;
   invoiceId: number; invoiceNo: string; invoiceDate: string; invoiceTotal: number;
+  /* The ORDER the goods were sold on. Null for a counter sale, which has an
+     invoice but never had an order. */
+  orderId: number | null; orderNo: string | null;
+  orderDate: string | null; orderTotal: number | null;
+  salesPerson: string | null;
   customerId: number; customerName: string; customerInitials: string; customerPhone: string | null;
   locationId: number; location: string;
   returnDate: string; reason: string;
@@ -48,6 +53,10 @@ type ReturnDetail = {
   status: string; statusName: string; createdBy: string;
   decisionReason: string | null; decidedAt: string | null; decidedBy: string | null;
   totalAmount: number; resalableQty: number; damagedQty: number;
+  /** Units on the original bill, so "4 of 60 came back" can be said out loud. */
+  invoiceItemCount: number;
+  /** The return's own credit note, and the bill it came off. */
+  pdfUrl: string | null; viewUrl: string | null; invoiceViewUrl: string | null;
   lines: ReturnLine[];
   activity: Activity[];
 };
@@ -181,16 +190,37 @@ export default function SalesReturnDetailPage() {
             <StatusPill variant={RETURN_STATUS_VARIANT[r.status] ?? "muted"}>{statusLabel(r.status)}</StatusPill>
           </div>
         }
-        subtitle={`${r.customerName} · ${formatDate(r.returnDate)} · against ${r.invoiceNo} · raised by ${r.createdBy}`}
+        subtitle={
+          `${r.customerName} · ${formatDate(r.returnDate)} · ` +
+          `${r.orderNo ? `order ${r.orderNo}, ` : ""}invoice ${r.invoiceNo} · raised by ${r.createdBy}` +
+          `${r.salesPerson ? ` · rep ${r.salesPerson}` : ""}`
+        }
         actions={
           <>
             <Button variant="ghost" asChild><Link href="/sales/returns"><ArrowLeft />Back</Link></Button>
+
+            {/* THE RETURN'S OWN DOCUMENT. Not a second invoice -- the order
+                keeps the one bill it was billed on. This is the credit note:
+                what came back, in what condition, and what is being credited
+                for it. See backend Documents/DocumentBuilder.SalesReturn. */}
             <Button variant="ghost" className="gap-1.5"
-              onClick={() => void openDocumentWhenReady(async () => {
-                const res = await axios.post<{ pdfUrl: string | null }>(
-                  `${API_BASE_URL}/sales/invoices/${r.invoiceId}/pdf`, {}, { headers: authHeader() });
-                return res.data.pdfUrl;
-              })}>
+              onClick={() => {
+                const url = viewableUrl(r);
+                if (url) openDocument(url);
+                else toast.error("The return note could not be opened", { description: "Try again in a moment." });
+              }}>
+              <FileText /><span className="hidden sm:inline">Return note</span>
+            </Button>
+
+            <Button variant="ghost" className="gap-1.5"
+              onClick={() => {
+                if (r.invoiceViewUrl) { openDocument(r.invoiceViewUrl); return; }
+                void openDocumentWhenReady(async () => {
+                  const res = await axios.post<{ pdfUrl: string | null; shareUrl?: string | null; viewUrl?: string | null }>(
+                    `${API_BASE_URL}/sales/invoices/${r.invoiceId}/pdf`, {}, { headers: authHeader() });
+                  return viewableUrl(res.data);
+                });
+              }}>
               <Printer /><span className="hidden sm:inline">Original bill</span>
             </Button>
 
@@ -261,6 +291,68 @@ export default function SalesReturnDetailPage() {
           </CardBody>
         </Card>
       )}
+
+      {/* WHERE THIS CAME FROM.
+
+          The owner arrives here from the dashboard tile knowing only that
+          something came back. The first question is always which order, and
+          the second is how much of it -- so both are answered above the fold,
+          with the order and the bill one click away rather than found by
+          searching for the invoice number by hand. */}
+      <Card className="mb-6">
+        <CardBody>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div>
+              <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Order</div>
+              {r.orderId ? (
+                <Link
+                  href={`/sales/orders/${r.orderId}`}
+                  className="tabular text-sm font-semibold text-navy-900 dark:text-white hover:text-brand-yellow-700 dark:hover:text-brand-yellow"
+                >
+                  {r.orderNo}
+                </Link>
+              ) : (
+                <div className="text-sm font-semibold text-slate-500 dark:text-slate-400">Counter sale</div>
+              )}
+              <div className="text-2xs text-slate-500 dark:text-slate-400 mt-0.5">
+                {r.orderDate ? formatDate(r.orderDate) : "no order behind it"}
+              </div>
+            </div>
+
+            <div>
+              <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Invoice</div>
+              <Link
+                href={`/sales/invoices/${r.invoiceId}`}
+                className="tabular text-sm font-semibold text-navy-900 dark:text-white hover:text-brand-yellow-700 dark:hover:text-brand-yellow"
+              >
+                {r.invoiceNo}
+              </Link>
+              <div className="text-2xs text-slate-500 dark:text-slate-400 mt-0.5">
+                {formatDate(r.invoiceDate)} · {formatMoney(r.invoiceTotal)}
+              </div>
+            </div>
+
+            <div>
+              <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Items returned</div>
+              <div className="tabular text-sm font-semibold text-warning mt-0.5">
+                {r.resalableQty + r.damagedQty}
+                <span className="text-slate-500 dark:text-slate-400 font-normal">
+                  {" "}of {r.invoiceItemCount} sold
+                </span>
+              </div>
+              <div className="text-2xs text-slate-500 dark:text-slate-400 mt-0.5">
+                across {r.lines.length} {r.lines.length === 1 ? "line" : "lines"}
+              </div>
+            </div>
+
+            <div>
+              <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Credit due</div>
+              <div className="tabular text-sm font-semibold text-warning mt-0.5">{formatMoney(r.totalAmount)}</div>
+              <div className="text-2xs text-slate-500 dark:text-slate-400 mt-0.5">via {r.refundMethodName}</div>
+            </div>
+          </div>
+        </CardBody>
+      </Card>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">

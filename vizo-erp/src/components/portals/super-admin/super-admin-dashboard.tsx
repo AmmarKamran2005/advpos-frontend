@@ -6,7 +6,7 @@ import axios from "axios";
 import {
   TrendingUp, HandCoins, Wallet, TrendingDown, ArrowRight, ShieldAlert,
   Archive, PackageX, Clock, Check, X, ChevronRight,
-  CheckCircle2, AlertTriangle, Package, AlertCircle, RefreshCw,
+  CheckCircle2, AlertTriangle, Package, AlertCircle, RefreshCw, RotateCcw,
 } from "lucide-react";
 import { Card, CardBody } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -46,6 +46,26 @@ type ActivityRow = {
   severity: string;
 };
 
+/* Goods coming back. The one number on this screen that is never good news,
+   and until now the owner had no sight of it at all -- a return raised by a rep
+   wrote a notification and then sat in a screen nobody opens unless they
+   already suspect something. */
+type SalesReturnRow = {
+  id: number;
+  returnNo: string;
+  invoiceNo: string;
+  orderNo: string | null;
+  customerName: string;
+  customerInitials: string;
+  raisedBy: string;
+  returnDate: string;
+  status: string;
+  statusName: string;
+  itemCount: number;
+  units: number;
+  amount: number;
+};
+
 type DashboardData = {
   /** The date the money figures below actually cover — not necessarily today. */
   businessDate: string;
@@ -55,6 +75,14 @@ type DashboardData = {
   apPayable: { value: number; dueIn7Days: number };
   limitCrossed: LimitCrossedOrder[];
   claimsStuck: { count: number; value: number };
+  salesReturns: {
+    count: number;
+    /** Raised and not yet decided — the owner's to act on. */
+    waiting: number;
+    value: number;
+    units: number;
+    recent: SalesReturnRow[];
+  };
   deadStockValue: number;
   awaitingCollections: { count: number; value: number };
   activity: ActivityRow[];
@@ -245,6 +273,91 @@ export function SuperAdminDashboard() {
               href="/reports/aging/supplier"
             />
           </div>
+
+          {/* ─────────────────────── SALES RETURNS ───────────────────────
+
+              A column of its own, in red, and a link -- not a figure buried in
+              a report. Goods coming back is the owner's business twice over: it
+              is money going out again, and it is the first sign that something
+              is wrong with an item, a rep or a customer.
+
+              It is a Link and not a Card because the whole point is to open the
+              list. Red whenever anything has come back at all, not only when
+              something is waiting: a return that has been approved still cost
+              the business the goods. */}
+          <Link href="/sales/returns" className="block">
+            <Card
+              className={cn(
+                "p-5 transition-colors",
+                data.salesReturns.count > 0
+                  ? "border-danger/40 bg-danger/5 hover:border-danger"
+                  : "hover:border-brand-yellow/40"
+              )}
+            >
+              <div className="flex items-start gap-4">
+                <div
+                  className={cn(
+                    "size-10 rounded-lg flex items-center justify-center flex-shrink-0",
+                    data.salesReturns.count > 0
+                      ? "bg-danger/15 text-danger"
+                      : "bg-slate-100 text-slate-500 dark:bg-navy-700 dark:text-slate-400"
+                  )}
+                >
+                  <RotateCcw className="size-5" />
+                </div>
+
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-baseline gap-2 flex-wrap">
+                    <span className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">
+                      Sales returns
+                    </span>
+                    <span
+                      className={cn(
+                        "tabular text-2xl font-bold",
+                        data.salesReturns.count > 0 ? "text-danger" : "text-navy-900 dark:text-white"
+                      )}
+                    >
+                      {data.salesReturns.count}
+                    </span>
+                    {data.salesReturns.waiting > 0 && (
+                      <span className="text-xs font-semibold text-danger">
+                        · {data.salesReturns.waiting} waiting on a decision
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                    {data.salesReturns.units.toLocaleString()} units back,{" "}
+                    {formatMoney(data.salesReturns.value)} credited. Open the list to see which orders.
+                  </div>
+
+                  {data.salesReturns.recent.length > 0 && (
+                    <div className="mt-3 space-y-1.5">
+                      {data.salesReturns.recent.map((r) => (
+                        <div key={r.id} className="flex items-center gap-2 text-2xs">
+                          <Avatar initials={r.customerInitials} size="sm" />
+                          <span className="font-medium text-navy-900 dark:text-white truncate max-w-[10rem]">
+                            {r.customerName}
+                          </span>
+                          <span className="tabular text-slate-500 dark:text-slate-400">
+                            {r.orderNo ?? r.invoiceNo}
+                          </span>
+                          <span className="text-slate-400 dark:text-slate-500">
+                            {r.units} {r.units === 1 ? "unit" : "units"} · {r.raisedBy}
+                          </span>
+                          <span className="tabular text-danger font-semibold ml-auto">
+                            {formatMoney(r.amount)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <ChevronRight className="size-4 text-slate-400 flex-shrink-0 mt-1" />
+              </div>
+            </Card>
+          </Link>
 
           {/* Orders waiting on a confirm, and reps asking to change one.
               Their own component so a slow queue never delays the figures. */}

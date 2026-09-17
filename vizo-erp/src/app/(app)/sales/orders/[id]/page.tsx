@@ -23,7 +23,7 @@ import {
 import { ConfirmDialog } from "@/components/dialogs/confirm-dialog";
 import { WhatsAppShareDialog } from "@/components/dialogs/whatsapp-share-dialog";
 import { useSession, API_BASE_URL, authHeader } from "@/components/providers/session-provider";
-import { openDocument, openDocumentWhenReady } from "@/lib/documents";
+import { openDocument, openDocumentWhenReady, viewableUrl } from "@/lib/documents";
 import { formatMoney, formatDate, formatNumber, formatRelative } from "@/lib/format";
 import { toast } from "@/components/ui/toaster";
 import { cn } from "@/lib/utils";
@@ -63,6 +63,8 @@ type OrderDetail = {
   createdBy: string; createdAt: string;
   invoiceId: number | null; invoiceNo: string | null;
   invoicePdfUrl: string | null; invoiceShareUrl: string | null;
+  /** The link Print should open — see lib/documents.ts on why it is not pdfUrl. */
+  invoiceViewUrl: string | null;
   paidAmount: number; balance: number; paymentStatus: string; outstanding: number;
   channel: string | null; carrier: string | null; trackingNo: string | null;
   deliveryState: string | null; dispatchedOn: string | null; deliveredOn: string | null;
@@ -214,21 +216,36 @@ export default function OrderDetailPage() {
   /* The bill's own file in the Cloudinary store -- the same one the customer
      was sent. window.open carries no Authorization header, so this has to be
      the Cloudinary URL rather than an API route. */
+  /* THE BILL.
+
+     `invoiceViewUrl` rather than `invoicePdfUrl`: the Cloudinary copy is
+     stored but not served — PDF delivery is off on that account — so opening
+     it directly is what produced a 401 page instead of an invoice, for the
+     owner, the warehouse and the order desk alike. The API works out which of
+     the two links actually opens and sends that one. See lib/documents.ts. */
   async function openBill(attachment = false) {
     if (!order?.invoiceId) return;
-    if (order.invoicePdfUrl) {
-      openDocument(order.invoicePdfUrl, attachment);
+
+    const known = viewableUrl(order.invoiceViewUrl
+      ? { viewUrl: order.invoiceViewUrl }
+      : { pdfUrl: order.invoicePdfUrl, shareUrl: order.invoiceShareUrl });
+
+    if (known) {
+      openDocument(known, attachment);
       return;
     }
+
     const opened = await openDocumentWhenReady(async () => {
-      const res = await axios.post<{ pdfUrl: string | null }>(
+      const res = await axios.post<{ pdfUrl: string | null; shareUrl?: string | null; viewUrl?: string | null }>(
         `${API_BASE_URL}/sales/invoices/${order.invoiceId}/pdf`, {}, { headers: authHeader() });
       await load();
-      return res.data.pdfUrl;
+      return viewableUrl(res.data);
     }, attachment);
+
     if (!opened) {
-      console.log(opened);
-      toast.error("Could not open the bill", { description: "Try again in a moment." });
+      toast.error("Could not open the bill", {
+        description: "The document store could not be reached. Try again in a moment.",
+      });
     }
   }
 
@@ -316,7 +333,21 @@ export default function OrderDetailPage() {
               />
             )}
 
-            {!order.invoiceId && !isCreditHold && order.status === "CONFIRMED" && (
+            {/* ANY ORDER WITH NO INVOICE, not just a confirmed one.
+
+                This used to read `order.status === "CONFIRMED"`, which is the
+                only moment a healthy order ever needs it, and that is exactly
+                what made the damage permanent. Moving an order to Invoiced used
+                to write a status and nothing else, so six orders shipped and
+                were delivered with no invoice behind them; by the time anybody
+                noticed, they were past Confirmed and the one button that could
+                have fixed them had disappeared.
+
+                Draft, credit-hold and cancelled are still excluded: the API
+                refuses all three, and offering a button that will be turned
+                down is worse than not offering one. */}
+            {!order.invoiceId && !isCreditHold &&
+             order.status !== "DRAFT" && order.status !== "CANCELLED" && (
               <Button variant="ghost" size="md" className="gap-1.5" onClick={raiseInvoice} disabled={busy}>
                 {busy ? <Loader2 className="size-4 animate-spin" /> : <FileText />}
                 <span className="hidden sm:inline">Raise invoice</span>

@@ -37,9 +37,49 @@ const Schema = z.object({
 
 type FormValues = z.infer<typeof Schema>;
 
+type LocationRef = {
+  id: number; code: string; name: string;
+  kind: string; kindLabel: string;
+  cityId: number; city: string;
+};
+
 type Lookups = {
-  roles: { id: number; key: string; name: string; description: string; permissionCount: number }[];
-  locations: { id: number; code: string; name: string }[];
+  roles: { id: number; key: string; name: string; description: string; isStaff: boolean; permissionCount: number }[];
+  locations: LocationRef[];
+};
+
+/* ───────────────────────────────────────────────────────────────────────────
+   TWO ROLES BELONG TO A PLACE, NOT TO THE COMPANY
+
+   A warehouse keeper picks stock off a particular shelf in a particular city;
+   an order-desk clerk packs at a particular desk. Everybody else — the owner,
+   the accountant, a sales rep — works across the whole business.
+
+   So for those two the question is not "which locations may this person see"
+   but "WHICH WAREHOUSE IS THIS", and it has exactly one answer. A checkbox
+   grid asks the wrong question and lets through the answers that break things:
+   none, or three, or the Claim Stock shelf. The keeper's queue then showed
+   every order in the company, Lahore's included, and somebody in Karachi could
+   mark stock four hundred miles away as sent.
+
+   The API enforces the same rule — AdminUsersController.ValidatePlace — because
+   a form is a convenience and not a guarantee. This is here so the person
+   filling it in is never offered the wrong thing in the first place.
+
+   The list of warehouses is whatever the owner has created at
+   Administration → Locations. Nothing here knows any location's id.
+   ─────────────────────────────────────────────────────────────────────────── */
+const PLACE_BOUND: Record<string, { kind: string; noun: string; hint: string }> = {
+  "warehouse-keeper": {
+    kind: "warehouse",
+    noun: "warehouse",
+    hint: "This keeper only sees orders picked from this warehouse.",
+  },
+  "order-dept": {
+    kind: "department",
+    noun: "order department",
+    hint: "This desk only sees the orders that arrive at it.",
+  },
 };
 
 type UserDetail = {
@@ -94,6 +134,9 @@ function UserForm() {
     },
   });
   const { reset } = form;
+
+  /* The role drives the location card, so it is watched rather than read once. */
+  const roleId = form.watch("roleId");
 
   const load = React.useCallback(async () => {
     try {
@@ -177,6 +220,12 @@ function UserForm() {
     );
   }
 
+  /* Which role is selected decides what the location card asks, so it is read
+     off the form and follows the radio the moment it changes. */
+  const selectedRoleKey = lookups.roles.find((r) => r.id === roleId)?.key ?? "";
+  const place = PLACE_BOUND[selectedRoleKey];
+  const places = place ? lookups.locations.filter((l) => l.kind === place.kind) : [];
+
   return (
     <>
       <PageHeader
@@ -247,7 +296,11 @@ function UserForm() {
                   <FormField control={form.control} name="roleId" render={({ field }) => (
                     <FormItem>
                       <div className="space-y-2" role="radiogroup" aria-label="Role">
-                        {lookups.roles.map((r) => {
+                        {/* Staff only. Customer, Supplier and Customer & Supplier
+                            are PARTY roles -- a shop that buys from us -- and
+                            picking one here made a staff account with an
+                            employee code and no party behind it. */}
+                        {lookups.roles.filter((r) => r.isStaff !== false).map((r) => {
                           const checked = field.value === r.id;
                           return (
                             <label
@@ -267,7 +320,23 @@ function UserForm() {
                                 className="sr-only"
                                 value={r.id}
                                 checked={checked}
-                                onChange={() => field.onChange(r.id)}
+                                onChange={() => {
+                                  field.onChange(r.id);
+                                  /* Switching TO a place-bound role drops any
+                                     locations that are not one of its places.
+                                     Without this, ticking three boxes and then
+                                     choosing Warehouse Keeper leaves a hidden
+                                     selection the radio below cannot show and
+                                     the API then refuses -- a validation error
+                                     about something no longer on screen. */
+                                  const bound = PLACE_BOUND[r.key];
+                                  if (!bound) return;
+                                  const kept = form
+                                    .getValues("locationIds")
+                                    .filter((id) =>
+                                      lookups.locations.some((l) => l.id === id && l.kind === bound.kind));
+                                  form.setValue("locationIds", kept.slice(0, 1));
+                                }}
                                 onBlur={field.onBlur}
                               />
                               <span
@@ -297,30 +366,108 @@ function UserForm() {
 
               <Card>
                 <CardBody>
-                  <h3 className="text-sm font-semibold text-navy-900 dark:text-white mb-4">Location Access <span className="text-danger">*</span></h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">The user only sees stock and documents for these locations.</p>
+                  <h3 className="text-sm font-semibold text-navy-900 dark:text-white mb-4">
+                    {place ? `Which ${place.noun}` : "Location Access"} <span className="text-danger">*</span>
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
+                    {place
+                      ? `${place.hint} One only \u2014 if somebody genuinely covers two cities, give them two accounts.`
+                      : "The user only sees stock and documents for these locations."}
+                  </p>
+
                   <FormField control={form.control} name="locationIds" render={({ field }) => (
                     <FormItem>
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                        {lookups.locations.map((b) => {
-                          const checked = field.value.includes(b.id);
-                          return (
-                            <label key={b.id} className="flex items-center gap-2.5 p-3 border border-slate-200 dark:border-navy-700 rounded-lg cursor-pointer hover:border-brand-yellow/40 transition-colors">
-                              <Checkbox
-                                checked={checked}
-                                onCheckedChange={(v) => {
-                                  if (v) field.onChange([...field.value, b.id]);
-                                  else   field.onChange(field.value.filter((x) => x !== b.id));
-                                }}
-                              />
-                              <div>
-                                <div className="text-sm font-medium text-navy-900 dark:text-white">{b.name}</div>
-                                <div className="text-2xs tabular text-slate-500 dark:text-slate-400">{b.code}</div>
-                              </div>
-                            </label>
-                          );
-                        })}
-                      </div>
+                      {/* ONE PLACE, CHOSEN FROM WHAT THE OWNER HAS CREATED.
+                          A radio list rather than a dropdown, because the city
+                          matters as much as the name and a one-line option
+                          cannot show both comfortably. When the owner has not
+                          set one up yet it says so, rather than rendering an
+                          empty box that looks broken. */}
+                      {place ? (
+                        places.length === 0 ? (
+                          <div className="p-4 rounded-lg border border-warning/30 bg-warning/5">
+                            <div className="text-sm font-semibold text-warning-dark dark:text-warning-light">
+                              No {place.noun} has been set up yet
+                            </div>
+                            <p className="text-xs text-warning-dark/80 dark:text-warning-light/80 mt-1">
+                              Add one under{" "}
+                              <Link href="/admin/locations" className="underline font-medium">
+                                Administration &rarr; Locations
+                              </Link>{" "}
+                              &mdash; one {place.noun} per city &mdash; and it will appear here.
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="space-y-2" role="radiogroup" aria-label={`Which ${place.noun}`}>
+                            {places.map((b) => {
+                              const checked = field.value.length === 1 && field.value[0] === b.id;
+                              return (
+                                <label
+                                  key={b.id}
+                                  className={cn(
+                                    "flex items-start gap-3 p-3 border rounded-lg cursor-pointer transition-colors",
+                                    "hover:border-brand-yellow/40",
+                                    checked
+                                      ? "border-brand-yellow bg-brand-yellow/5"
+                                      : "border-slate-200 dark:border-navy-700"
+                                  )}
+                                >
+                                  <input
+                                    type="radio"
+                                    name="placeId"
+                                    className="sr-only"
+                                    value={b.id}
+                                    checked={checked}
+                                    /* Replaces rather than adds: exactly one. */
+                                    onChange={() => field.onChange([b.id])}
+                                    onBlur={field.onBlur}
+                                  />
+                                  <span
+                                    aria-hidden
+                                    className={cn(
+                                      "mt-0.5 size-4 shrink-0 rounded-full border flex items-center justify-center transition-colors",
+                                      checked
+                                        ? "bg-brand-yellow border-brand-yellow"
+                                        : "border-slate-300 dark:border-navy-600 bg-white dark:bg-navy-800"
+                                    )}
+                                  >
+                                    {checked && <span className="size-1.5 rounded-full bg-navy-900" />}
+                                  </span>
+                                  <div className="flex-1">
+                                    <div className="text-sm font-semibold text-navy-900 dark:text-white">{b.name}</div>
+                                    <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                                      {b.city} &middot; <span className="tabular">{b.code}</span>
+                                    </div>
+                                  </div>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        )
+                      ) : (
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                          {lookups.locations.map((b) => {
+                            const checked = field.value.includes(b.id);
+                            return (
+                              <label key={b.id} className="flex items-center gap-2.5 p-3 border border-slate-200 dark:border-navy-700 rounded-lg cursor-pointer hover:border-brand-yellow/40 transition-colors">
+                                <Checkbox
+                                  checked={checked}
+                                  onCheckedChange={(v) => {
+                                    if (v) field.onChange([...field.value, b.id]);
+                                    else   field.onChange(field.value.filter((x) => x !== b.id));
+                                  }}
+                                />
+                                <div>
+                                  <div className="text-sm font-medium text-navy-900 dark:text-white">{b.name}</div>
+                                  <div className="text-2xs tabular text-slate-500 dark:text-slate-400">
+                                    {b.city} &middot; {b.code}
+                                  </div>
+                                </div>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      )}
                       <FormMessage />
                     </FormItem>
                   )} />

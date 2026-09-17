@@ -6,7 +6,7 @@ import { Printer, Download, CloudUpload, Check, Loader2, ExternalLink } from "lu
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toaster";
 import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
-import { openDocument, openDocumentWhenReady } from "@/lib/documents";
+import { openDocument, openDocumentWhenReady, viewableUrl } from "@/lib/documents";
 
 /**
  * Print / Download / Save-to-store for one document.
@@ -41,11 +41,14 @@ export type DocumentKind =
   | "voucher"
   | "journal-entry"
   | "expense"
-  | "party-statement";
+  | "party-statement"
+  | "sales-return";
 
 type StoredFile = {
   archived: boolean;
   pdfUrl?: string;
+  /** The API's own signed link. Works whether or not Cloudinary will serve. */
+  shareUrl?: string;
   bytes?: number;
   isDeliverable?: boolean;
   generatedAt?: string;
@@ -93,14 +96,19 @@ export function DocumentActions({
     const res = await axios.post<StoredFile>(
       `${API_BASE_URL}/documents/${kind}/${id}/pdf`, {}, { headers: authHeader() });
     setStored(res.data);
-    return res.data.pdfUrl ?? null;
+    return viewableUrl(res.data);
   }
 
   async function open(attachment = false) {
     /* The common case: the link is already in hand, so the tab opens straight
-       away with no round trip. */
-    if (stored?.pdfUrl) {
-      openDocument(stored.pdfUrl, attachment);
+       away with no round trip.
+
+       viewableUrl, not pdfUrl. Opening the Cloudinary link directly is what put
+       a 401 on screen every time somebody pressed Print -- PDF delivery is
+       switched off on the account it was uploaded to. See lib/documents.ts. */
+    const known = viewableUrl(stored ?? {});
+    if (known) {
+      openDocument(known, attachment);
       return;
     }
 
@@ -153,13 +161,13 @@ export function DocumentActions({
           <span className="hidden sm:inline">{stored ? "Stored" : "Save to store"}</span>
         )}
       </Button>
-      {stored?.pdfUrl && (
+      {viewableUrl(stored ?? {}) && (
         <Button
           variant="ghost"
           size="icon"
           aria-label="Open the stored copy"
           title="Open the copy in the document store"
-          onClick={() => window.open(stored.pdfUrl!, "_blank", "noopener,noreferrer")}
+          onClick={() => openDocument(viewableUrl(stored ?? {})!, false)}
         >
           <ExternalLink />
         </Button>

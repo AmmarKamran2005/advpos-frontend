@@ -18,7 +18,7 @@ import { AlertCircle } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
 import { getChannel, type ChannelKey } from "@/lib/app-config";
-import { openDocumentWhenReady } from "@/lib/documents";
+import { openDocumentWhenReady, viewableUrl } from "@/lib/documents";
 
 /* GET /sales/orders -> { total, page, pageSize, items }.
 
@@ -414,17 +414,18 @@ function QuickAction({ order, onDone }: { order: Order; onDone: () => void | Pro
     }
   }
 
-  /* The bill. window.open carries no Authorization header, so the stored
-     Cloudinary link is opened directly when there is one, and the API is asked
-     to build the document first when there is not. */
+  /* The bill. window.open carries no Authorization header, so the link has to
+     be one that needs none -- and the raw Cloudinary URL is not it: PDF
+     delivery is blocked on that account, so a stored link opens a 401. The API
+     returns whichever link actually works. See lib/documents.ts. */
   async function printBill() {
     if (!order.invoiceId) return;
     setBusy(true);
     try {
       const opened = await openDocumentWhenReady(async () => {
-        const res = await axios.post<{ pdfUrl: string | null }>(
+        const res = await axios.post<{ pdfUrl: string | null; shareUrl?: string | null; viewUrl?: string | null }>(
           `${API_BASE_URL}/sales/invoices/${order.invoiceId}/pdf`, {}, { headers: authHeader() });
-        return res.data.pdfUrl;
+        return viewableUrl(res.data);
       });
       if (!opened) {
         toast.error("Could not open the bill", { description: "Try again in a moment." });

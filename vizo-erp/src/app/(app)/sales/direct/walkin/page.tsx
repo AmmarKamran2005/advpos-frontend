@@ -21,7 +21,7 @@ import { WhatsAppShareDialog } from "@/components/dialogs/whatsapp-share-dialog"
 import { toast } from "@/components/ui/toaster";
 import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
 import { downloadXlsx, exportError } from "@/lib/export";
-import { openDocument, openDocumentWhenReady } from "@/lib/documents";
+import { openDocument, openDocumentWhenReady, viewableUrl } from "@/lib/documents";
 import { formatMoney, formatDate } from "@/lib/format";
 import { statusLabel } from "@/lib/labels";
 import { prettyPhone } from "@/lib/whatsapp";
@@ -39,7 +39,7 @@ type WalkInSale = {
   status: string; statusName: string;
   itemCount: number; units: number;
   subtotal: number; discount: number; tax: number; total: number;
-  pdfUrl: string | null; shareUrl: string | null;
+  pdfUrl: string | null; shareUrl: string | null; viewUrl: string | null;
   soldBy: string;
 };
 
@@ -106,18 +106,19 @@ export default function WalkInSalesPage() {
     void load();
   }, [load]);
 
-  /* Opens the bill's own file in the Cloudinary store -- the same one the
-     customer gets over WhatsApp. window.open carries no Authorization header,
-     so it must be the Cloudinary URL and not an API route. */
+  /* Opens the bill. window.open carries no Authorization header, so the link
+     must be one that needs none -- and the raw Cloudinary URL is not it: PDF
+     delivery is switched off on that account, so the stored link answers 401.
+     `viewUrl` is whichever of the two actually opens. See lib/documents.ts. */
   async function openBill(invoiceId: number, storedUrl?: string | null, attachment = false) {
     if (storedUrl) {
       openDocument(storedUrl, attachment);
       return;
     }
     const opened = await openDocumentWhenReady(async () => {
-      const res = await axios.post<{ pdfUrl: string | null }>(
+      const res = await axios.post<{ pdfUrl: string | null; shareUrl?: string | null; viewUrl?: string | null }>(
         `${API_BASE_URL}/sales/invoices/${invoiceId}/pdf`, {}, { headers: authHeader() });
-      return res.data.pdfUrl;
+      return viewableUrl(res.data);
     }, attachment);
     if (!opened) {
       toast.error("Could not open the bill", {
@@ -290,7 +291,7 @@ export default function WalkInSalesPage() {
                   </div>
 
                   <div className="flex items-center gap-2 flex-shrink-0">
-                    <Button variant="secondary" size="md" className="gap-1.5" onClick={() => void openBill(s.id, s.pdfUrl)}>
+                    <Button variant="secondary" size="md" className="gap-1.5" onClick={() => void openBill(s.id, s.viewUrl)}>
                       <Printer />Print
                     </Button>
                     <Button
