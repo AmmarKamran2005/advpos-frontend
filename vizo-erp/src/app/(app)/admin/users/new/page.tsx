@@ -159,7 +159,7 @@ function UserForm() {
           locationIds: (u.locations ?? []).map((l) => l.locationId),
           sendInvite: false,
           isActive: u.isActive,
-        });
+        }); 
       }
     } catch (err) {
       setError(apiMessage(err, "Could not load the form."));
