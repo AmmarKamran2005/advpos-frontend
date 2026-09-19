@@ -56,26 +56,35 @@ Production-grade ERP system designed for **VIZO Pakistan** (mobile accessories d
 
 ## 🛠 Tech Stack
 
-### Frontend (current)
-- **Next.js 16** (App Router, React 19, Turbopack)
+### Frontend
+- **Next.js 16** (App Router, React 19, Turbopack), deployed on **Vercel**
 - **TypeScript** strict mode
 - **Tailwind CSS v4** (CSS-based config)
-- **shadcn-style components** (custom-built with VIZO theme)
-- **Radix UI** primitives (Dialog, Dropdown, Tabs, etc.)
-- **Recharts** for charts
-- **Lucide** icons
-- **next-themes** for dark mode
+- **shadcn-style components** (custom-built with VIZO theme) on **Radix UI** primitives
+- **react-hook-form** + **Zod** for forms and validation
+- **axios** for API calls, **@microsoft/signalr** for the live notification bell
+- **Recharts** for charts (loaded dynamically, never in the shared bundle)
+- **Lucide** icons, **next-themes** for dark mode
+- **Web Push** via a service worker (`public/sw.js`)
 
-### Backend (planned)
-- **ASP.NET Core 8** + EF Core
-- **PostgreSQL 16** (decimal precision for accounting)
-- **Redis** for caching, **Hangfire** for background jobs
-- **MinIO** for file storage (invoice PDFs, product images)
+### Backend — ASP.NET Core 8 Web API (`backend/vizo-backend`)
+- **.NET 8**, controllers-based REST API, Swagger in Development
+- **EF Core 8** + **Npgsql** on **PostgreSQL** (hosted on **Neon**, Singapore)
+- **JWT bearer** auth (BCrypt password hashes); authorisation is by **permission**
+  (`perm:xxx` policies), not by role name
+- **SignalR** hub for live notifications; **WebPush** (VAPID) for browser push
+- **Hosted background services** — nightly insights, order-confirmation reminders
+  (no Hangfire)
+- **Cloudinary** for stored documents (PDFs) and images — two accounts
+- **MailKit** (SMTP) for password-reset e-mail
+- Invoices and every other document are rendered to PDF by the API itself
+  (`Documents/`), and spreadsheets by its own XLSX writer — no third-party
+  reporting library
 
 ### AI / Integrations
-- **Gemini / OpenAI** — LLM Assistant (tool-calling, no raw SQL)
-- **Jazz BizSMS / Telenor / Twilio PK** — SMS gateway with failover
-- **Easypaisa / JazzCash / HBL** — payment methods
+- **Gemini Flash** — SQL does the maths, the model only explains; it never writes SQL
+- *Planned, not built:* SMS gateway (Jazz BizSMS / Telenor / Twilio PK) and
+  Easypaisa / JazzCash / HBL payment methods
 
 ---
 
