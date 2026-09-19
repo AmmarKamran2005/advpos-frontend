@@ -14,6 +14,8 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardBody } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DateInput } from "@/components/ui/date-input";
+import { isPastDate, PAST_DATE_MESSAGE } from "@/lib/dates";
 import { Textarea } from "@/components/ui/textarea";
 import { SelectNative } from "@/components/ui/select-native";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -161,6 +163,12 @@ export default function ExpenseDetailPage() {
   );
 
   async function onSave(values: FormValues) {
+    /* No date before today -- except the one this record already carries,
+       which was valid when it was entered. See lib/dates.ts. */
+    if (isPastDate(values.expenseDate) && values.expenseDate.slice(0, 10) !== (expense?.expenseDate ?? "").slice(0, 10)) {
+      form.setError("expenseDate", { message: PAST_DATE_MESSAGE });
+      return;
+    }
     try {
       const res = await axios.put<{ message: string }>(
         `${API_BASE_URL}/accounting/expenses/${id}`,
@@ -338,7 +346,7 @@ export default function ExpenseDetailPage() {
                 <Form {...form}>
                   <form onSubmit={form.handleSubmit(onSave)} className="grid grid-cols-1 sm:grid-cols-2 gap-4" noValidate>
                     <FormField control={form.control} name="expenseDate" render={({ field }) => (
-                      <FormItem><FormLabel required>Date</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>
+                      <FormItem><FormLabel required>Date</FormLabel><FormControl><DateInput keep={e.expenseDate} {...field} /></FormControl><FormMessage /></FormItem>
                     )} />
                     <FormField control={form.control} name="locationId" render={({ field }) => (
                       <FormItem><FormLabel required>Location</FormLabel><FormControl>

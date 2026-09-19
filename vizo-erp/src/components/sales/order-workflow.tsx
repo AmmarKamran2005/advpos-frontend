@@ -48,6 +48,11 @@ export type OrderPermissions = {
   isAdmin: boolean;
   isMine: boolean;
   canEdit: boolean;
+  /* Whether to draw "Raise invoice" at all. Billing an order is the
+     accountant's or the owner's now, so a rep and the order desk never see the
+     button -- the API refuses them anyway (OrderWorkflow.MayInvoice), and a
+     button that answers 403 is worse than no button. */
+  canInvoice: boolean;
   canDelete: boolean;
   editRequested: boolean;
   deleteRequested: boolean;
@@ -288,8 +293,11 @@ export function OrderWorkflowActions({
         </DropdownMenu>
       )}
 
-      {/* Editing and deleting. The Super Admin does both directly; a rep asks
-          and waits. */}
+      {/* Editing and deleting. The Super Admin does both directly, and the
+          accountant may edit an order that is confirmed or at Invoiced/Edit --
+          that is the "Edit" half of the step's name. A rep asks and waits, and
+          only their button says "(approved)", because theirs is the one that
+          came from an approval. */}
       {permissions?.canEdit && (
         <Button
           variant="ghost"
@@ -300,7 +308,7 @@ export function OrderWorkflowActions({
         >
           <Pencil />
           <span className="hidden sm:inline">
-            {role === "super-admin" ? "Edit" : "Edit (approved)"}
+            {role === "super-admin" || role === "accountant" ? "Edit" : "Edit (approved)"}
           </span>
         </Button>
       )}

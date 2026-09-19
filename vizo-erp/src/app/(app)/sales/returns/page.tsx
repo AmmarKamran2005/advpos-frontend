@@ -21,7 +21,10 @@ import { openDocument, viewableUrl } from "@/lib/documents";
 /* GET /sales/returns. resalableQty / damagedQty come from the line
    ReturnCondition -- only resalable stock goes back on the shelf. */
 type Return = {
-  id: number; returnNo: string; invoiceId: number; invoiceNo: string;
+  id: number; returnNo: string;
+  /* Null on a return raised against everything the customer has bought rather
+     than against one bill -- which is every return raised from 21 September. */
+  invoiceId: number | null; invoiceNo: string | null;
   orderId: number | null; orderNo: string | null;
   customerId: number; customerName: string; customerInitials: string;
   location: string; returnDate: string; reason: string; refundMethod: string;
@@ -48,7 +51,6 @@ function apiMessage(e: unknown, fallback: string) {
 }
 
 import { formatMoney, formatDate } from "@/lib/format";
-import { statusLabel } from "@/lib/labels";
 
 export default function SalesReturnsPage() {
   const [rows, setRows] = React.useState<Return[]>([]);
@@ -93,8 +95,12 @@ export default function SalesReturnsPage() {
          its own does not answer that. */
       cell: (r) => (
         <div>
-          <div className="tabular text-xs text-navy-900 dark:text-white">{r.orderNo ?? "Counter sale"}</div>
-          <div className="tabular text-2xs text-slate-500 dark:text-slate-400 mt-0.5">{r.invoiceNo}</div>
+          <div className="tabular text-xs text-navy-900 dark:text-white">
+            {r.invoiceNo === null ? "Several orders" : (r.orderNo ?? "Counter sale")}
+          </div>
+          <div className="tabular text-2xs text-slate-500 dark:text-slate-400 mt-0.5">
+            {r.invoiceNo ?? "against what this customer has bought"}
+          </div>
         </div>
       ),
     },
@@ -125,7 +131,10 @@ export default function SalesReturnsPage() {
     },
     { key: "totalAmount", header: "Amount", align: "right", cell: (r) => <span className="tabular text-sm font-semibold text-warning">{formatMoney(r.totalAmount)}</span> },
     { key: "refundMethod", header: "Refund Via", cell: (r) => <Badge variant="info">{r.refundMethod}</Badge> },
-    { key: "status", header: "Status", cell: (r) => <StatusPill variant={RETURN_STATUS_VARIANT[r.status]}>{statusLabel(r.status)}</StatusPill> },
+    /* The API's own StatusName, not statusLabel(): the shared helper speaks
+       shopkeeper and turns POSTED into "Confirmed", which reads as a decision
+       on an order rather than a credit note that has been raised. */
+    { key: "status", header: "Status", cell: (r) => <StatusPill variant={RETURN_STATUS_VARIANT[r.status]}>{r.statusName}</StatusPill> },
     {
       key: "note",
       header: "Note",
@@ -172,7 +181,7 @@ export default function SalesReturnsPage() {
       <PageHeader
         breadcrumbs={[{ label: "Sales" }, { label: "Sales Returns" }]}
         title="Sales Returns"
-        subtitle="Partial returns with condition tracking"
+        subtitle="Goods coming back, priced at what the customer actually paid"
         actions={
           <>
             <Button variant="secondary" size="md" className="gap-1.5" onClick={exportXlsx} disabled={exporting}>

@@ -1,3 +1,11 @@
+> ## ⛔ SUPERSEDED — read `../HANDOFF.md` instead
+>
+> This file froze on **2026-08-19**, before the backend existed. The single,
+> current handoff is **`HANDOFF.md` in the repository root** (§0 tells a new
+> chat where to start). Kept below for history only.
+
+---
+
 # AdvPOS — Session Handoff
 
 **Read `context.md` first** for stack, conventions and repo layout. This file is

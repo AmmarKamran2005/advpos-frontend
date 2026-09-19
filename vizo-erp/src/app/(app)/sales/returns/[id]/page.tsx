@@ -21,7 +21,6 @@ import { openDocument, openDocumentWhenReady, viewableUrl } from "@/lib/document
 import { formatMoney, formatDate, formatRelative } from "@/lib/format";
 import { toast } from "@/components/ui/toaster";
 import { cn } from "@/lib/utils";
-import { statusLabel } from "@/lib/labels";
 
 /* GET /sales/returns/{id} -- the header, the real returned lines with what the
    original invoice sold, who decided what and why, and the activity trail.
@@ -40,7 +39,12 @@ type Activity = {
 
 type ReturnDetail = {
   id: number; returnNo: string;
-  invoiceId: number; invoiceNo: string; invoiceDate: string; invoiceTotal: number;
+  /* ALL FOUR ARE NULL on a return raised against the customer's buying history
+     rather than one bill, which is how every return is raised from
+     21 September. The screen says "several orders" and drops the invoice card
+     rather than printing blanks. */
+  invoiceId: number | null; invoiceNo: string | null;
+  invoiceDate: string | null; invoiceTotal: number | null;
   /* The ORDER the goods were sold on. Null for a counter sale, which has an
      invoice but never had an order. */
   orderId: number | null; orderNo: string | null;
@@ -187,12 +191,15 @@ export default function SalesReturnDetailPage() {
           <div className="flex items-center gap-3 flex-wrap">
             <RotateCcw className="size-6 text-brand-yellow" />
             <span>{r.returnNo}</span>
-            <StatusPill variant={RETURN_STATUS_VARIANT[r.status] ?? "muted"}>{statusLabel(r.status)}</StatusPill>
+            <StatusPill variant={RETURN_STATUS_VARIANT[r.status] ?? "muted"}>{r.statusName}</StatusPill>
           </div>
         }
         subtitle={
           `${r.customerName} · ${formatDate(r.returnDate)} · ` +
-          `${r.orderNo ? `order ${r.orderNo}, ` : ""}invoice ${r.invoiceNo} · raised by ${r.createdBy}` +
+          (r.invoiceNo
+            ? `${r.orderNo ? `order ${r.orderNo}, ` : ""}invoice ${r.invoiceNo} · `
+            : "against everything this customer has bought · ") +
+          `raised by ${r.createdBy}` +
           `${r.salesPerson ? ` · rep ${r.salesPerson}` : ""}`
         }
         actions={
@@ -212,17 +219,21 @@ export default function SalesReturnDetailPage() {
               <FileText /><span className="hidden sm:inline">Return note</span>
             </Button>
 
-            <Button variant="ghost" className="gap-1.5"
-              onClick={() => {
-                if (r.invoiceViewUrl) { openDocument(r.invoiceViewUrl); return; }
-                void openDocumentWhenReady(async () => {
-                  const res = await axios.post<{ pdfUrl: string | null; shareUrl?: string | null; viewUrl?: string | null }>(
-                    `${API_BASE_URL}/sales/invoices/${r.invoiceId}/pdf`, {}, { headers: authHeader() });
-                  return viewableUrl(res.data);
-                });
-              }}>
-              <Printer /><span className="hidden sm:inline">Original bill</span>
-            </Button>
+            {/* Only when there IS one bill behind the return. A return across a
+                customer's purchases has no single original to print. */}
+            {r.invoiceId !== null && (
+              <Button variant="ghost" className="gap-1.5"
+                onClick={() => {
+                  if (r.invoiceViewUrl) { openDocument(r.invoiceViewUrl); return; }
+                  void openDocumentWhenReady(async () => {
+                    const res = await axios.post<{ pdfUrl: string | null; shareUrl?: string | null; viewUrl?: string | null }>(
+                      `${API_BASE_URL}/sales/invoices/${r.invoiceId}/pdf`, {}, { headers: authHeader() });
+                    return viewableUrl(res.data);
+                  });
+                }}>
+                <Printer /><span className="hidden sm:inline">Original bill</span>
+              </Button>
+            )}
 
             {isDraft && (
               <>
@@ -312,24 +323,42 @@ export default function SalesReturnDetailPage() {
                   {r.orderNo}
                 </Link>
               ) : (
-                <div className="text-sm font-semibold text-slate-500 dark:text-slate-400">Counter sale</div>
+                <div className="text-sm font-semibold text-slate-500 dark:text-slate-400">
+                  {r.invoiceId === null ? "Several orders" : "Counter sale"}
+                </div>
               )}
               <div className="text-2xs text-slate-500 dark:text-slate-400 mt-0.5">
-                {r.orderDate ? formatDate(r.orderDate) : "no order behind it"}
+                {r.orderDate
+                  ? formatDate(r.orderDate)
+                  : r.invoiceId === null ? "taken off this customer's purchases" : "no order behind it"}
               </div>
             </div>
 
             <div>
               <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Invoice</div>
-              <Link
-                href={`/sales/invoices/${r.invoiceId}`}
-                className="tabular text-sm font-semibold text-navy-900 dark:text-white hover:text-brand-yellow-700 dark:hover:text-brand-yellow"
-              >
-                {r.invoiceNo}
-              </Link>
-              <div className="text-2xs text-slate-500 dark:text-slate-400 mt-0.5">
-                {formatDate(r.invoiceDate)} · {formatMoney(r.invoiceTotal)}
-              </div>
+              {r.invoiceId !== null ? (
+                <>
+                  <Link
+                    href={`/sales/invoices/${r.invoiceId}`}
+                    className="tabular text-sm font-semibold text-navy-900 dark:text-white hover:text-brand-yellow-700 dark:hover:text-brand-yellow"
+                  >
+                    {r.invoiceNo}
+                  </Link>
+                  <div className="text-2xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    {r.invoiceDate ? formatDate(r.invoiceDate) : "—"} · {formatMoney(r.invoiceTotal ?? 0)}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="text-sm font-semibold text-slate-500 dark:text-slate-400">Not one bill</div>
+                  <Link
+                    href={`/parties/${r.customerId}/statement`}
+                    className="text-2xs text-brand-yellow hover:underline mt-0.5 inline-block"
+                  >
+                    See the customer&rsquo;s statement
+                  </Link>
+                </>
+              )}
             </div>
 
             <div>
@@ -337,7 +366,7 @@ export default function SalesReturnDetailPage() {
               <div className="tabular text-sm font-semibold text-warning mt-0.5">
                 {r.resalableQty + r.damagedQty}
                 <span className="text-slate-500 dark:text-slate-400 font-normal">
-                  {" "}of {r.invoiceItemCount} sold
+                  {" "}of {r.invoiceItemCount} {r.invoiceId === null ? "ever bought" : "sold"}
                 </span>
               </div>
               <div className="text-2xs text-slate-500 dark:text-slate-400 mt-0.5">
@@ -383,7 +412,9 @@ export default function SalesReturnDetailPage() {
                 <thead>
                   <tr className="bg-slate-50 dark:bg-navy-700/50 text-left">
                     <th className="text-2xs uppercase font-semibold text-slate-500 dark:text-slate-400 px-4 py-2">Product</th>
-                    <th className="text-2xs uppercase font-semibold text-slate-500 dark:text-slate-400 px-4 py-2 text-right">Sold</th>
+                    <th className="text-2xs uppercase font-semibold text-slate-500 dark:text-slate-400 px-4 py-2 text-right">
+                      {r.invoiceId === null ? "Bought" : "Sold"}
+                    </th>
                     <th className="text-2xs uppercase font-semibold text-slate-500 dark:text-slate-400 px-4 py-2 text-right">Returning</th>
                     <th className="text-2xs uppercase font-semibold text-slate-500 dark:text-slate-400 px-4 py-2">Condition</th>
                     <th className="text-2xs uppercase font-semibold text-slate-500 dark:text-slate-400 px-4 py-2">Restock to</th>
@@ -507,10 +538,16 @@ export default function SalesReturnDetailPage() {
             <CardBody>
               <h3 className="text-sm font-semibold text-navy-900 dark:text-white mb-3">Details</h3>
               <dl className="space-y-2.5 text-sm">
-                <Meta label="Original invoice" value={
-                  <Link href={`/sales/invoices/${r.invoiceId}`} className="text-brand-yellow hover:underline tabular">{r.invoiceNo}</Link>
-                } />
-                <Meta label="Invoice total" value={<span className="tabular">{formatMoney(r.invoiceTotal)}</span>} />
+                {r.invoiceId !== null ? (
+                  <>
+                    <Meta label="Original invoice" value={
+                      <Link href={`/sales/invoices/${r.invoiceId}`} className="text-brand-yellow hover:underline tabular">{r.invoiceNo}</Link>
+                    } />
+                    <Meta label="Invoice total" value={<span className="tabular">{formatMoney(r.invoiceTotal ?? 0)}</span>} />
+                  </>
+                ) : (
+                  <Meta label="Against" value="Everything this customer has bought" />
+                )}
                 <Meta label="Return date" icon={Calendar} value={formatDate(r.returnDate)} />
                 <Meta label="Refund method" value={<Badge variant="info">{r.refundMethodName}</Badge>} />
                 <Meta label="Location" value={r.location} />

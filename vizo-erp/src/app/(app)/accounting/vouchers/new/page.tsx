@@ -14,6 +14,8 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardBody } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DateInput } from "@/components/ui/date-input";
+import { notPast, PAST_DATE_MESSAGE, todayISO } from "@/lib/dates";
 import { Textarea } from "@/components/ui/textarea";
 import { SelectNative } from "@/components/ui/select-native";
 import { Avatar } from "@/components/ui/avatar";
@@ -79,7 +81,7 @@ function initialsOf(name: string) {
 
 const Schema = z.object({
   voucherTypeId: z.coerce.number().positive("Pick a voucher type"),
-  voucherDate: z.string().min(1, "Pick a date"),
+  voucherDate: z.string().min(1, "Pick a date").refine(notPast, PAST_DATE_MESSAGE),
   locationId: z.coerce.number().positive("Pick a location"),
   partyId: z.coerce.number().optional(),
   cashBankAccountId: z.coerce.number().positive("Pick the cash or bank account"),
@@ -111,7 +113,7 @@ export default function NewVoucherPage() {
     resolver: vizoResolver(Schema),
     defaultValues: {
       voucherTypeId: 0,
-      voucherDate: new Date().toISOString().slice(0, 10),
+      voucherDate: todayISO(),
       locationId: 0,
       partyId: 0,
       cashBankAccountId: 0,
@@ -383,7 +385,7 @@ export default function NewVoucherPage() {
               <CardBody>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <FormField control={form.control} name="voucherDate" render={({ field }) => (
-                    <FormItem><FormLabel required>Date</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>
+                    <FormItem><FormLabel required>Date</FormLabel><FormControl><DateInput {...field} /></FormControl><FormMessage /></FormItem>
                   )} />
                   <FormField control={form.control} name="locationId" render={({ field }) => (
                     <FormItem><FormLabel required>Location</FormLabel><FormControl>

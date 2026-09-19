@@ -4,7 +4,7 @@ import * as React from "react";
 import axios from "axios";
 import { z } from "zod";
 import {
-  Plus, Warehouse, Store, ClipboardList, PackageX, Truck, Edit3, Trash2, Star,
+  Plus, Warehouse, Store, ClipboardList, PackageX, Edit3, Trash2, Star,
   AlertCircle, RefreshCw,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
@@ -50,7 +50,8 @@ const KIND_ICON: Record<string, typeof Warehouse> = {
   shop: Store,
   department: ClipboardList,
   claim: PackageX,
-  transit: Truck,
+  /* No `transit` any more -- there is no In Transit location type. Goods on a
+     van belong to neither end of a transfer; see migration 20. */
 };
 
 const Schema = z.object({

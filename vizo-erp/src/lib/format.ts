@@ -57,34 +57,78 @@ export function formatPercent(n: number, decimals = 1) {
   return `${n.toFixed(decimals)}%`;
 }
 
-/** Format date as `DD-MMM-YYYY` (Pakistani convention) */
+/**
+ * Format date as `DD-MMM-YYYY` (Pakistani convention).
+ *
+ * The same answer on every device. A bare `2026-09-17` is a CALENDAR DAY, not
+ * an instant, and is printed as that day; anything with a time is printed as
+ * the Pakistan date it falls on. This used to format in the device's own zone,
+ * which is harmless in Karachi and a day early anywhere west of London --
+ * found when a transfer dated the 17th read "16 Sept" on a browser set to US
+ * Central time.
+ */
 export function formatDate(date: Date | string) {
+  if (typeof date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    const [y, m, d] = date.split("-").map(Number);
+    return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("en-GB", {
+      day: "2-digit", month: "short", year: "numeric", timeZone: "UTC",
+    });
+  }
   const d = parseApiDate(date);
   return d.toLocaleDateString("en-GB", {
     day: "2-digit",
     month: "short",
     year: "numeric",
+    timeZone: "Asia/Karachi",
   });
 }
 
 /**
  * Parses a timestamp the API sent.
  *
- * The API writes `DateTime.SpecifyKind(DateTime.UtcNow, Unspecified)` into
- * `timestamp without time zone` columns, so what comes back over JSON is
- * `2026-08-25T17:21:45.229865` -- a UTC instant carrying no marker saying so.
- * `new Date()` reads a bare date-TIME form as LOCAL time, which in Pakistan
- * (UTC+5) makes every timestamp read five hours early: a sign-in a minute ago
- * showed as "5 hours ago".
+ * Every timestamp column is `timestamp without time zone`, so what comes back
+ * over JSON is `2026-09-17T17:30:10` -- an instant carrying no marker saying
+ * which clock it was read off.
  *
- * Date-ONLY strings are left alone. The spec already parses those as UTC, and
- * appending a marker would make them invalid.
+ * IT IS PAKISTAN TIME. Since 3 September the API writes every timestamp
+ * through Services/BusinessClock.cs, which is Asia/Karachi, UTC+5, no daylight
+ * saving. This function used to append "Z" and read the value as UTC -- right
+ * for the API as it was before that date, and five hours wrong for everything
+ * written since: a stock movement at 17:30 showed as 22:30, and anything done
+ * in the last five hours showed as "just now". Checked against the live
+ * database before changing it: the newest activity-log row was stamped later
+ * than the current UTC time, which only a Pakistan clock can do.
+ *
+ * ROWS WRITTEN BEFORE 3 SEPTEMBER were UTC and now read five hours early.
+ * They were never converted (see convey.txt), and the system's own clock is
+ * the one to follow going forward.
+ *
+ * Date-ONLY strings are left alone. The spec parses those as UTC midnight,
+ * which is still the same calendar day in Pakistan.
  */
+export const BUSINESS_UTC_OFFSET = "+05:00";
+
 export function parseApiDate(date: Date | string): Date {
   if (typeof date !== "string") return date;
   const hasTime = date.includes("T");
   const hasZone = /[Zz]$|[+-]\d{2}:?\d{2}$/.test(date);
-  return new Date(hasTime && !hasZone ? `${date}Z` : date);
+  return new Date(hasTime && !hasZone ? `${date}${BUSINESS_UTC_OFFSET}` : date);
+}
+
+/** A timestamp as `17 Sep 2026, 5:30 pm`, in Pakistan time whatever the device. */
+export function formatDateTime(date: Date | string) {
+  const d = parseApiDate(date);
+  return d.toLocaleString("en-GB", {
+    day: "2-digit", month: "short", year: "numeric",
+    hour: "numeric", minute: "2-digit", hour12: true,
+    timeZone: "Asia/Karachi",
+  });
+}
+
+/** Just the time of day, in Pakistan time — `5:30 pm`. */
+export function formatTime(date: Date | string) {
+  const d = parseApiDate(date);
+  return d.toLocaleTimeString("en-GB", { hour: "numeric", minute: "2-digit", hour12: true, timeZone: "Asia/Karachi" });
 }
 
 /** Format relative time — `2 min ago`, `3 hours ago` */

@@ -11,6 +11,8 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardBody } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DateInput } from "@/components/ui/date-input";
+import { notPast, PAST_DATE_MESSAGE, todayISO } from "@/lib/dates";
 import { Textarea } from "@/components/ui/textarea";
 import { SelectNative } from "@/components/ui/select-native";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -43,7 +45,7 @@ function apiMessage(e: unknown, fallback: string) {
    mistake caught while typing and a mistake caught after a round trip. */
 const Schema = z
   .object({
-    expenseDate: z.string().min(1, "Pick a date"),
+    expenseDate: z.string().min(1, "Pick a date").refine(notPast, PAST_DATE_MESSAGE),
     locationId: z.coerce.number().positive("Pick a location"),
     categoryName: z.string().min(2, "Category is required").max(80),
     expenseAccountId: z.coerce.number().positive("Pick an expense account"),
@@ -69,7 +71,7 @@ export default function NewExpensePage() {
   const form = useForm<FormValues>({
     resolver: vizoResolver(Schema),
     defaultValues: {
-      expenseDate: new Date().toISOString().slice(0, 10),
+      expenseDate: todayISO(),
       locationId: 0,
       categoryName: "",
       expenseAccountId: 0,
@@ -221,7 +223,7 @@ export default function NewExpensePage() {
                 <h3 className="text-sm font-semibold text-navy-900 dark:text-white mb-3">Expense Details</h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <FormField control={form.control} name="expenseDate" render={({ field }) => (
-                    <FormItem><FormLabel required>Date</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>
+                    <FormItem><FormLabel required>Date</FormLabel><FormControl><DateInput {...field} /></FormControl><FormMessage /></FormItem>
                   )} />
                   <FormField control={form.control} name="locationId" render={({ field }) => (
                     <FormItem><FormLabel required>Location</FormLabel><FormControl>

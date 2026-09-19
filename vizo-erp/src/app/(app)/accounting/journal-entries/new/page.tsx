@@ -11,6 +11,8 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardBody } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DateInput } from "@/components/ui/date-input";
+import { notPast, PAST_DATE_MESSAGE, todayISO } from "@/lib/dates";
 import { Textarea } from "@/components/ui/textarea";
 import { SelectNative } from "@/components/ui/select-native";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -49,7 +51,7 @@ const LineSchema = z
 
 const Schema = z
   .object({
-    entryDate: z.string().min(1, "Pick a date"),
+    entryDate: z.string().min(1, "Pick a date").refine(notPast, PAST_DATE_MESSAGE),
     locationId: z.coerce.number().positive("Pick a location"),
     reference: z.string().max(50).optional().or(z.literal("")),
     narration: z.string().min(5, "Say why this entry is being made").max(500),
@@ -80,7 +82,7 @@ export default function NewJournalEntryPage() {
   const form = useForm<FormValues>({
     resolver: vizoResolver(Schema),
     defaultValues: {
-      entryDate: new Date().toISOString().slice(0, 10),
+      entryDate: todayISO(),
       locationId: 0,
       reference: "",
       narration: "",
@@ -224,7 +226,7 @@ export default function NewJournalEntryPage() {
               <h3 className="text-sm font-semibold text-navy-900 dark:text-white mb-3">Entry Header</h3>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <FormField control={form.control} name="entryDate" render={({ field }) => (
-                  <FormItem><FormLabel required>Date</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>
+                  <FormItem><FormLabel required>Date</FormLabel><FormControl><DateInput {...field} /></FormControl><FormMessage /></FormItem>
                 )} />
                 <FormField control={form.control} name="locationId" render={({ field }) => (
                   <FormItem><FormLabel required>Location</FormLabel><FormControl>

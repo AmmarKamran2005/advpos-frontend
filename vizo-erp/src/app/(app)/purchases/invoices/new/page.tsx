@@ -14,6 +14,8 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardBody } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DateInput } from "@/components/ui/date-input";
+import { notPast, PAST_DATE_MESSAGE, todayISO, addDaysISO } from "@/lib/dates";
 import { SelectNative } from "@/components/ui/select-native";
 import { Avatar } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -54,8 +56,8 @@ const Schema = z.object({
   supplierId: z.coerce.number({ message: "Pick a supplier" }).positive("Pick a supplier"),
   poId: z.coerce.number().optional(),
   supplierInvoiceNo: z.string().min(1, "Their invoice number is required").max(60),
-  invoiceDate: z.string().min(1, "Required"),
-  dueDate: z.string().min(1, "Required"),
+  invoiceDate: z.string().min(1, "Required").refine(notPast, PAST_DATE_MESSAGE),
+  dueDate: z.string().min(1, "Required").refine(notPast, PAST_DATE_MESSAGE),
   discount: z.coerce.number().min(0),
   whtAmount: z.coerce.number().min(0),
   methodId: z.coerce.number().positive("Pick a payment method"),
@@ -90,8 +92,8 @@ export default function NewPurchaseInvoicePage() {
       supplierId: 0 as unknown as number,
       poId: undefined,
       supplierInvoiceNo: "",
-      invoiceDate: new Date().toISOString().slice(0, 10),
-      dueDate: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10),
+      invoiceDate: todayISO(),
+      dueDate: addDaysISO(todayISO(), 30),
       discount: 0,
       whtAmount: 0,
       methodId: 0,
@@ -347,10 +349,10 @@ export default function NewPurchaseInvoicePage() {
                     </FormControl><FormMessage /></FormItem>
                   )} />
                   <FormField control={form.control} name="invoiceDate" render={({ field }) => (
-                    <FormItem><FormLabel required>Invoice date</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>
+                    <FormItem><FormLabel required>Invoice date</FormLabel><FormControl><DateInput {...field} /></FormControl><FormMessage /></FormItem>
                   )} />
                   <FormField control={form.control} name="dueDate" render={({ field }) => (
-                    <FormItem><FormLabel required>Due date</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>
+                    <FormItem><FormLabel required>Due date</FormLabel><FormControl><DateInput {...field} /></FormControl><FormMessage /></FormItem>
                   )} />
                 </div>
               </CardBody>
