@@ -345,8 +345,13 @@ export default function OrderDetailPage() {
 
                 Draft, credit-hold and cancelled are still excluded: the API
                 refuses all three, and offering a button that will be turned
-                down is worse than not offering one. */}
-            {!order.invoiceId && !isCreditHold &&
+                down is worse than not offering one.
+
+                WHO sees it is the server's answer too, as of 21 September:
+                `canInvoice` off GET /orders/{id}/my-permissions, which is the
+                accountant and the Super Admin. A rep no longer bills their own
+                order -- the owner took that right off the role. */}
+            {perms?.canInvoice && !order.invoiceId && !isCreditHold &&
              order.status !== "DRAFT" && order.status !== "CANCELLED" && (
               <Button variant="ghost" size="md" className="gap-1.5" onClick={raiseInvoice} disabled={busy}>
                 {busy ? <Loader2 className="size-4 animate-spin" /> : <FileText />}

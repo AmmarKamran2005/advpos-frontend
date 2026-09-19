@@ -53,7 +53,9 @@ type ActivityRow = {
 type SalesReturnRow = {
   id: number;
   returnNo: string;
-  invoiceNo: string;
+  /* Both null when the return was raised against everything the customer has
+     bought rather than one bill -- see the sales-return screen. */
+  invoiceNo: string | null;
   orderNo: string | null;
   customerName: string;
   customerInitials: string;
@@ -340,7 +342,7 @@ export function SuperAdminDashboard() {
                             {r.customerName}
                           </span>
                           <span className="tabular text-slate-500 dark:text-slate-400">
-                            {r.orderNo ?? r.invoiceNo}
+                            {r.orderNo ?? r.invoiceNo ?? "several orders"}
                           </span>
                           <span className="text-slate-400 dark:text-slate-500">
                             {r.units} {r.units === 1 ? "unit" : "units"} · {r.raisedBy}

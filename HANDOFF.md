@@ -1,6 +1,6 @@
 # AdvPOS (VIZO) — Handoff
 
-**Updated 2026-09-20.** Newest first. Read **§0** and **§1** before anything
+**Updated 2026-09-21.** Newest first. Read **§0** and **§1** before anything
 else; they are enough to carry on in a new chat. Everything below them is the
 dated history, then [What is left](#what-is-left) and
 [Standing facts](#standing-facts) at the bottom.
@@ -81,22 +81,30 @@ What the next session needs to know about **working** here:
 
 | | |
 |---|---|
-| **Frontend** | `AmmarKamran2005/advpos-frontend` @ `main` = **`b3c850e`** (pushed 2026-09-19/20) |
-| **Backend** | `muhammadtalhabinsuhail/vizo-backend` @ `master` = **`db0fe3a`** (pushed 2026-09-19/20) |
-| **Database** | Neon PostgreSQL, Singapore. Migrations **15, 16, 17, 18** applied. **19 section 1 applied; 19 section 2 (drop `OpeningCost`) NOT run** — waits for the new API to be deployed (changa.txt §A1) |
+| **Frontend** | `AmmarKamran2005/advpos-frontend` @ `main` = **`fe3556e`** · **21 Sep work is committed locally and NOT pushed** (the owner asked for a private session) |
+| **Backend** | `muhammadtalhabinsuhail/vizo-backend` @ `master` = **`db0fe3a`** · **21 Sep work is committed locally and NOT pushed** |
+| **Database** | Neon PostgreSQL, Singapore. Migrations **15–18, 20** applied. **19 section 1 applied; 19 section 2 (drop `OpeningCost`) NOT run** — waits for the new API to be deployed (changa.txt §A1) |
 | **Stack** | Next.js 16 / React 19 / TypeScript / Tailwind 4 (Vercel) · ASP.NET Core 8 Web API + EF Core 8 + Npgsql · JWT with permission policies · SignalR · WebPush · Cloudinary · MailKit · Gemini Flash. Full list in `README.md` |
-| **Gate** | `npx tsc --noEmit` clean · `npx eslint src` **0 errors**, 70 warnings (old unused-vars) · `next build` **87 pages** · backend **0 errors** (4 old warnings in `AuthController`) |
+| **Gate** | `npx tsc --noEmit` clean · `npx eslint src` **0 errors**, 69 warnings (old unused-vars) · `next build` **87 pages** · backend **0 errors**, 6 old warnings (4 `AuthController`, 2 `ProductHistoryController`) |
 | **Live site** | `https://advpos-frontend.vercel.app` |
 
 ### What the owner must still do (full text in `changa.txt`)
 
+0. 🔴 **Assign customers to the right salesman** (changa.txt §B1). Every dropdown
+   now shows a rep only his own accounts, and **Imran Iqbal and Ammar Kamran
+   have none**, so they cannot raise an order at all. Sara has 7, Zara 1; nine
+   accounts are assigned to an order-desk clerk or the accountant, two to
+   nobody. Five minutes at People → Customers, no deploy.
 1. Deploy the new API, **then** run section 2 of `19_product_pricing.sql`
    (drops `OpeningCost`). Not before — the old build selects that column.
 2. `npm install` in `vizo-erp` (new: `@zxing/browser`, `@zxing/library`).
 3. Set `App__WebBaseUrl=https://advpos-frontend.vercel.app` on the API host.
 4. Check `Cors:AllowedOrigins` includes the Vercel origin on the host.
 5. Everyone signs out and back in (permissions ride in the JWT; tokens last 8 h).
+   **Doubly true after migration 20** — a rep's old token still carries the
+   invoicing and returns rights it took away.
 6. Try the barcode camera on a real phone (could not be tested — see 2026-09-20).
+7. Tell the accountant that billing is theirs now (changa.txt §B4).
 
 ### Decisions waiting on the owner
 
@@ -106,8 +114,134 @@ What the next session needs to know about **working** here:
 | **D2** | **No-past-dates rule scope.** Applied to 19 entry forms, NOT to list/report From–To filters (a report must look back). Also applied to **cheque date** and **supplier bill date**, which are often legitimately in the past. Not enforced by the API | Say which of those to loosen, or whether to add it to report filters / the API |
 | **D3** | **Six more exports silently stop at 50 rows** (list action caps `pageSize`, export asks for 5000): orders (46 rows today), invoices, walk-in, parties, journal entries (44), vouchers, expenses. Fixed for products only | One-line change per list action; say the word |
 | **D4** | Ahmed Riaz (order-dept) points at **Karachi Warehouse**; should be a department | Fix at `/admin/users` (form now only offers departments) |
-| **D5** | 9 customer accounts have no sales rep; reps Zara, Imran and Ammar see an empty Customers screen | Assign reps on those parties |
+| **D5** | 🔴 **Now blocking.** Customer pickers are rep-scoped since 21 Sep, so a rep with no accounts cannot raise an order: Imran and Ammar have **0**, Zara 1, Sara 7. Nine accounts belong to an order-desk clerk or the accountant, two to nobody | Assign reps on those parties |
 | **D6** | Old items still open: public credentials never rotated; `UpdateCategory` writes `ParentCategoryId = 0` (FK error when editing a category to top level — Talha's area); `NextNumber` is not atomic; VAPID key in `.env.example` does not match the server; warehouse panel missing on the login screen; trial balance opening balances 51,256,709 out | See [What is left](#what-is-left) |
+| **D7** | **Sale invoices never reach the ledger** — 39 invoices, 12 journal entries, and all 12 are seeded. Sales returns are consistent with that (they post nothing either). Aged receivables and the credit-limit check under-state by everything billed through the app; the customer statement is built from documents and is right | Decide the accounts and post both sides — a session of its own. convey.txt §R7.1 |
+
+---
+
+## 2026-09-21 — In Transit deleted, rep-scoped customers, Invoiced/Edit, and a sales return built around the customer
+
+*Local session, at the owner's request: **nothing was pushed**. Both repos are
+committed locally and the branches are one commit ahead of their remotes.*
+Migration **20** WAS run on the live Neon database, on the owner's explicit
+answer to a question that laid out what it would do.
+
+### What the owner asked for (paraphrased faithfully)
+
+1. **Delete the "In Transit" location** throughout the system — there should be
+   no such place.
+2. In the sales panel, **every customer dropdown must show a rep only his own
+   customers**, the way his Customers screen already does.
+3. Rename the **Invoiced** step to **Invoiced/Edit**, take the right to press it
+   off the salesman and give it to the **accountant and super admin** (both are
+   notified). Once it is pressed the invoice must save itself — nobody should
+   have to go to `/sales/invoices/new` to make it separately.
+4. **Rebuild the sales return** so it is easy and reliable: a salesman cannot
+   raise one at all (remove the pages and the sidebar entry from his panel);
+   only admin and accountant can. A return can cover **several orders**:
+   salesperson (optional) → customer (required) → his **last 5 orders** with
+   dates, items and quantities on the right, and under them **every item he has
+   ever bought with total quantities** → **Add product** offering only what he
+   bought → a quantity that **can never exceed what he bought** → on save the
+   date is today, the credit note is generated, and the goods are **added to a
+   location the screen asks for**. Fast, automated, and good on a phone.
+
+### The four decisions the owner was asked for, and the answers
+
+| | Answer |
+|---|---|
+| Where ORD-26-0158 / INV-26-8878 go when In Transit is deleted | **Karachi Order Department** |
+| What price a returned piece is credited at | **The average that customer actually paid** (LineTotal ÷ qty — discount off, tax on) |
+| Does "Invoiced/Edit" also let the accountant edit the order | **Yes**, while it is confirmed or invoiced and the warehouse has not picked it |
+| Run migration 20 on live, and one test return | **Yes to both** — the test return was created and then removed |
+
+### What was built
+
+**Backend** (`backend/vizo-backend`)
+
+| Piece | Where |
+|---|---|
+| Who may bill (`MayInvoice`) and who may edit (`MayEditOrder`); Confirmed → Invoiced is the accountant's; Confirmed and Invoiced announcements re-aimed | `Services/OrderWorkflow.cs` |
+| Rep-scoped customer picker; `ValidateOrderRequest` refuses somebody else's customer | `SalesController.Lookups`, `ValidateOrderRequest` |
+| `InvoiceOrder` and the "raise the invoice too" tick both ask `MayInvoice`; `my-permissions` gained `canInvoice` and a real `canEdit` | `SalesController` |
+| `GET /sales/returns/lookups` — salespeople, customers (with their rep and last purchase), locations, refund methods, today | `SalesController` |
+| `GET /sales/returns/customer/{id}` — last 5 invoices with their lines, every item ever bought with bought / returned / returnable / average price, and the totals | `SalesController` |
+| `POST /sales/returns` — rewritten: customer not invoice, ceiling recomputed inside the transaction under `pg_advisory_xact_lock(4242002, customerId)`, price from history, date = today, one location for every line, condition from the shelf, POSTED on save, credit note archived | `SalesController` |
+| Return endpoints carry **both** `perm:returns.sales` and the `Accountant` role policy | `SalesController` |
+| Rejection now reverses every line that has a restock location (not only "resalable") | `SalesController.SetReturnStatus` |
+| `SalesReturn.InvoiceId` is `int?`; every projection that read `Invoice.*` is null-safe | `Models/SalesReturn.cs`, `DocumentBuilder`, `ProductHistoryController`, `AdminDashboardController` |
+| Migration | `database/20_places_rights_and_returns.sql` |
+| Seed no longer creates In Transit or its 240 phantom units | `database/02_seed.sql` |
+
+**Frontend** (`vizo-erp/src`)
+
+| Piece | Where |
+|---|---|
+| The new return screen — salesperson filter, customer search, tap-to-add from the last five orders and from everything ever bought, steppers capped at what is left, location chips, quick reasons, sticky save bar on a phone | `app/(app)/sales/returns/new/page.tsx` |
+| Return detail and list read with or without one invoice ("Several orders"); status shows the API's own word | `app/(app)/sales/returns/[id]/page.tsx`, `app/(app)/sales/returns/page.tsx` |
+| "Raise invoice" drawn only when the server says so; Edit label right for the accountant | `app/(app)/sales/orders/[id]/page.tsx`, `components/sales/order-workflow.tsx` |
+| `/sales/returns` is super-admin + accountant, by role, with no permission escape hatch | `proxy.ts` |
+| `INVOICED` reads "Invoiced/Edit"; no transit icon | `lib/labels.ts`, `app/(app)/admin/locations/page.tsx` |
+
+### 🔴 The consequence the owner has to act on
+
+Scoping the picker exposed who the customers actually belong to:
+
+| Rep | Customers they can now sell to |
+|---|---|
+| Sara Khan | 7 |
+| Zara Malik | 1 |
+| **Imran Iqbal** | **0 — cannot raise an order** |
+| **Muhammad AMMAR KAMRAN** | **0 — cannot raise an order** |
+
+Of 18 shop accounts, 5 are assigned to an order-desk clerk, 4 to the accountant
+and 2 to nobody. Fixing it is five minutes at People → Customers and needs no
+deploy — `changa.txt` §B1.
+
+### Live data touched
+
+- **Migration 20**, in full (see the file's header for each step).
+- **In Transit**: ORD-26-0158 and INV-26-8878 moved to Karachi Order Department;
+  240 duplicate units and their two seeded movements deleted; the location and
+  its kind dropped. Those 240 were already on the Shop 2 shelf — TRF-26-0014
+  was received there on 25 August — so Stock in Hand is 240 units closer to the
+  truth, not 240 short.
+- **One test return** (SR-26-0043, PKR 3,118, 3 units) raised through the new
+  endpoint and then **removed**: stock taken back off, movements, activity row,
+  notifications and document record deleted, and the SR counter wound back to
+  43. 7 returns before, 7 after; both products back at their exact quantities.
+  The credit-note PDF is still in Cloudinary, unreferenced — deleting it needs
+  that account's own API.
+
+### How it was verified
+
+- Refusals against the live database through a local API with minted tokens:
+  33 of 32 refused, an item never bought refused, zero / negative quantity
+  refused, no items refused, a closed location refused, a rep's token refused
+  (403) on every returns endpoint, a rep posting an order for somebody else's
+  customer refused.
+- `/orders/41/workflow` and `/my-permissions` as all three roles: the rep gets
+  no moves and no edit; the accountant gets exactly "Invoiced/Edit" plus edit;
+  the admin gets the whole chain. The chain label reads **Invoiced/Edit**.
+- Browser at desktop and 375 px: the whole return flow (customer → tap-to-add →
+  clamp at the ceiling → Claim Stock chip → totals), the return detail page with
+  no invoice behind it, the returns list, Locations with no In Transit, Stock in
+  Hand with four columns, the rep's sidebar without Sales Returns, `/sales/returns`
+  giving a rep the 403 page, and the rep's order form offering exactly one
+  customer.
+- Gate: `tsc` clean, `eslint` 0 errors / 69 warnings, `next build` 87 pages,
+  backend 0 errors with the same 6 old warnings.
+
+### Found and not changed (details in convey.txt R7)
+
+- **A sale invoice still does not reach the ledger** — 39 invoices, 12 journal
+  entries, all seeded. The new return posts nothing either, to stay consistent.
+  Aged receivables and the credit-limit check under-state (**D7**).
+- **Per-invoice "returned" counts stop growing**, because new returns name no
+  invoice. The returnable figure that matters is on the return screen.
+- **D1 (orders never move stock)** and **D3 (six exports capped at 50)** are
+  exactly where they were.
 
 ---
 
@@ -1300,23 +1434,33 @@ Ten of eleven accounts also could not sign in: rows 2–11 carried a literal
 
 ## What is left
 
-*Rewritten 2026-09-20. The owner's open decisions are **D1–D6** in §1; this
+*Rewritten 2026-09-21. The owner's open decisions are **D1–D7** in §1; this
 is the full list.*
 
 ### Owner decisions (see §1 for the options)
 
+- **D5 — assign customers to the right salesman. Now blocking**: two reps have
+  none, and the picker is their own list since 21 Sep, so they cannot raise an
+  order. `changa.txt` §B1.
 - **D1 — which order step takes stock off the shelf** (26 of 31 order invoices
   never moved stock). The biggest correctness issue in the system right now.
+- **D7 — nothing posts a sale invoice or a return to the ledger.** 39 invoices,
+  12 journal entries, all seeded.
 - **D2 — scope of the no-past-dates rule** (report filters, cheque date,
   supplier bill date, API enforcement).
 - **D3 — the six exports capped at 50 rows.**
-- **D4 / D5 — data fixes** (Ahmed Riaz's place; 9 unassigned customers).
+- **D4 — Ahmed Riaz's place.**
 
 ### Deploy steps (changa.txt)
 
-- Deploy API `db0fe3a`, **then** drop `OpeningCost` (19 §2).
+- **Not pushed.** The 21 Sep work is committed locally on both repos; push when
+  the owner says so (§0 point 2 has the recipe).
+- Assign customers to reps (§B1) — no deploy needed, and two reps are stuck
+  until it is done.
+- Deploy the API, **then** drop `OpeningCost` (19 §2).
 - `npm install` (zxing). `App__WebBaseUrl` on the host. CORS origin check.
-- Everyone signs out/in. Camera test on a real phone.
+- Everyone signs out/in — a rep's old token still carries the rights migration
+  20 took away. Camera test on a real phone.
 
 ### Older items still open (re-checked 2026-09-20)
 
@@ -1590,7 +1734,21 @@ of the whole folder reverts his work. Two further traps that recipe avoids:
     SQL silently matches nothing; use `ILIKE 'Lahore%'`.
 23. **Two GitHub accounts on this machine**; git uses `medocsai` by default and
     gets 403 on both repos. Push as `AmmarKamran2005` (§0 point 2).
-24. **`int.ToString()` inside an EF query** — avoided on purpose (e.g. matching
+24. **Every foreign key into `Location` is `ON DELETE CASCADE`.** Deleting a
+    location does not fail when an order points at it — it deletes the order,
+    and its invoice, and the movements, without a word. Move the documents
+    first and assert nothing is left pointing at the row (migration 20 does
+    both, and refuses to run if a transfer still names it). The same is true of
+    most parent tables in this schema; check `information_schema` before any
+    `DELETE FROM` a lookup table.
+25. **Making an EF navigation nullable changes the SQL join.** A required FK
+    projects through an INNER JOIN; the moment the property becomes `int?` it
+    is a LEFT JOIN, and every projection that reads a non-nullable column off
+    that navigation (`x.Invoice.InvoiceDate`) throws *"Nullable object must
+    have a value"* on the first row where it is null. Cast them —
+    `(DateOnly?)x.Invoice.InvoiceDate` — and guard with `x.Invoice != null`.
+    Done for `SalesReturn.InvoiceId` in migration 20; four files had to change.
+26. **`int.ToString()` inside an EF query** — avoided on purpose (e.g. matching
     `DocumentFile.DocKey`). Build the string list in C# and use `Contains`.
 
 ### Reference
@@ -1613,6 +1771,8 @@ of the whole folder reverts his work. Two further traps that recipe avoids:
 | `vizo-erp/AGENTS.md` | rendering-speed rules — currently at odds with the per-page fetch brief |
 | `backend/database/18_sales_scope_returns_and_places.sql` | Sales permissions, `PdfDeliverable`, `Party.CreatedByUserId`, Lahore pair. **Applied** |
 | `backend/database/19_product_pricing.sql` | `DutyPrice`, `MarginPrice` (**§1 applied**); drop `OpeningCost` (**§2 not run — after deploy**) |
+| `backend/database/20_places_rights_and_returns.sql` | In Transit deleted (documents moved first, 240 duplicate units dropped), billing and returns rights narrowed, `SalesReturn.InvoiceId` nullable, INVOICED renamed *Invoiced/Edit*. **Applied** |
+| `vizo-erp/src/app/(app)/sales/returns/new/page.tsx` | The customer-first sales return: what may come back, how much of it, and onto which shelf |
 | `backend/database/changa.txt` / `convey.txt` | Owner's manual steps / found-not-changed. **Read both** |
 | `backend/vizo-backend/Services/SkuGenerator.cs` | SKU rules |
 | `backend/vizo-backend/Controllers/ProductHistoryController.cs` | Product movements, one movement, history, ledger, export |

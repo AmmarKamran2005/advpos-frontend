@@ -72,10 +72,16 @@ const ROUTE_RULES: { prefix: string; roles: RoleKey[]; perm?: string }[] = [
 
   { prefix: "/sales/credit-holds", roles: ["super-admin", "accountant"] },
   { prefix: "/sales/direct", roles: ["super-admin", "order-dept"] },
+  /* SALES RETURNS ARE THE BACK OFFICE'S, BY ROLE.
+
+     No `perm` escape hatch on this one, on purpose. The owner's rule is "sales
+     return only admin and accountant hi krsakta hn" -- it is about the job, not
+     about a tick in Setup, and the API says the same thing with an Accountant
+     policy on every returns endpoint. Ticking the permission for another role
+     would otherwise open a screen whose every call answers 403. */
   {
     prefix: "/sales/returns",
-    roles: ["super-admin", "accountant", "order-dept"],
-    perm: "returns.sales",
+    roles: ["super-admin", "accountant"],
   },
   {
     prefix: "/sales/invoices",

@@ -40,7 +40,11 @@ const STATUS_LABELS: Record<string, string> = {
   AT_ORDER_DEPT: "Received at Order Dept",
   PACKAGING: "Packaging",
   DISPATCHED: "Dispatched",
-  INVOICED: "Invoiced",
+  /* "Invoiced/Edit" -- the step where accounts cut the bill and may still
+     correct the order before they do. The API sends "OrderStatus"."StatusName"
+     with the chain, so the strip on the order screen reads it from the
+     database; this map is the fallback for screens that only have the key. */
+  INVOICED: "Invoiced/Edit",
   DELIVERED: "Delivered",
   RETURNED: "Returned",
 
