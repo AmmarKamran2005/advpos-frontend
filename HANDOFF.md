@@ -1,37 +1,388 @@
-# AdvPOS — Handoff
+# AdvPOS (VIZO) — Handoff
 
-**Written 2026-08-29.** Newest first. Each dated section is what actually
-changed that day and what it cost, so you can stop reading once you reach
-something you already know.
+**Updated 2026-09-20.** Newest first. Read **§0** and **§1** before anything
+else; they are enough to carry on in a new chat. Everything below them is the
+dated history, then [What is left](#what-is-left) and
+[Standing facts](#standing-facts) at the bottom.
 
-For the project itself — architecture, credentials, how to run — jump to
-[§ Standing facts](#standing-facts) at the bottom. That part does not change
-day to day.
+This file is the single entry point. The other notes, and what each is for:
+
+| File | Role |
+|---|---|
+| **`HANDOFF.md`** (this file) | State, history, decisions, how to work here |
+| `backend/database/changa.txt` | What the owner must do **by hand** (deploy order, env vars, one-off SQL). The owner asked for this file by name |
+| `backend/database/convey.txt` | What was **found but not changed**, and why every judgement call went the way it did. Longest and most detailed |
+| `backend/database/session_summary.md` | One-page summary of every session since 31 Aug |
+| `backend/database/NN_*.sql` | Migrations; header of each says whether it has been run |
+| `vizo-erp/AGENTS.md` | Rendering-speed rules for the frontend (a standing requirement) |
+| `CONTINUE-HERE.md`, `vizo-erp/handoff.md` | **Superseded.** Kept for history only |
 
 ---
 
-## Where things stand right now
+## §0. Start a new chat here
+
+Paste something like this into the new chat:
+
+> Read `D:\Main\Sales Softwaer\HANDOFF.md` (§0, §1, then the newest dated
+> section), then `backend/database/changa.txt` and the top of
+> `backend/database/convey.txt`. Then `git fetch` both repos before touching
+> anything — Talha pushes to both. Then: <your request>.
+
+What the next session needs to know about **working** here:
+
+1. **Two repos, two remotes, two branches.**
+   - Frontend = the outer folder `D:\Main\Sales Softwaer`, remote **`new`** →
+     `https://github.com/AmmarKamran2005/advpos-frontend`, branch **`main`**.
+     (`origin` there is an old repo — never push to it.)
+   - Backend = `D:\Main\Sales Softwaer\backend`, its own git repo, remote
+     **`origin`** → `https://github.com/muhammadtalhabinsuhail/vizo-backend`,
+     branch **`master`** (not `main` — `git pull origin main` fails).
+   - The outer repo does **not** track `backend/` (it shows as untracked; leave it).
+2. **Push with the `AmmarKamran2005` GitHub account.** This machine has two
+   accounts in `gh`; the active one is `medocsai`, which has **no push rights on
+   either repo** (403). Push without changing the saved login:
+   ```bash
+   TOKEN=$(gh auth token --user AmmarKamran2005)
+   git -c credential.helper= \
+       -c "credential.helper=!f() { echo username=AmmarKamran2005; echo password=$TOKEN; }; f" \
+       push new main            # frontend;  in backend/: push origin master
+   ```
+3. **Talha (Muhammad Talha Bin Suhail) also pushes to BOTH repos.** Always
+   `git fetch` first and rebase onto his work; never force-push. His last:
+   frontend `aa7e7b5` (16 Sep), backend `4dc6508` (17 Sep).
+4. **Building the backend on this machine:** `backend/global.json` pins SDK
+   9.0.317, which is not installed (8.0.419 and a 10 preview are). Move it
+   aside for the build and ALWAYS put it back — it is committed:
+   ```bash
+   cd backend && mv global.json global.json.bak
+   (cd vizo-backend && dotnet build -v q --nologo)
+   mv global.json.bak global.json
+   ```
+5. **The live database is reachable** with Python `psycopg2` (installed). The
+   connection string is in `backend/vizo-backend/appsettings.json`. The Neon
+   MCP tool in Claude sessions is a **different Neon account** ("Hazir") and
+   cannot see this database. Columns are **PascalCase and quoted**
+   (`"RoleId"`); city names carry the country (`'Karachi - Pakistan'`).
+   Read-only by default; **ask the owner before any DDL or data change**.
+6. **Credentials stay in `appsettings.json` and `.env.local`.** Owner's decision.
+   Do not "secure" them into user-secrets or env vars.
+7. **Found-but-not-changed goes in `convey.txt`; anything the owner must do by
+   hand goes in `changa.txt`.** Both in `backend/database/`.
+8. **Style:** long explanatory comments saying *why*, matching the surrounding
+   code. Commit messages explain the fault, not just the change, and end with
+   `Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>`.
+9. **The owner** (Ammar Kamran, `kamran.ammar2005@gmail.com`) writes in English
+   and Roman Urdu. Requests arrive as one long message with many linked items —
+   read the whole thing before starting; items depend on each other.
+
+---
+
+## §1. Where things stand right now
 
 | | |
 |---|---|
-| **Frontend** | `AmmarKamran2005/advpos-frontend` @ `main` |
-| **Backend** | `muhammadtalhabinsuhail/vizo-backend` @ `master`. Talha's last was `aa510f1` (2026-08-27). |
-| **Database** | Neon PostgreSQL 18, Singapore. PascalCase columns. Migrations **08** through **14** are applied. |
-| **API** | 29 controllers. Documents archived to Cloudinary on create. Ten `.xlsx` exports. Accounting has full CRUD. **Notifications write on 40 events and push to browsers.** **AI reads numbers the database worked out — it never calculates.** |
-| **Screens** | 95 app pages. **All four dashboards live.** Nothing renders a hard-coded business figure. |
-| **Gate** | `tsc` clean · eslint **0 errors, 65 warnings** · `next build` succeeds · backend builds with 0 errors |
+| **Frontend** | `AmmarKamran2005/advpos-frontend` @ `main` = **`b3c850e`** (pushed 2026-09-19/20) |
+| **Backend** | `muhammadtalhabinsuhail/vizo-backend` @ `master` = **`db0fe3a`** (pushed 2026-09-19/20) |
+| **Database** | Neon PostgreSQL, Singapore. Migrations **15, 16, 17, 18** applied. **19 section 1 applied; 19 section 2 (drop `OpeningCost`) NOT run** — waits for the new API to be deployed (changa.txt §A1) |
+| **Stack** | Next.js 16 / React 19 / TypeScript / Tailwind 4 (Vercel) · ASP.NET Core 8 Web API + EF Core 8 + Npgsql · JWT with permission policies · SignalR · WebPush · Cloudinary · MailKit · Gemini Flash. Full list in `README.md` |
+| **Gate** | `npx tsc --noEmit` clean · `npx eslint src` **0 errors**, 70 warnings (old unused-vars) · `next build` **87 pages** · backend **0 errors** (4 old warnings in `AuthController`) |
+| **Live site** | `https://advpos-frontend.vercel.app` |
 
-### ⚠️ Read before touching ANY repo
+### What the owner must still do (full text in `changa.txt`)
 
-**Talha pushes to BOTH repos, not just the backend.** Between 2026-08-26 and
-2026-08-27 he pushed nine commits to the frontend and one to the backend.
+1. Deploy the new API, **then** run section 2 of `19_product_pricing.sql`
+   (drops `OpeningCost`). Not before — the old build selects that column.
+2. `npm install` in `vizo-erp` (new: `@zxing/browser`, `@zxing/library`).
+3. Set `App__WebBaseUrl=https://advpos-frontend.vercel.app` on the API host.
+4. Check `Cors:AllowedOrigins` includes the Vercel origin on the host.
+5. Everyone signs out and back in (permissions ride in the JWT; tokens last 8 h).
+6. Try the barcode camera on a real phone (could not be tested — see 2026-09-20).
 
-**Always `git fetch` before staging — on the frontend as well as the backend.**
-A `--force` here would delete a day of his work. Both remotes were unchanged
-when this session pushed (`32fd4a2` / `aa510f1`).
+### Decisions waiting on the owner
+
+| # | Question | What happens on each answer |
+|---|---|---|
+| **D1** | **Orders never take stock off the shelf.** An order moving through the 10-step chain writes no stock movement at any step; only `/packing` and counter sales do. **26 of 31** order invoices have no stock movement, so Stock in Hand is overstated (e.g. Redmi 14C shows 463; 100 were sold on ORD-26-0171). **At which step should stock leave?** Seen by Warehouse / On way to Order Dept (really a transfer) / Dispatched | Implement in the status endpoint (`SalesController.SetOrderStatus` + `OrderWorkflow`), then a one-off correction script for the 26 past orders. Ask before running the correction on live data |
+| **D2** | **No-past-dates rule scope.** Applied to 19 entry forms, NOT to list/report From–To filters (a report must look back). Also applied to **cheque date** and **supplier bill date**, which are often legitimately in the past. Not enforced by the API | Say which of those to loosen, or whether to add it to report filters / the API |
+| **D3** | **Six more exports silently stop at 50 rows** (list action caps `pageSize`, export asks for 5000): orders (46 rows today), invoices, walk-in, parties, journal entries (44), vouchers, expenses. Fixed for products only | One-line change per list action; say the word |
+| **D4** | Ahmed Riaz (order-dept) points at **Karachi Warehouse**; should be a department | Fix at `/admin/users` (form now only offers departments) |
+| **D5** | 9 customer accounts have no sales rep; reps Zara, Imran and Ammar see an empty Customers screen | Assign reps on those parties |
+| **D6** | Old items still open: public credentials never rotated; `UpdateCategory` writes `ParentCategoryId = 0` (FK error when editing a category to top level — Talha's area); `NextNumber` is not atomic; VAPID key in `.env.example` does not match the server; warehouse panel missing on the login screen; trial balance opening balances 51,256,709 out | See [What is left](#what-is-left) |
 
 ---
 
+## 2026-09-20 — Products: auto SKU, duty/margin pricing, barcode camera, cards, movements, history, no past dates
+
+*(Work spanned midnight Pakistan time; commits are stamped 2026-09-19.)*
+Commits: backend **`23610e4`**, **`db0fe3a`** · frontend **`716681a`** (README), **`b3c850e`**.
+
+### What the owner asked for (paraphrased faithfully)
+
+1. `/inventory/products/new`: **SKU auto-generated**. Brand is always VIZO, so
+   `VZ-` + model or a three-letter word from the name + first three letters of
+   the category + the colour written in the name after "-" + a serial. Example:
+   "VIZO TITAN T9 WIRELESS EARBUDS" in EARBUDS, black → `VZ-TIT-T9-EAR`. Use
+   judgement for what is the model and the colour. Label it **"SKU*
+   (Auto-generate)"** so nobody types it. Must be **unique every time**.
+2. Before saving, **refuse a product whose name is exactly the same** as one in
+   the database; if anything differs (e.g. colour) it is a new product with its
+   own unique SKU.
+3. **Brand defaults to VIZO**, changeable.
+4. **Remove "opening cost"** from the whole project and **drop the column**;
+   keep only cost price and sale price.
+5. **Pricing:** Cost → **Duty** → **Margin price** → **Margin %** → Sale.
+   Margin % applies on cost + duty. Typing the margin price computes the % and
+   sale; typing the % computes the margin price and sale.
+6. **Barcode:** a **Scan barcode** button opens the camera in a small popup
+   that looks only for barcodes; after **3 minutes** it closes with a toast
+   "barcode was not found"; if the device has **no camera**, a toast "camera was
+   not found in this device". The scanned number goes into an editable text box;
+   **multiple barcodes** per product. If a barcode contains a **SKU**, that SKU
+   replaces the generated one.
+7. `/inventory/products` as **cards** with a big image and the important
+   information; clicking a card opens the detail page (like `/inventory/products/28`).
+8. Detail page **Movements** section as **cards** (date, from → to, quantity).
+   Clicking one opens a detailed page for that movement (who, reference, all
+   detail, only about this product) with a **"See Complete transfer"** button
+   opening the whole transfer.
+9. After Movements, a **History** section: everything about the product —
+   purchased, order received, dispatched from order department, delivered,
+   transfers — with accounting (e.g. ledger), **exportable to Excel**, nested
+   pages, very readable on **mobile** and PC.
+10. **Throughout the project, the calendar must not allow dates before today.**
+
+### What was built
+
+**Backend** (`backend/vizo-backend`)
+
+| Piece | Where |
+|---|---|
+| SKU rules | `Services/SkuGenerator.cs` — `VZ-WORD-MODEL-CAT-COLOUR-NN` |
+| SKU decided at save, in the insert's transaction, under `pg_advisory_xact_lock(4242001)` | `InventoryController.ResolveSku` |
+| Live preview + duplicate check | `POST /api/inventory/products/sku-preview` `{name, categoryId, brandId, barcodes[]}` → `{sku, source: generated|barcode|incomplete, barcodeSkuTaken, parts{word,model,category,color}, duplicate{id,name,sku}}` |
+| Barcode owner lookup | `GET /api/inventory/barcodes/lookup?code=&excludeProductId=` → `{code, taken, owner, sku}` |
+| Duplicate name refused | `ValidateProduct` — normalised name (trim, collapse spaces, upper-case) |
+| Duplicate barcode refused by name | `ValidateProduct` (was a 500 on the unique index) |
+| `ProductRequest` | `Sku` now optional; `OpeningCost` gone; `DutyPrice` added; margin computed server-side |
+| Pricing columns | `Models/Product.Custom.cs` (`DutyPrice`, `MarginPrice`, ignored `LandedCost`); mapped in `AppDbContext.Custom.cs` |
+| Margin on reads | Derived as `SalePrice − CostPrice − DutyPrice` (so rows written by the old build are right) |
+| Default brand | `GET /api/inventory/lookups` → `defaultBrandId` (brand named "VIZO", looked up by name) |
+| Product list | server-side `status` filter before paging; `stats` over the whole catalogue; `marginPercent` on each row; pageSize cap raised so the export gets everything; export has Duty / Margin / Margin % columns |
+| Movements as cards | `GET /api/inventory/products/{id}/movements?kind=&page=&pageSize=` — a transfer is ONE card (`ProductHistoryController`) |
+| One movement | `GET /api/inventory/products/{id}/movements/{movementId}` — both legs, the document (transfer / GRN / invoice / sales return / purchase return / adjustment) with facts, this product's line, the other lines, `completeLabel` + `url` |
+| History | `GET /api/inventory/products/{id}/history?group=&page=&pageSize=` — timeline from POs, GRNs, supplier bills, purchase returns, customer orders, the order's journey (activity log), invoices, deliveries, sales returns, transfers, adjustments, claims, catalogue edits; plus `summary` and `groups` |
+| Stock ledger | `GET /api/inventory/products/{id}/ledger` — opening + in − out = on hand, running total per row |
+| Export | `GET /api/inventory/products/{id}/history/export` — 7 sheets: Summary, Timeline, Stock ledger, Purchases, Sales, Journey & delivery, Transfers |
+| Multi-sheet workbooks | `Documents/XlsxWriter.FromSheets` |
+| Migration | `database/19_product_pricing.sql` (section 1 run; section 2 = drop, pending) |
+
+**Frontend** (`vizo-erp/src`)
+
+| Piece | Where |
+|---|---|
+| New product form (read-only SKU preview labelled *Auto-generated*, *From barcode* tag, duplicate warning + Save disabled, VIZO pre-selected) | `app/(app)/inventory/products/new/page.tsx` |
+| Five linked price boxes | `components/inventory/pricing-fields.tsx` + `lib/pricing.ts` |
+| Barcode rows, per-code lookup, SKU hand-off | `components/inventory/barcode-fields.tsx` |
+| Camera popup (native `BarcodeDetector`, `@zxing` fallback loaded on demand, 3-min limit, error toasts) | `components/inventory/barcode-scanner-dialog.tsx` |
+| Product cards (table view one click away, remembered per device) | `app/(app)/inventory/products/page.tsx` |
+| Product detail: opening cost removed; Edit uses the new pricing and barcode components; SKU read-only; tabs Stock / **Movements** / **History** / Pricing / Barcodes / Images; `?tab=` deep link | `app/(app)/inventory/products/[id]/page.tsx` |
+| Movement cards | `components/inventory/product-movements.tsx` |
+| One movement page | `app/(app)/inventory/products/[id]/movements/[movementId]/page.tsx` |
+| History page (timeline + ledger + Export Excel) | `app/(app)/inventory/products/[id]/history/page.tsx`, `components/inventory/product-history.tsx` |
+| No past dates | `lib/dates.ts` (`todayISO`, `addDaysISO`, `notPast`, `isPastDate`, `PAST_DATE_MESSAGE`), `components/ui/date-input.tsx` (`<DateInput keep=…>`) |
+| Time display fix | `lib/format.ts` — API timestamps are **Pakistan time**; `formatDate` / `formatDateTime` / `formatTime` print in Asia/Karachi on every device |
+
+**The 19 forms with the no-past-date rule:** sales orders new (order + delivery
+date), sales order edit (delivery), sales invoices new (invoice + due), sales
+returns new, purchase orders new (PO + expected), GRN new (receipt + batch
+expiry), purchase invoices new (invoice + due), purchase returns new,
+transfers new, adjustments new, expenses new + edit, journal entries new +
+edit, vouchers new + edit, record-payment dialog, record-collection dialog
+(collected-on + cheque date), dispatch "should reach by". Schema check + picker
+`min`; edit screens keep the record's own date. Report/list filters untouched.
+
+### SKU examples (run over all 38 live names)
+
+```
+VIZO Titan T9 Wireless Earbuds - Black     VZ-TIT-T9-EAR-BLK-01
+VIZO Titan T9 Wireless Earbuds - Sky Blue  VZ-TIT-T9-EAR-SBLU-01
+VIZO PowerX 10000mAh Power Bank - Black    VZ-POW-10K-POW-BLK-01
+VIZO VOLT 65W GaN Type-C Charger (PD)      VZ-VOL-65W-CHA-01
+VIZO Blaze Pro V65 Handfree                VZ-BLA-V65-HAN-01
+VIZO LED Bulb 9W (Cool White)              VZ-LED-9W-LED-CWHT-01
+VIZO G530 Samsung Battery                  VZ-SAM-G530-BAT-01
+```
+Existing products keep their old SKUs (`05050781` …); editing never re-derives
+a SKU. Rules: brand word skipped; generic words (Wireless, Bluetooth, Smart,
+Type…) and the category's own words are never the WORD; MODEL = first
+letters+digits token that is not a capacity; no model → rating (10000mAh → 10K,
+65W); COLOUR from after the dash or any colour word, two-word shades keep the
+first letter (Sky Blue → SBLU, Rose Gold → RGLD, Cool White → CWHT).
+
+### Pricing, as verified in the browser
+
+```
+cost 200, duty 50, margin % 20     -> margin 50,  sale 300
+then margin price 75               -> 30 %,       sale 325
+then cost -> 300 (price leads)     -> 75 stays,   21.43 %, sale 425
+then sale typed 499                -> margin 149, 42.57 %
+```
+Margin % is on cost + duty. Whichever of margin price / % / sale was typed last
+is held when cost or duty changes. Selling below cost is allowed with a red
+warning. `MarginPrice` is stored; the % is never stored.
+
+### How it was verified
+
+- Backend endpoints against the live DB through a local API with minted
+  super-admin tokens (see [Standing facts → Testing](#testing-against-live-data-without-a-password)).
+  Refusals, lookups and previews only — **no product was created** (count
+  38 before and after).
+- Browser pane at desktop and 375 px: product cards, movement cards, the
+  movement page (both legs, See complete transfer), history timeline + ledger
+  (`0 + 584 − 121 = 463`, balances), new-product preview, case-insensitive
+  duplicate warning with Save disabled, pricing arithmetic, SKU taken from a
+  typed `VZ-…` barcode, transfer form refusing a hand-typed past date.
+- **Not tested: an actual camera scan** — the test browser has no camera. Only
+  the "permission refused" path ran, and it behaved as written.
+
+### Live data touched
+
+- Migration 19 section 1: added `DutyPrice`, `MarginPrice`; every product's
+  `MarginPrice` back-filled to `SalePrice − CostPrice` (duty 0). 38/38 consistent.
+- Nothing else written.
+
+### Found and not changed (details in convey.txt P0–P11)
+
+- **D1** orders never move stock (26 of 31).
+- **D3** six exports capped at 50 rows.
+- Timestamps written before 3 Sep were UTC and now display 5 h early (the fix
+  follows the system's clock since 3 Sep).
+- Leftover test data in live DB: products `ZZ-WIRING-TEST-01` (34, inactive),
+  `ZZ-DROPDOWN-TEST` (36, inactive), `VZ-123-ER` (35, **Talha's — leave**),
+  `CHR` "Charger" (39); empty categories `abc`, `xyz`, `powerbank`,
+  `magnus 30000mah`, `Parent Example Catagory`.
+
+---
+
+## 2026-09-19 — "Is the backend a .NET Web API?" → README stack
+
+Yes: ASP.NET Core 8 Web API. The root `README.md` "Backend (planned)" section
+listed Redis, Hangfire and MinIO, none of which exist. Rewritten to the real
+stack from the `.csproj` and `package.json` (commit `716681a`). The README's
+roadmap line "Backend scaffolding" pending is still stale — not touched.
+
+---
+
+## 2026-09-17 — Invoices that exist, sales returns that work, reps see their own, places, stock by city, notifications
+
+Commits: backend **`86f8af1`** · frontend **`de0c76b`**.
+
+### What the owner asked for
+
+1. Sales panel: after a salesman creates an order he **cannot see or print the
+   invoice**; Super Admin, Warehouse and Order Dept also **cannot see the
+   invoice PDF**. When Super Admin or the salesperson presses **Invoiced**, that
+   order's invoice PDF must be generated and **stored on Cloudinary**.
+2. Sales return fails with **"Could not load invoices and refund methods."**
+   An invoiced order must **not get a second invoice**, but a **sales-return
+   document** is generated.
+3. When a salesperson creates a return, **Super Admin is notified**; returns
+   shown in a **separate column** on the Super Admin panel, **count in red**,
+   **a link** → list of orders with returns → click one → **all return
+   information with its invoice** (which items, how many).
+4. Each salesperson sees **only his own**: his created customers (but can still
+   pick any customer when taking an order), his orders, his returns.
+5. **Warehouse and Order-Dept accounts linked to a specific place**
+   (e.g. Lahore-Warehouse, Karachi-Warehouse), chosen from a dropdown of places
+   the admin created.
+6. `/inventory/stock-levels`: dropdown for stock **by city** and the **whole
+   system combined**.
+7. Notifications must say **who they are for** (full name + role) and carry
+   the **real domain** `https://advpos-frontend.vercel.app/`, **from env** so it
+   can change.
+8. Push both repos; put any env changes in `backend/database/changa.txt`.
+
+### The three real faults behind the four symptoms
+
+| Symptom | Actual cause |
+|---|---|
+| Pressing **Invoiced** gave no invoice | `PATCH /sales/orders/{id}/status` wrote a status id and nothing else. The real work lived in `POST /orders/{id}/invoice`, which the chain strip never called. **Six live orders had moved past Invoiced with no invoice** (3 delivered) |
+| "Could not load invoices and refund methods" | Sales role lacked **`invoices.view`** → `GET /sales/invoices` 403 → the whole `Promise.all` failed. Also why reps could not print bills |
+| Nobody could open the invoice PDF | Partly the six missing invoices; partly `PdfUrl` handed out with no check Cloudinary would serve it (delivery was blocked on the account for a period; now serving) |
+
+### What was built
+
+- **Invoiced now invoices** (same method both routes), idempotent (never a
+  second invoice), refuses cancelled / credit-held orders, and the status only
+  moves **forward** to Invoiced.
+- `SalesInvoice.PdfDeliverable` + `BillViewUrl` / `EnsureBill`: every Print
+  button gets the link that works; a false flag is re-checked once.
+- **Sales-return credit note** = document kind `sales-return`
+  (`DocumentBuilder.SalesReturn`), archived to Cloudinary on creation; return
+  list/detail carry `viewUrl`, order, invoice, units returned of units sold,
+  and the original bill link.
+- **Super Admin dashboard**: red **Sales returns** tile — count, waiting,
+  units, value credited, five most recent by order — linking to `/sales/returns`.
+- Return notification to super-admin, accountant, order-dept.
+- **Rep scoping:** new `Party.CreatedByUserId` (back-filled from assigned rep);
+  Customers list = created by me OR assigned to me; order-form picker unfiltered.
+  Orders/invoices/returns were already scoped.
+- **One place per keeper / order clerk:** `AdminUsersController.ValidatePlace`
+  (exactly one active location of kind `warehouse` / `department`);
+  `/admin/users/new` shows a radio list of those places; staff roles only.
+  Warehouse queue filtered to the keeper's own warehouse.
+- **Stock by city:** `GET /inventory/stock-levels?cityId=` + `byCity`;
+  `lookups.stockCities`; city picker + city chips on the page.
+- **Notifications:** body ends "For <Full Name> (<Role>)."; URL absolute from
+  `App:WebBaseUrl` (env `App__WebBaseUrl`, default the Vercel URL)
+  (`Services/AppLinks.cs`); the bell turns same-origin links back into paths
+  (`lib/app-url.ts`).
+- `appsettings.json`: `App:WebBaseUrl`, and the Vercel origin added to CORS.
+
+### Live data touched (with the owner's explicit OK)
+
+- **Migration 18** run in full: Sales role granted `invoices.view`,
+  `invoices.create`, `returns.sales`; `SalesInvoice.PdfDeliverable`;
+  `Party.CreatedByUserId` (+FK, back-fill, index); LOC-01/02 renamed to
+  **Karachi Warehouse / Karachi Order Department**; **Lahore Warehouse (LOC-06)**
+  and **Lahore Order Department (LOC-07)** added; primary location filled for
+  keepers/clerks with exactly one location.
+- **The six stranded orders invoiced** through the real endpoint:
+  ORD-26-0140→INV-26-8888, 0141→8889, 0143→8890, 0168→8891, 0170→8892,
+  0171→8893 (dated from their orders; PDFs on Cloudinary).
+- **Mistake, corrected:** raising them rewound five order statuses to
+  Invoiced (the old method forced it). Restored by SQL to Dispatched ×3,
+  To Order Dept, Delivered, each with an `ORDER_STATUS_RESTORED` activity-log
+  row; no notifications sent. The method was fixed to move forward only.
+
+### Owner decisions recorded
+
+- "Run migration 18 now, all of it" — done.
+- "Just invoice all six now" — done.
+
+---
+
+## 2026-09-03 → 2026-09-06 — earlier sessions (summary)
+
+From `backend/database/session_summary.md`; full detail in that file and in git.
+
+- **3 Sep — order workflow:** the 10-step chain (Draft → Submitted → Confirmed
+  → Invoiced → Seen by Warehouse → On way to Order Dept → Received at Order
+  Dept → Packaging → Dispatched → Delivered); Super Admin can set any status;
+  reps apply for edit/delete permission; new role **warehouse-keeper**
+  (`/warehouse`); reps see only their own orders/invoices/returns; permission
+  policies (`perm:xxx`) replaced role lists; one Pakistan clock
+  (`Services/BusinessClock.cs`); invoice PDF layout changes; SignalR live bell.
+  Migrations 15 and 16. `api 596fe27, a7626b9` · `web 889323b, b98f8de`.
+- **3 Sep — notifications:** every notification stores a link; every non-admin
+  action notifies the admin by name; who hears each chain step is in
+  `OrderWorkflow.Announcement`.
+- **6 Sep — Chinese parties:** Pakistani/Chinese choice for suppliers; USCC /
+  VAT No. / ID Card labels; country from `Province.Country` (migration 17);
+  `/parties/[id]/edit` built. All labels in `vizo-erp/src/lib/party-tax.ts`.
+  `api 30db380, 0c76373, 4ed116b` · `web 3205b15, ae4f165, 55c0204`.
+
+---
 ## 2026-09-02 — The completion order: dashboards, notifications, AI
 
 Everything in the order shipped, plus one thing that was not in it and stopped
@@ -949,107 +1300,159 @@ Ten of eleven accounts also could not sign in: rows 2–11 carried a literal
 
 ## What is left
 
-### 8 screens still on mock data
+*Rewritten 2026-09-20. The owner's open decisions are **D1–D6** in §1; this
+is the full list.*
 
-All eight are accounting forms. All have working endpoints — this is frontend
-wiring, not API work.
+### Owner decisions (see §1 for the options)
 
-| Area | Files |
+- **D1 — which order step takes stock off the shelf** (26 of 31 order invoices
+  never moved stock). The biggest correctness issue in the system right now.
+- **D2 — scope of the no-past-dates rule** (report filters, cheque date,
+  supplier bill date, API enforcement).
+- **D3 — the six exports capped at 50 rows.**
+- **D4 / D5 — data fixes** (Ahmed Riaz's place; 9 unassigned customers).
+
+### Deploy steps (changa.txt)
+
+- Deploy API `db0fe3a`, **then** drop `OpeningCost` (19 §2).
+- `npm install` (zxing). `App__WebBaseUrl` on the host. CORS origin check.
+- Everyone signs out/in. Camera test on a real phone.
+
+### Older items still open (re-checked 2026-09-20)
+
+1. **🔴 Credentials are public and not rotated.** `appsettings.json` is in a
+   public repo with the Neon password, JWT key, two Cloudinary secrets and a
+   Gmail app password. Owner's decision is to keep them in the file; rotating
+   is still worth doing. Rotating the JWT key also kills every shared
+   `/sales/bill/…?k=` and `/documents/open/…?k=` link.
+2. **`UpdateCategory` writes `ParentCategoryId = body.ParentId`** — 0 for "top
+   level", which breaks the FK. Create path is fixed; update path is not
+   (`InventoryController.cs` ~line 623). Talha's area — ask him.
+3. **`NextNumber` is not atomic** — two documents in the same instant can take
+   one number. Fix = one Postgres sequence per series (`db_code_changes.txt` §3.1).
+4. **Trial balance**: posted movement ties; the seeded opening balances are
+   51,256,709 out. It is the data.
+5. **VAPID public key in `vizo-erp/.env.example` ≠ server's.** `.env.local` is
+   right. Copy `VapidSettings:PublicKey` into `.env.example`.
+6. **Login screen has no warehouse panel** (panels only pre-fill an email;
+   typing it works). Owner said not to touch that file.
+7. `system@advpos.pk` (user 11) is a super-admin service account — consider
+   deactivating.
+8. **Ten of ~39 invoices have no archived PDF.** Nothing breaks (rendered on
+   demand, archived on first open).
+9. **Timestamps written before 3 Sep** were UTC and now display 5 h early.
+10. **INV-26-8888…8893** were issued on 17 Sep for orders from Aug/Sep, so
+    invoice numbers are not in date order there.
+11. Debug `console.log` left in `login/page.tsx` (~114) and
+    `super-admin-dashboard.tsx` (~119).
+12. Old statuses `PROCESSING` (90) and `PACKED` (91) still in `OrderStatus`;
+    old orders point at them; hidden from dropdowns.
+13. README roadmap still lists "Backend scaffolding" as pending.
+
+### Mock data still imported by the frontend
+
+The accounting forms listed here on 2 Sep are **live now**. What still imports
+`@/data/*` (presentational, not business figures):
+
+| File | Imports |
 |---|---|
-| `accounting/*` | `expenses/[id]`, `expenses/new`, `journal-entries/[id]`, `journal-entries/new`, `vouchers/[id]`, `vouchers/new` |
-| `sales/orders` | list is live; one channel-label helper still reads `@/data/sales` |
-| `login` | pulls one presentational constant from `@/data/settings` |
+| `components/layout/top-bar.tsx` | `quickCreate` from `@/data/mock` |
+| `components/layout/shortcut-sheet.tsx` | `shortcuts` from `@/data/settings` |
+| `components/widgets/reminder-list.tsx` | `remindersFor` from `@/data/reminders` |
+| `components/widgets/order-delivery-card.tsx` | `DELIVERY_STATE_VARIANT` (`@/data/sales`), `getChannel` (`@/data/settings`) |
+| `components/widgets/order-payment-card.tsx` | `collectionsFor` etc. from `@/data/collections` |
+| `components/dialogs/record-collection-dialog.tsx` | the `CollectionMethod` type only |
 
-The sales screens finished on 2026-08-29 are the closest worked examples for
-the accounting ones — `sales/returns/new` in particular, which loads a parent
-document and builds its lines from that document rather than a fixed array.
-
-### Needs a decision, not code
-
-1. **🔴 Credentials are public and still not rotated.**
-   `vizo-backend/appsettings.json` is committed to the **public** repo with the
-   live Neon password, the JWT signing key, two Cloudinary secrets and a Gmail
-   app password — and they are in git history, so deleting the file does not
-   undo it. Rotate all four.
-   **Note:** the JWT key now also signs BOTH families of anonymous share link --
-   `/sales/bill/{invoiceNo}?k=` and `/documents/open/{kind}/{key}?k=`. Rotating
-   it invalidates every one already sent to a customer or supplier. That is the
-   correct behaviour and it is the point of signing them that way, but do it
-   knowing the WhatsApp links people are holding will stop opening.
-2. **🟢 Cloudinary PDF delivery — DONE.** It was off; it has been turned on in
-   the console and every stored link now serves. Nothing in the code changed:
-   `PdfStore` HEADs each URL after uploading, so the app switched from its own
-   fallback link to the Cloudinary one on its own. Left here as a note because a
-   NEW Cloudinary account will arrive in the same blocked state, and
-   `/admin/documents` is where that would show up.
-3. **`CLM` document series is not in the database.** Claims created through the
-   app number `CLM-20260825174238` instead of `CLM-26-0143`. One `INSERT`,
-   written out in `db_code_changes.txt` §5. **Not applied.** Note that even once
-   it is, `09_document_series_catchup.sql` should be re-run so the counter
-   starts past whatever is already there.
-4. **Trial balance does not balance — and that is the data.** Posted movement
-   ties to the cent; the seeded *opening balances* are 51,256,709 out. The
-   endpoint reports the two separately so nobody hunts through journal entries
-   that were never at fault.
-5. **Document numbers can still collide under concurrency.** `NextNumber()`
-   reads and increments `DocumentSeries.NextNumber` non-atomically. Migration 09
-   fixed the counters being *behind the data*; it does not fix two requests in
-   the same instant taking the same number. The proper fix is one Postgres
-   sequence per series — `db_code_changes.txt` §3.1, not applied.
-6. **`UpdateCategory` still writes `ParentCategoryId = 0`.** Talha fixed the
-   create path (`InventoryController.cs`) but not the update path, so editing a
-   category to "Top level" throws the same FK error. Left as he has it rather
-   than changing code he is actively working in — worth a word with him.
-7. **`system@advpos.pk` (user 11) is a super-admin service account** sharing a
-   working password with five other accounts. Consider `IsActive = false`.
+`reminder-list` and `order-payment-card` still compute from mock arrays — worth
+wiring to the API when next in that area.
 
 ### Test rows in the live database
 
-Products:
+| What | State |
+|---|---|
+| Product 34 `ZZ-WIRING-TEST-01` | inactive — safe to delete |
+| Product 36 `ZZ-DROPDOWN-TEST` | inactive — safe to delete |
+| Product 35 `VZ-123-ER` | **Talha's — leave alone** |
+| Product 39 `CHR` "Charger" | active, real-looking — ask before touching |
+| Categories `abc`, `xyz`, `powerbank`, `magnus 30000mah`, `Parent Example Catagory` | no products — ask before deleting |
 
-| id | SKU | State |
-|---|---|---|
-| 34 | `ZZ-WIRING-TEST-01` | inactive — safe to delete |
-| 36 | `ZZ-DROPDOWN-TEST` | inactive — safe to delete |
-| **35** | `VZ-123-ER` | **Talha's. Leave alone.** |
-
-Removal SQL is in `db_code_changes.txt` §12. Both of the deletable ones are
-`IsActive = false`, so they cannot reach an order, invoice or packing screen.
-
-Sales documents from the 2026-08-29 session are listed in that day's entry above.
+Removal SQL for the ZZ products is in `db_code_changes.txt` §12.
 
 ---
 
 ## Standing facts
 
-### How to run
+### How to run (this machine)
 
 ```bash
-cd backend/vizo-backend && dotnet run --launch-profile https   # :7177 + /swagger
-cd vizo-erp && npm run dev                                     # :3000
+# backend -- https on 7177, which is what vizo-erp/.env.local points at
+cd backend && mv global.json global.json.bak
+cd vizo-backend && ASPNETCORE_ENVIRONMENT=Development \
+  ASPNETCORE_URLS="https://localhost:7177;http://localhost:5275" dotnet run --no-launch-profile
+# ...and when done:  cd .. && mv global.json.bak global.json
+
+# frontend
+cd vizo-erp && npm install && npm run dev        # :3000
 ```
 
-`dotnet dev-certs https --trust` once, or every browser request fails as a bare
-network error with nothing in the console.
+`dotnet dev-certs https --trust` once. In Claude sessions, start the frontend
+with the preview tool, configuration **`advpos-dev`** in `vizo-erp/.claude/launch.json`.
+The API starts two hosted services (confirmation reminders after 1 minute,
+nightly insights at 20:30) that can write notifications — keep local runs short.
 
-| Role | Email | Password |
-|---|---|---|
-| Super Admin | `admin@advpos.pk` | `Admin@1234` |
-| Accountant | `accounts@advpos.pk` | `Accounts@1234` |
-| Order Dept | `order@advpos.pk` | `Order@1234` |
-| Sales | `sales@advpos.pk` | `Sales@1234` |
+### Staff accounts (live DB, 2026-09-20)
 
-Others (`nadia@`, `junaid@`, `ahmed@`, `imran@`, `sara@`, `asad@`,
-`system@advpos.pk`) use `Vizo@1234`. `asad@` is inactive on purpose.
+| Role | Name | Email | Primary place |
+|---|---|---|---|
+| super-admin | Umer Memon | `vizo.com.pk@gmail.com` | Karachi Warehouse |
+| super-admin | AdvPOS System | `system@advpos.pk` | Karachi Order Dept |
+| accountant | Hassan Raza | `accounts@advpos.pk` | Karachi Warehouse |
+| accountant | Nadia Hussain | `nadia@vizo.com.pk` | Karachi Order Dept |
+| order-dept | Bilal Ahmed | `order@advpos.pk` | Karachi Order Dept |
+| order-dept | Junaid Akhtar | `junaid@vizo.com.pk` | Karachi Order Dept |
+| order-dept | Ahmed Riaz | `ahmed@vizo.com.pk` | **Karachi Warehouse (wrong — D4)** |
+| sales | Zara Malik | `sales@advpos.pk` | Shop 2 |
+| sales | Imran Iqbal | `imran@vizo.com.pk` | Shop 2 |
+| sales | Sara Khan | `sara@vizo.com.pk` | Karachi Order Dept |
+| sales | Muhammad AMMAR KAMRAN | `ammarkamran2005@gmail.com` | Claim Stock |
+| sales | Asad Ali | `asad@vizo.com.pk` | Karachi Order Dept — **inactive** |
+| warehouse-keeper | Talha | `muhammadtalhabinsuhail@gmail.com` | Karachi Warehouse |
+
+Passwords as recorded in August (**not re-verified since**): the super admin's
+password was left unchanged when its email moved to `vizo.com.pk@gmail.com`;
+the four seed accounts used `Admin@1234` / `Accounts@1234` / `Order@1234` /
+`Sales@1234`; the rest `Vizo@1234`.
+
+### Testing against live data without a password
+
+Every endpoint check in the 17 and 20 September sessions used a local API and a
+super-admin token minted with the signing key from `appsettings.json` — the same
+thing `/auth/login` does. Claim names are the long URIs; `perm` is an array of
+the role's permission keys (read them from `RolePermission`).
+
+```python
+import base64, hmac, hashlib, json, time
+KEY = "<Jwt:Key from appsettings.json>"
+NS = "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/"
+b64 = lambda b: base64.urlsafe_b64encode(b).rstrip(b"=").decode()
+now = int(time.time())
+payload = {NS+"nameidentifier": "1", NS+"name": "Umer Memon", NS+"emailaddress": "vizo.com.pk@gmail.com",
+           "http://schemas.microsoft.com/ws/2008/06/identity/claims/role": "super-admin",
+           "roleId": "1", "locationId": "1", "perm": [...],   # from RolePermission
+           "iss": "AdvPOS.Api", "aud": "AdvPOS.Web", "nbf": now, "iat": now, "exp": now + 1800}
+head = b64(json.dumps({"alg": "HS256", "typ": "JWT"}).encode()) + "." + b64(json.dumps(payload).encode())
+token = head + "." + b64(hmac.new(KEY.encode(), head.encode(), hashlib.sha256).digest())
+```
+
+For the browser, set cookies `advpos_token=<token>` and `advpos_role=super-admin`
+on `localhost:3000`. Keep checks read-only unless the owner has agreed to a write.
 
 ### ⚠️ The .NET SDK will fail on a fresh machine
 
 `global.json` pins **SDK 9.0.317**. If it is not installed, `dotnet` does not
 warn — it fails to load at all inside `backend/` with *"The command could not
-be loaded"*, which does not look like an SDK problem.
-
-Check with `dotnet --list-sdks`. If 9.x is missing, build behind a **temporary**
-override and restore before committing:
+be loaded"*. On this machine: move `global.json` aside for the build and put it
+back (§0 point 4). Alternatively, a temporary override:
 
 ```bash
 cd backend && cp global.json global.json.bak
@@ -1067,6 +1470,14 @@ vizo-backend/Program.cs
 vizo-backend/Models/AppDbContext.cs
 vizo-backend/Controllers/AuthController.cs
 ```
+
+**Edits made to them, and why** (so nothing is a surprise on his side):
+`Models/AppDbContext.cs` lost exactly one line on 2026-09-20 — the
+`OpeningCost` precision mapping, because the property no longer exists.
+`Models/Product.cs` (scaffolded, not on the list) lost the `OpeningCost`
+property. New columns go in `*.Custom.cs` partials and `AppDbContext.Custom.cs`,
+never in the scaffolded files. `global.json` is only ever moved aside and put
+back. `appsettings.json` gained `App:WebBaseUrl` and a CORS origin on 17 Sep.
 
 **The push recipe that works:** clone his repo fresh, copy in *only* your own
 files, then assert those five show no diff before committing. A blind `cp -r`
@@ -1160,6 +1571,28 @@ of the whole folder reverts his work. Two further traps that recipe avoids:
     A stale production `.next` makes **every route 404**, including `/dashboard`,
     which looks exactly like a routing bug and is not one.
 
+18. **API timestamps are PAKISTAN time, with no zone marker.** Since 3 Sep
+    `BusinessClock` writes Asia/Karachi into `timestamp without time zone`.
+    The browser must read them as `+05:00` (`lib/format.ts → parseApiDate`)
+    and print them in Asia/Karachi. A bare `YYYY-MM-DD` is a calendar day —
+    format it in UTC or a US-timezone browser shows the day before.
+19. **Default a date field with the LOCAL date** (`lib/dates.ts → todayISO`),
+    never `new Date().toISOString().slice(0,10)` — that is UTC, which is
+    yesterday before 5 am in Pakistan, and the no-past-dates rule then refuses
+    the form's own default.
+20. **List actions cap `pageSize` (200/500, fallback 50) and the `.xlsx`
+    exports call them with 5000** — so an export silently stops at 50 rows.
+    Fixed for products; six others still capped (D3).
+21. **The order chain does not move stock** (D1). Stock only leaves through
+    `/packing` and counter sales. Do not assume a delivered order reduced
+    `StockBalance`.
+22. **City names carry the country** (`'Lahore - Pakistan'`). An `=` match in
+    SQL silently matches nothing; use `ILIKE 'Lahore%'`.
+23. **Two GitHub accounts on this machine**; git uses `medocsai` by default and
+    gets 403 on both repos. Push as `AmmarKamran2005` (§0 point 2).
+24. **`int.ToString()` inside an EF query** — avoided on purpose (e.g. matching
+    `DocumentFile.DocKey`). Build the string list in C# and use `Contains`.
+
 ### Reference
 
 | File | What it holds |
@@ -1178,3 +1611,14 @@ of the whole folder reverts his work. Two further traps that recipe avoids:
 | `backend/API_CONTRACT.md` | endpoint request/response shapes |
 | `backend/database/ERD.txt` | text ERD |
 | `vizo-erp/AGENTS.md` | rendering-speed rules — currently at odds with the per-page fetch brief |
+| `backend/database/18_sales_scope_returns_and_places.sql` | Sales permissions, `PdfDeliverable`, `Party.CreatedByUserId`, Lahore pair. **Applied** |
+| `backend/database/19_product_pricing.sql` | `DutyPrice`, `MarginPrice` (**§1 applied**); drop `OpeningCost` (**§2 not run — after deploy**) |
+| `backend/database/changa.txt` / `convey.txt` | Owner's manual steps / found-not-changed. **Read both** |
+| `backend/vizo-backend/Services/SkuGenerator.cs` | SKU rules |
+| `backend/vizo-backend/Controllers/ProductHistoryController.cs` | Product movements, one movement, history, ledger, export |
+| `backend/vizo-backend/Services/AppLinks.cs` | Absolute links from `App:WebBaseUrl` for notifications |
+| `backend/vizo-backend/Documents/DocumentLinks.cs` | Signed account-free document links |
+| `backend/vizo-backend/Services/OrderWorkflow.cs` | The 10-step chain and who may move each step |
+| `vizo-erp/src/lib/pricing.ts`, `lib/dates.ts`, `lib/app-url.ts`, `lib/format.ts` | Price arithmetic; today + no-past-date rule; bell links; Pakistan-time formatting |
+| `vizo-erp/src/components/inventory/*` | Barcode scanner, barcode fields, pricing fields, movement cards, history timeline |
+| `vizo-erp/src/components/ui/date-input.tsx` | Date field whose calendar starts today |
