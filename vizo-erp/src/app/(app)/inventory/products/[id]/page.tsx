@@ -2,11 +2,11 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import axios from "axios";
 import {
   Edit3, Package, Barcode, Image as ImageIcon, TrendingUp, AlertCircle,
-  ArrowUpRight, ArrowDownRight, RefreshCw, Loader2, Save, X, Plus, Trash2,
+  RefreshCw, Loader2, Save, X, Plus, History as HistoryIcon, Download, ArrowRight, Wand2, ScanLine,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardBody } from "@/components/ui/card";
@@ -24,6 +24,13 @@ import { toast } from "@/components/ui/toaster";
 import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
 import { formatMoney, formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { downloadXlsx, exportError } from "@/lib/export";
+import { PricingFields, pricingDraftFrom, pricingProblem, type PricingDraft } from "@/components/inventory/pricing-fields";
+import { BarcodeFields, cleanBarcodes } from "@/components/inventory/barcode-fields";
+import { ProductMovements } from "@/components/inventory/product-movements";
+import {
+  HistoryTimeline, HistorySummaryTiles, type HistoryEvent, type HistorySummary,
+} from "@/components/inventory/product-history";
 
 /* GET /inventory/products/{id}. `stockSpread` is the real per-location balance
    off StockBalance -- the old screen split one total across locations with
@@ -42,8 +49,11 @@ type Product = {
   packing: number;
   minQty: number;
   maxQty: number;
-  openingCost: number;
   costPrice: number;
+  dutyPrice: number;
+  marginPrice: number;
+  /** Margin as a percentage of landed cost (cost + duty). */
+  marginPercent: number;
   salePrice: number;
   taxRatePercent: number;
   hideStock: boolean;
@@ -55,21 +65,6 @@ type Product = {
   stockSpread: StockRow[];
   status: "active" | "low" | "out";
 };
-
-/* GET /inventory/movements?productId= */
-type Movement = {
-  id: number;
-  locationId: number;
-  locationName: string;
-  movementType: string;
-  movementTypeName: string;
-  movedAt: string;
-  referenceNo: string | null;
-  qty: number;
-  balanceAfter: number;
-  user: string | null;
-};
-type MovementPage = { total: number; page: number; pageSize: number; items: Movement[] };
 
 type Lookups = {
   categories: { id: number; name: string; parentId: number | null }[];
@@ -83,12 +78,15 @@ function apiMessage(e: unknown, fallback: string) {
   return "Cannot reach the server.";
 }
 
-/** The editable subset — exactly the fields ProductRequest carries. */
+/** The editable subset — exactly the fields ProductRequest carries.
+ *  The SKU is shown, not typed: it is printed on labels and invoices already,
+ *  so it only changes when a scanned barcode carries one of our own SKUs. */
 type Draft = {
   sku: string; name: string; description: string;
   categoryId: string; brandId: string;
   packing: string; minQty: string; maxQty: string;
-  openingCost: string; costPrice: string; salePrice: string; taxRatePercent: string;
+  taxRatePercent: string;
+  pricing: PricingDraft;
   hideStock: boolean; isActive: boolean; imageUrl: string;
   barcodes: string[];
 };
@@ -98,19 +96,32 @@ function toDraft(p: Product): Draft {
     sku: p.sku, name: p.name, description: p.description ?? "",
     categoryId: String(p.categoryId), brandId: String(p.brandId),
     packing: String(p.packing), minQty: String(p.minQty), maxQty: String(p.maxQty),
-    openingCost: String(p.openingCost), costPrice: String(p.costPrice),
-    salePrice: String(p.salePrice), taxRatePercent: String(p.taxRatePercent),
+    taxRatePercent: String(p.taxRatePercent),
+    pricing: pricingDraftFrom(p),
     hideStock: p.hideStock, isActive: p.isActive, imageUrl: p.imageUrl ?? "",
-    barcodes: [...p.barcodes],
+    barcodes: p.barcodes.length ? [...p.barcodes] : [""],
   };
 }
 
+/* useSearchParams needs a suspense boundary above it, so the page is only the
+   boundary and the screen lives one level down. */
 export default function ProductDetailPage() {
+  return (
+    <React.Suspense fallback={<Skeleton className="h-64" />}>
+      <ProductDetail />
+    </React.Suspense>
+  );
+}
+
+const TABS = ["stock", "movements", "history", "pricing", "barcodes", "images"] as const;
+
+function ProductDetail() {
   const params = useParams<{ id: string }>();
   const id = parseInt(params.id ?? "0", 10);
+  const searchParams = useSearchParams();
+  const initialTab = TABS.find((t) => t === searchParams.get("tab")) ?? "stock";
 
   const [product, setProduct] = React.useState<Product | null>(null);
-  const [movements, setMovements] = React.useState<Movement[]>([]);
   const [lookups, setLookups] = React.useState<Lookups>({ categories: [], brands: [] });
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
@@ -123,15 +134,13 @@ export default function ProductDetailPage() {
   const load = React.useCallback(async () => {
     if (!id) { setNotFound(true); setLoading(false); return; }
     try {
-      const [p, mv, lk] = await Promise.all([
+      /* The movements and the history load themselves, when their tab is
+         opened -- most visits to a product never look at either. */
+      const [p, lk] = await Promise.all([
         axios.get<Product>(`${API_BASE_URL}/inventory/products/${id}`, { headers: authHeader() }),
-        axios.get<MovementPage>(`${API_BASE_URL}/inventory/movements`, {
-          params: { productId: id, pageSize: 100 }, headers: authHeader(),
-        }),
         axios.get<Lookups>(`${API_BASE_URL}/inventory/lookups`, { headers: authHeader() }),
       ]);
       setProduct(p.data);
-      setMovements(mv.data.items);
       setLookups({ categories: lk.data.categories, brands: lk.data.brands });
       setNotFound(false);
       setError(null);
@@ -168,8 +177,13 @@ export default function ProductDetailPage() {
 
   async function save() {
     if (!draft || !product) return;
-    if (!draft.sku.trim() || !draft.name.trim()) {
-      toast.error("SKU and name are both required.");
+    if (!draft.name.trim()) {
+      toast.error("The product needs a name.");
+      return;
+    }
+    const priceIssue = pricingProblem(draft.pricing);
+    if (priceIssue) {
+      toast.error("Check the prices", { description: priceIssue });
       return;
     }
     setSaving(true);
@@ -185,14 +199,14 @@ export default function ProductDetailPage() {
           packing: Number(draft.packing) || 0,
           minQty: Number(draft.minQty) || 0,
           maxQty: Number(draft.maxQty) || 0,
-          openingCost: Number(draft.openingCost) || 0,
-          costPrice: Number(draft.costPrice) || 0,
-          salePrice: Number(draft.salePrice) || 0,
+          costPrice: Number(draft.pricing.cost) || 0,
+          dutyPrice: Number(draft.pricing.duty) || 0,
+          salePrice: Number(draft.pricing.sale) || 0,
           taxRatePercent: Number(draft.taxRatePercent) || 0,
           hideStock: draft.hideStock,
           isActive: draft.isActive,
           imageUrl: draft.imageUrl.trim() || null,
-          barcodes: draft.barcodes.map((b) => b.trim()).filter(Boolean),
+          barcodes: cleanBarcodes(draft.barcodes),
         },
         { headers: authHeader() }
       );
@@ -258,40 +272,21 @@ export default function ProductDetailPage() {
 
   /* ── derived ─────────────────────────────────────────────────────── */
 
-  const margin = product.salePrice > 0
-    ? ((product.salePrice - product.costPrice) / product.salePrice) * 100
-    : 0;
+  /* On LANDED cost -- cost plus duty -- the same base the pricing form uses,
+     so the figure here is the figure somebody typed. */
+  const landed = product.costPrice + product.dutyPrice;
+  const margin = product.marginPercent;
 
   const stockColumns: Column<StockRow & { id: number }>[] = [
     { key: "locationName", header: "Location", cell: (r) => <span className="text-sm font-medium text-navy-900 dark:text-white">{r.locationName}</span> },
     { key: "locationCode", header: "Code", cell: (r) => <span className="tabular text-xs text-slate-500 dark:text-slate-400">{r.locationCode}</span> },
     { key: "qty", header: "On Hand", align: "right", cell: (r) => <span className="tabular text-sm font-semibold text-navy-900 dark:text-white">{r.qty}</span> },
-    { key: "cost", header: "Avg Cost", align: "right", cell: () => <span className="tabular text-sm text-slate-600 dark:text-slate-300">{formatMoney(product.costPrice)}</span> },
-    { key: "value", header: "Value", align: "right", cell: (r) => <span className="tabular text-sm font-bold text-navy-900 dark:text-white">{formatMoney(r.qty * product.costPrice)}</span> },
+    { key: "cost", header: "Landed Cost", align: "right", cell: () => <span className="tabular text-sm text-slate-600 dark:text-slate-300">{formatMoney(landed)}</span> },
+    { key: "value", header: "Value", align: "right", cell: (r) => <span className="tabular text-sm font-bold text-navy-900 dark:text-white">{formatMoney(r.qty * landed)}</span> },
   ];
 
   /* DataTable needs an `id` on every row; stockSpread keys on locationId. */
   const stockRows = product.stockSpread.map((s) => ({ ...s, id: s.locationId }));
-
-  const movementColumns: Column<Movement>[] = [
-    { key: "movedAt", header: "Date", cell: (m) => <span className="text-xs text-slate-500 dark:text-slate-400">{formatDate(m.movedAt)}</span> },
-    {
-      key: "movementType", header: "Type",
-      cell: (m) => <Badge variant={m.qty > 0 ? "success" : "danger"}>{m.movementTypeName}</Badge>,
-    },
-    { key: "referenceNo", header: "Reference", cell: (m) => <span className="tabular text-xs font-medium text-navy-900 dark:text-white">{m.referenceNo ?? "—"}</span> },
-    { key: "locationName", header: "Location", cell: (m) => <span className="text-xs text-slate-600 dark:text-slate-300">{m.locationName}</span> },
-    {
-      key: "qty", header: "Qty", align: "right",
-      cell: (m) => (
-        <span className={cn("tabular text-sm font-bold inline-flex items-center gap-1", m.qty > 0 ? "text-success" : "text-danger")}>
-          {m.qty > 0 ? <ArrowUpRight className="size-3" /> : <ArrowDownRight className="size-3" />}
-          {Math.abs(m.qty)}
-        </span>
-      ),
-    },
-    { key: "balanceAfter", header: "Balance", align: "right", cell: (m) => <span className="tabular text-sm font-medium text-navy-900 dark:text-white">{m.balanceAfter}</span> },
-  ];
 
   return (
     <>
@@ -339,6 +334,9 @@ export default function ProductDetailPage() {
               <Button variant="secondary" size="md" className="gap-1.5" onClick={beginEdit}>
                 <Edit3 /> Edit
               </Button>
+              <Button variant="secondary" size="md" className="gap-1.5" asChild>
+                <Link href={`/inventory/products/${product.id}/history`}><HistoryIcon /> <span className="hidden sm:inline">History</span></Link>
+              </Button>
               <Button variant="accent" size="md" asChild>
                 <Link href={`/inventory/adjustments/new?productId=${product.id}`}>Adjust Stock</Link>
               </Button>
@@ -360,19 +358,25 @@ export default function ProductDetailPage() {
           <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">+{product.taxRatePercent}% tax</div>
         </Card>
         <Card className="p-4">
-          <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Avg Cost</div>
-          <div className="text-2xl tabular font-bold text-navy-900 dark:text-white mt-1">{formatMoney(product.costPrice)}</div>
+          <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Landed Cost</div>
+          <div className="text-2xl tabular font-bold text-navy-900 dark:text-white mt-1">{formatMoney(landed)}</div>
+          <div className="text-xs text-slate-500 dark:text-slate-400 mt-1 tabular">
+            {formatMoney(product.costPrice)} + {formatMoney(product.dutyPrice)} duty
+          </div>
         </Card>
         <Card className="p-4">
           <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Margin</div>
-          <div className="text-2xl tabular font-bold text-success mt-1">{margin.toFixed(1)}%</div>
+          <div className={cn("text-2xl tabular font-bold mt-1", margin <= 0 ? "text-danger" : margin < 15 ? "text-warning" : "text-success")}>
+            {margin.toFixed(1)}%
+          </div>
           <div className="text-xs text-slate-500 dark:text-slate-400 mt-1 inline-flex items-center gap-1">
-            <TrendingUp className="size-3" /> {formatMoney(product.salePrice - product.costPrice)} per unit
+            <TrendingUp className="size-3" /> {formatMoney(product.marginPrice)} per unit
           </div>
         </Card>
         <Card className="p-4">
           <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Stock Value</div>
-          <div className="text-2xl tabular font-bold text-navy-900 dark:text-white mt-1">{formatMoney(product.totalStock * product.costPrice)}</div>
+          <div className="text-2xl tabular font-bold text-navy-900 dark:text-white mt-1">{formatMoney(product.totalStock * landed)}</div>
+          <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">at landed cost</div>
         </Card>
       </div>
 
@@ -382,7 +386,17 @@ export default function ProductDetailPage() {
           <CardBody>
             <h3 className="text-base font-semibold text-navy-900 dark:text-white mb-4">Edit product</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              <Fld label="SKU"><Input value={draft.sku} onChange={(e) => setField("sku", e.target.value)} /></Fld>
+              <Fld label="SKU (auto-generated, kept)">
+                <div className="relative">
+                  <Wand2 className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-brand-yellow" />
+                  <Input readOnly tabIndex={-1} value={draft.sku} className="pl-9 tabular font-semibold bg-slate-50 dark:bg-navy-900 cursor-default" />
+                </div>
+                {draft.sku !== product.sku && (
+                  <p className="mt-1 inline-flex items-center gap-1 text-2xs font-medium text-navy-900 dark:text-brand-yellow">
+                    <ScanLine className="size-3" /> Changes to the SKU read from a scanned barcode
+                  </p>
+                )}
+              </Fld>
               <Fld label="Name"><Input value={draft.name} onChange={(e) => setField("name", e.target.value)} /></Fld>
               <Fld label="Description"><Input value={draft.description} onChange={(e) => setField("description", e.target.value)} /></Fld>
               <Fld label="Category">
@@ -398,11 +412,13 @@ export default function ProductDetailPage() {
               <Fld label="Packing (units per carton)"><Input type="number" value={draft.packing} onChange={(e) => setField("packing", e.target.value)} /></Fld>
               <Fld label="Reorder level"><Input type="number" value={draft.minQty} onChange={(e) => setField("minQty", e.target.value)} /></Fld>
               <Fld label="Maximum level"><Input type="number" value={draft.maxQty} onChange={(e) => setField("maxQty", e.target.value)} /></Fld>
-              <Fld label="Opening cost"><Input type="number" step="0.01" value={draft.openingCost} onChange={(e) => setField("openingCost", e.target.value)} /></Fld>
-              <Fld label="Cost price"><Input type="number" step="0.01" value={draft.costPrice} onChange={(e) => setField("costPrice", e.target.value)} /></Fld>
-              <Fld label="Sale price"><Input type="number" step="0.01" value={draft.salePrice} onChange={(e) => setField("salePrice", e.target.value)} /></Fld>
               <Fld label="Tax rate %"><Input type="number" step="0.01" value={draft.taxRatePercent} onChange={(e) => setField("taxRatePercent", e.target.value)} /></Fld>
               <Fld label="Image URL"><Input value={draft.imageUrl} onChange={(e) => setField("imageUrl", e.target.value)} placeholder="https://…" /></Fld>
+            </div>
+
+            <div className="mt-4 pt-4 border-t border-slate-100 dark:border-navy-700">
+              <Label className="mb-3 inline-block">Pricing</Label>
+              <PricingFields value={draft.pricing} onChange={(pr) => setField("pricing", pr)} />
             </div>
 
             <div className="flex flex-wrap items-center gap-6 mt-4 pt-4 border-t border-slate-100 dark:border-navy-700">
@@ -416,34 +432,24 @@ export default function ProductDetailPage() {
 
             <div className="mt-4 pt-4 border-t border-slate-100 dark:border-navy-700">
               <Label className="mb-2 inline-block">Barcodes</Label>
-              <div className="space-y-2 max-w-md">
-                {draft.barcodes.map((b, i) => (
-                  <div key={i} className="flex items-center gap-2">
-                    <Input
-                      value={b}
-                      onChange={(e) => setField("barcodes", draft.barcodes.map((x, j) => (j === i ? e.target.value : x)))}
-                      placeholder="EAN-13"
-                    />
-                    <Button variant="ghost" size="icon" aria-label="Remove barcode"
-                      onClick={() => setField("barcodes", draft.barcodes.filter((_, j) => j !== i))}>
-                      <Trash2 className="size-4 text-danger" />
-                    </Button>
-                  </div>
-                ))}
-                <Button variant="secondary" size="sm" className="gap-1.5"
-                  onClick={() => setField("barcodes", [...draft.barcodes, ""])}>
-                  <Plus className="size-4" /> Add barcode
-                </Button>
+              <div className="max-w-md">
+                <BarcodeFields
+                  value={draft.barcodes}
+                  onChange={(b) => setField("barcodes", b)}
+                  productId={product.id}
+                  onSkuFound={(sku) => setField("sku", sku)}
+                />
               </div>
             </div>
           </CardBody>
         </Card>
       )}
 
-      <Tabs defaultValue="stock" className="w-full">
+      <Tabs defaultValue={initialTab} className="w-full">
         <TabsList className="overflow-x-auto scrollbar-thin flex-nowrap">
           <TabsTrigger value="stock">Stock by Location</TabsTrigger>
           <TabsTrigger value="movements">Movements</TabsTrigger>
+          <TabsTrigger value="history">History</TabsTrigger>
           <TabsTrigger value="pricing">Pricing</TabsTrigger>
           <TabsTrigger value="barcodes">Barcodes</TabsTrigger>
           <TabsTrigger value="images">Images</TabsTrigger>
@@ -458,11 +464,13 @@ export default function ProductDetailPage() {
         </TabsContent>
 
         <TabsContent value="movements">
-          <Card className="p-0 overflow-hidden">
-            {movements.length === 0
-              ? <CardBody><EmptyState icon={ArrowUpRight} title="No movements" description="Nothing has moved in or out of stock for this product." /></CardBody>
-              : <DataTable columns={movementColumns} data={movements} pageSize={10} />}
-          </Card>
+          {/* Cards, one per movement and ONE per transfer; each opens its own
+              page, and that page opens the complete transfer. */}
+          <ProductMovements productId={product.id} />
+        </TabsContent>
+
+        <TabsContent value="history">
+          <HistoryPreview productId={product.id} />
         </TabsContent>
 
         <TabsContent value="pricing">
@@ -475,11 +483,12 @@ export default function ProductDetailPage() {
                   figures on the product row are. */}
               <div className="space-y-3 max-w-xl">
                 <PriceRow label="Cost price" value={formatMoney(product.costPrice)} />
-                <PriceRow label="Opening cost" value={formatMoney(product.openingCost)} />
-                <PriceRow label="Sale price (excl. tax)" value={formatMoney(product.salePrice)} />
+                <PriceRow label="Duty" value={formatMoney(product.dutyPrice)} />
+                <PriceRow label="Landed cost" value={formatMoney(landed)} strong />
+                <PriceRow label={`Margin (${margin.toFixed(1)}% of landed cost)`} value={formatMoney(product.marginPrice)} />
+                <PriceRow label="Sale price (excl. tax)" value={formatMoney(product.salePrice)} strong />
                 <PriceRow label={`Tax at ${product.taxRatePercent}%`} value={formatMoney(product.salePrice * (product.taxRatePercent / 100))} />
                 <PriceRow label="Sale price (incl. tax)" value={formatMoney(product.salePrice * (1 + product.taxRatePercent / 100))} strong />
-                <PriceRow label="Margin per unit" value={`${formatMoney(product.salePrice - product.costPrice)} · ${margin.toFixed(1)}%`} />
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-4">
                 Per-customer and tiered price lists are not in the database yet, so no tiers are shown here.
@@ -536,6 +545,63 @@ export default function ProductDetailPage() {
         </TabsContent>
       </Tabs>
     </>
+  );
+}
+
+/* ─────────────────────────── the History tab ─────────────────────────── */
+
+type HistoryPreviewData = { summary: HistorySummary; total: number; items: HistoryEvent[] };
+
+/**
+ * The headline figures and the last few events; the whole story is one click
+ * further on, on its own page, where a phone has the room to read it.
+ */
+function HistoryPreview({ productId }: { productId: number }) {
+  const [data, setData] = React.useState<HistoryPreviewData | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+  const [exporting, setExporting] = React.useState(false);
+
+  React.useEffect(() => {
+    let live = true;
+    axios.get<HistoryPreviewData>(`${API_BASE_URL}/inventory/products/${productId}/history`, {
+      params: { pageSize: 6 }, headers: authHeader(),
+    })
+      .then((r) => { if (live) setData(r.data); })
+      .catch((e) => { if (live) setError(apiMessage(e, "Could not load the history.")); });
+    return () => { live = false; };
+  }, [productId]);
+
+  async function exportAll() {
+    setExporting(true);
+    try {
+      await downloadXlsx(`inventory/products/${productId}/history/export`, {}, `product-${productId}-history.xlsx`);
+      toast.success("History exported");
+    } catch (e) {
+      toast.error("Could not export", { description: await exportError(e) });
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  if (error) return <Card className="p-4 text-sm text-danger">{error}</Card>;
+  if (!data) return <Skeleton className="h-72" />;
+
+  return (
+    <div className="space-y-4">
+      <HistorySummaryTiles s={data.summary} />
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-base font-semibold text-navy-900 dark:text-white">Latest</h3>
+        <div className="flex gap-2">
+          <Button variant="secondary" size="sm" className="gap-1.5" onClick={exportAll} disabled={exporting}>
+            {exporting ? <Loader2 className="size-4 animate-spin" /> : <Download />} Export Excel
+          </Button>
+          <Button variant="accent" size="sm" className="gap-1.5" asChild>
+            <Link href={`/inventory/products/${productId}/history`}>Full history ({data.total}) <ArrowRight /></Link>
+          </Button>
+        </div>
+      </div>
+      <HistoryTimeline events={data.items} />
+    </div>
   );
 }
 

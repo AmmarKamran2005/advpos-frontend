@@ -9,6 +9,8 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardBody } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DateInput } from "@/components/ui/date-input";
+import { todayISO, addDaysISO } from "@/lib/dates";
 import { Label } from "@/components/ui/label";
 import { SelectNative } from "@/components/ui/select-native";
 import { Avatar } from "@/components/ui/avatar";
@@ -109,12 +111,11 @@ const CHANNEL_ICON: Record<string, typeof Truck> = {
 };
 const iconFor = (key: string) => CHANNEL_ICON[key] ?? Truck;
 
-const todayIso = () => new Date().toISOString().slice(0, 10);
+/* Local date, not UTC: between midnight and 5 am the UTC date is yesterday. */
+const todayIso = () => todayISO();
 
 function addDays(iso: string, days: number) {
-  const d = new Date(iso);
-  d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
+  return addDaysISO(iso, days);
 }
 
 /**
@@ -456,9 +457,8 @@ function DispatchSheet({
             <Label htmlFor="expected">Should reach by</Label>
             <div className="relative mt-1.5">
               <Calendar className="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-              <Input
+              <DateInput
                 id="expected"
-                type="date"
                 value={expected}
                 onChange={(e) => setExpected(e.target.value)}
                 className="pl-9"

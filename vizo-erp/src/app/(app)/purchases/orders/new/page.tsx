@@ -10,6 +10,8 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardBody } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DateInput } from "@/components/ui/date-input";
+import { notPast, PAST_DATE_MESSAGE, todayISO, addDaysISO } from "@/lib/dates";
 import { Textarea } from "@/components/ui/textarea";
 import { SelectNative } from "@/components/ui/select-native";
 import { Avatar } from "@/components/ui/avatar";
@@ -55,8 +57,8 @@ const ItemSchema = z.object({
 const Schema = z.object({
   supplierId: z.coerce.number({ message: "Pick a supplier" }).positive("Pick a supplier"),
   locationId: z.coerce.number().positive("Pick a location"),
-  poDate: z.string().min(1),
-  expectedDate: z.string().min(1, "Expected date required"),
+  poDate: z.string().min(1).refine(notPast, PAST_DATE_MESSAGE),
+  expectedDate: z.string().min(1, "Expected date required").refine(notPast, PAST_DATE_MESSAGE),
   items: z.array(ItemSchema).min(1, "Add at least one item"),
   discount: z.coerce.number().min(0),
   notes: z.string().max(500).optional(),
@@ -78,8 +80,8 @@ export default function NewPurchaseOrderPage() {
     defaultValues: {
       supplierId: 0 as unknown as number,
       locationId: 0,
-      poDate: new Date().toISOString().slice(0, 10),
-      expectedDate: new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10),
+      poDate: todayISO(),
+      expectedDate: addDaysISO(todayISO(), 14),
       items: [],
       discount: 0,
       notes: "",
@@ -262,10 +264,10 @@ export default function NewPurchaseOrderPage() {
                     </FormItem>
                   )} />
                   <FormField control={form.control} name="poDate" render={({ field }) => (
-                    <FormItem><FormLabel required>PO date</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>
+                    <FormItem><FormLabel required>PO date</FormLabel><FormControl><DateInput {...field} /></FormControl><FormMessage /></FormItem>
                   )} />
                   <FormField control={form.control} name="expectedDate" render={({ field }) => (
-                    <FormItem><FormLabel required>Expected delivery</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>
+                    <FormItem><FormLabel required>Expected delivery</FormLabel><FormControl><DateInput {...field} /></FormControl><FormMessage /></FormItem>
                   )} />
                 </div>
               </CardBody>

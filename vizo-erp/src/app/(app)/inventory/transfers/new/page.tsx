@@ -11,6 +11,8 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardBody } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DateInput } from "@/components/ui/date-input";
+import { notPast, PAST_DATE_MESSAGE, todayISO } from "@/lib/dates";
 import { Textarea } from "@/components/ui/textarea";
 import { SelectNative } from "@/components/ui/select-native";
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from "@/components/ui/form";
@@ -50,7 +52,7 @@ const ItemSchema = z.object({
 const Schema = z.object({
   fromLocationId: z.coerce.number().positive("Pick source"),
   toLocationId:   z.coerce.number().positive("Pick destination"),
-  date: z.string().min(1),
+  date: z.string().min(1).refine(notPast, PAST_DATE_MESSAGE),
   items: z.array(ItemSchema).min(1, "Add at least one item"),
   notes: z.string().max(500).optional(),
 }).refine((d) => d.fromLocationId !== d.toLocationId, { message: "Source and destination must differ", path: ["toLocationId"] });
@@ -71,7 +73,7 @@ export default function NewTransferPage() {
     defaultValues: {
       fromLocationId: 0,
       toLocationId: 0,
-      date: new Date().toISOString().slice(0, 10),
+      date: todayISO(),
       items: [],
       notes: "",
     },
@@ -226,7 +228,7 @@ export default function NewTransferPage() {
                     </FormControl><FormMessage /></FormItem>
                   )} />
                   <FormField control={form.control} name="date" render={({ field }) => (
-                    <FormItem className="col-span-12"><FormLabel required>Transfer date</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>
+                    <FormItem className="col-span-12"><FormLabel required>Transfer date</FormLabel><FormControl><DateInput {...field} /></FormControl><FormMessage /></FormItem>
                   )} />
                 </div>
               </CardBody>

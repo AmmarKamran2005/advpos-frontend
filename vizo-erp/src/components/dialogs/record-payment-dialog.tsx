@@ -10,6 +10,8 @@ import {
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DateInput } from "@/components/ui/date-input";
+import { notPast, PAST_DATE_MESSAGE, todayISO } from "@/lib/dates";
 import { Label } from "@/components/ui/label";
 import { SelectNative } from "@/components/ui/select-native";
 import { Textarea } from "@/components/ui/textarea";
@@ -29,7 +31,7 @@ const PAYMENT_METHODS = [
 const PaymentSchema = z.object({
   paymentMethod: z.enum(["CASH", "BANK", "EASYPAISA", "JAZZCASH", "CHEQUE"]),
   amount: z.coerce.number({ message: "Amount required" }).positive("Amount must be positive"),
-  paymentDate: z.string().min(1, "Date required"),
+  paymentDate: z.string().min(1, "Date required").refine(notPast, PAST_DATE_MESSAGE),
   referenceNo: z.string().optional(),
   walletTxnId: z.string().optional(),
   bankAccount: z.string().optional(),
@@ -63,7 +65,7 @@ export function RecordPaymentDialog({
     defaultValues: {
       paymentMethod: "BANK",
       amount: balanceAmount,
-      paymentDate: new Date().toISOString().slice(0, 10),
+      paymentDate: todayISO(),
       referenceNo: "",
       walletTxnId: "",
       bankAccount: "",
@@ -190,7 +192,7 @@ export function RecordPaymentDialog({
                   <FormItem className="mb-4">
                     <FormLabel required>Payment Date</FormLabel>
                     <FormControl>
-                      <Input type="date" {...field} />
+                      <DateInput {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

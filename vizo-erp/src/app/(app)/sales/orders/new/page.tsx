@@ -15,6 +15,8 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardBody } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DateInput } from "@/components/ui/date-input";
+import { notPast, PAST_DATE_MESSAGE, todayISO, addDaysISO } from "@/lib/dates";
 import { Textarea } from "@/components/ui/textarea";
 import { SelectNative } from "@/components/ui/select-native";
 import { Avatar } from "@/components/ui/avatar";
@@ -78,15 +80,16 @@ const Schema = z.object({
   salesPersonUserId: z.coerce.number().min(0),
   items: z.array(ItemSchema).min(1, "Add at least one item"),
   methodId: z.coerce.number().positive("Pick a payment method"),
-  orderDate: z.string().min(1, "Order date required"),
-  deliveryDate: z.string().min(1, "Delivery date required"),
+  orderDate: z.string().min(1, "Order date required").refine(notPast, PAST_DATE_MESSAGE),
+  deliveryDate: z.string().min(1, "Delivery date required").refine(notPast, PAST_DATE_MESSAGE),
   raiseInvoice: z.boolean(),
   notes: z.string().max(500, "Max 500 characters").optional(),
 });
 
 type Form = z.infer<typeof Schema>;
 
-const today = () => new Date().toISOString().slice(0, 10);
+/* Local date, not UTC -- see lib/dates.ts. */
+const today = () => todayISO();
 
 export default function NewOrderPage() {
   const router = useRouter();
@@ -112,7 +115,7 @@ export default function NewOrderPage() {
       items: [],
       methodId: 0,
       orderDate: today(),
-      deliveryDate: new Date(Date.now() + 86400000).toISOString().slice(0, 10),
+      deliveryDate: addDaysISO(todayISO(), 1),
       raiseInvoice: true,
       notes: "",
     },
@@ -502,10 +505,10 @@ export default function NewOrderPage() {
                       </FormItem>
                     )} />
                     <FormField control={form.control} name="orderDate" render={({ field }) => (
-                      <FormItem><FormLabel required>Order date</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>
+                      <FormItem><FormLabel required>Order date</FormLabel><FormControl><DateInput {...field} /></FormControl><FormMessage /></FormItem>
                     )} />
                     <FormField control={form.control} name="deliveryDate" render={({ field }) => (
-                      <FormItem><FormLabel required>Delivery date</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>
+                      <FormItem><FormLabel required>Delivery date</FormLabel><FormControl><DateInput {...field} /></FormControl><FormMessage /></FormItem>
                     )} />
                     <FormField control={form.control} name="notes" render={({ field }) => (
                       <FormItem className="sm:col-span-2">

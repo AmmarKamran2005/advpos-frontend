@@ -11,6 +11,8 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardBody } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DateInput } from "@/components/ui/date-input";
+import { notPast, PAST_DATE_MESSAGE, todayISO } from "@/lib/dates";
 import { Textarea } from "@/components/ui/textarea";
 import { SelectNative } from "@/components/ui/select-native";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -53,7 +55,7 @@ const ItemSchema = z.object({
 
 const Schema = z.object({
   locationId: z.coerce.number().positive("Pick a location"),
-  date: z.string().min(1),
+  date: z.string().min(1).refine(notPast, PAST_DATE_MESSAGE),
   reasonId: z.coerce.number().positive("Pick a reason"),
   reasonNotes: z.string().min(5, "Say what happened — this is the audit trail").max(500),
   items: z.array(ItemSchema).min(1, "Add at least one item"),
@@ -80,7 +82,7 @@ export default function NewAdjustmentPage() {
     resolver: vizoResolver(Schema),
     defaultValues: {
       locationId: 0,
-      date: new Date().toISOString().slice(0, 10),
+      date: todayISO(),
       reasonId: 0,
       reasonNotes: "",
       items: [],
@@ -236,7 +238,7 @@ export default function NewAdjustmentPage() {
                     </FormControl><FormMessage /></FormItem>
                   )} />
                   <FormField control={form.control} name="date" render={({ field }) => (
-                    <FormItem><FormLabel required>Date</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>
+                    <FormItem><FormLabel required>Date</FormLabel><FormControl><DateInput {...field} /></FormControl><FormMessage /></FormItem>
                   )} />
                   <FormField control={form.control} name="reasonId" render={({ field }) => (
                     <FormItem><FormLabel required>Reason</FormLabel><FormControl>

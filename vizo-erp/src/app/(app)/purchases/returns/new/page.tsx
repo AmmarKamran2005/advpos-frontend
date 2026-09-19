@@ -13,6 +13,8 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardBody } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DateInput } from "@/components/ui/date-input";
+import { notPast, PAST_DATE_MESSAGE, todayISO } from "@/lib/dates";
 import { Textarea } from "@/components/ui/textarea";
 import { SelectNative } from "@/components/ui/select-native";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -48,7 +50,7 @@ const ItemSchema = z.object({
 const Schema = z.object({
   piId: z.coerce.number({ message: "Pick an invoice" }).positive("Pick an invoice"),
   locationId: z.coerce.number().positive("Pick a location"),
-  returnDate: z.string().min(1),
+  returnDate: z.string().min(1).refine(notPast, PAST_DATE_MESSAGE),
   reason: z.string().min(5, "Say why it is going back").max(500),
   items: z.array(ItemSchema).refine((i) => i.some((x) => x.qty > 0), { message: "Return at least one item" }),
 });
@@ -76,7 +78,7 @@ export default function NewPurchaseReturnPage() {
     defaultValues: {
       piId: 0 as unknown as number,
       locationId: 0,
-      returnDate: new Date().toISOString().slice(0, 10),
+      returnDate: todayISO(),
       reason: "",
       items: [],
     },
@@ -253,7 +255,7 @@ export default function NewPurchaseReturnPage() {
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <FormField control={form.control} name="returnDate" render={({ field }) => (
                         <FormItem><FormLabel required>Return date</FormLabel>
-                          <FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>
+                          <FormControl><DateInput {...field} /></FormControl><FormMessage /></FormItem>
                       )} />
                       <FormField control={form.control} name="locationId" render={({ field }) => (
                         <FormItem><FormLabel required>Going out of</FormLabel><FormControl>

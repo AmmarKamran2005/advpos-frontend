@@ -14,6 +14,8 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardBody } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DateInput } from "@/components/ui/date-input";
+import { isPastDate, PAST_DATE_MESSAGE } from "@/lib/dates";
 import { Textarea } from "@/components/ui/textarea";
 import { SelectNative } from "@/components/ui/select-native";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -195,6 +197,12 @@ export default function EditOrderPage() {
   }
 
   async function onSubmit(d: FormValues) {
+    /* No delivery date before today -- except the one the order already has. */
+    const kept = (order?.deliveryDate ?? order?.orderDate ?? "").slice(0, 10);
+    if (isPastDate(d.deliveryDate) && d.deliveryDate.slice(0, 10) !== kept) {
+      form.setError("deliveryDate", { message: PAST_DATE_MESSAGE });
+      return;
+    }
     setSaving(true);
     try {
       const res = await axios.put<{ message: string; invoiceNo?: string | null }>(
@@ -386,7 +394,7 @@ export default function EditOrderPage() {
                       <FormItem>
                         <FormLabel>Delivery date</FormLabel>
                         <FormControl>
-                          <Input type="date" {...field} />
+                          <DateInput keep={order?.deliveryDate ?? order?.orderDate} {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>

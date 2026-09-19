@@ -3,8 +3,9 @@
  *
  * Field set follows the Stock Manager the business already keeps: an item code,
  * one or more barcodes, packing (how many pieces to a packet), minimum and
- * maximum quantities for reorder alerts, and three prices — opening cost,
- * current cost, and retail.
+ * maximum quantities for reorder alerts, and the price chain the live
+ * catalogue now uses — cost, duty, margin, sale. "Opening cost" was removed
+ * from the product on the owner's instruction (database/19_product_pricing.sql).
  *
  * NOTE ON "BRAND": in the live catalogue this field records which handset the
  * accessory fits (Samsung, iPhone, China …), not who manufactured it — the
@@ -24,9 +25,9 @@ export type Product = {
   minQty: number;
   /** Flagged as overstocked above this. 0 = no ceiling. */
   maxQty: number;
-  /** Cost when the item was brought onto the system. */
-  openingCost: number;
   costPrice: number;
+  dutyPrice: number;
+  marginPrice: number;
   salePrice: number;
   taxRatePercent: number;
   hideStock: boolean;
@@ -111,8 +112,9 @@ const make = (
     packing,
     minQty,
     maxQty: minQty * 12,
-    openingCost: Math.round(costPrice * 0.94),
     costPrice,
+    dutyPrice: 0,
+    marginPrice: salePrice - costPrice,
     salePrice,
     taxRatePercent: 18,
     hideStock: false,

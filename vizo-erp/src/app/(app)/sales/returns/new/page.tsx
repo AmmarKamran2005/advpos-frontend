@@ -13,6 +13,8 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardBody } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DateInput } from "@/components/ui/date-input";
+import { notPast, PAST_DATE_MESSAGE, todayISO } from "@/lib/dates";
 import { Textarea } from "@/components/ui/textarea";
 import { SelectNative } from "@/components/ui/select-native";
 import { Badge } from "@/components/ui/badge";
@@ -84,7 +86,7 @@ const ItemSchema = z.object({
 const Schema = z.object({
   invoiceId: z.coerce.number({ message: "Pick an invoice" }).positive("Pick an invoice"),
   locationId: z.coerce.number().positive("Pick a location"),
-  returnDate: z.string().min(1, "Date required"),
+  returnDate: z.string().min(1, "Date required").refine(notPast, PAST_DATE_MESSAGE),
   reason: z.string().min(5, "Please describe why this is being returned").max(300),
   refundMethodId: z.coerce.number().positive("Pick a refund method"),
   items: z.array(ItemSchema)
@@ -110,7 +112,7 @@ export default function NewSalesReturnPage() {
     defaultValues: {
       invoiceId: 0 as unknown as number,
       locationId: 0,
-      returnDate: new Date().toISOString().slice(0, 10),
+      returnDate: todayISO(),
       reason: "",
       refundMethodId: 0,
       items: [],
@@ -346,7 +348,7 @@ export default function NewSalesReturnPage() {
                     </FormItem>
                   )} />
                   <FormField control={form.control} name="returnDate" render={({ field }) => (
-                    <FormItem><FormLabel required>Return date</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>
+                    <FormItem><FormLabel required>Return date</FormLabel><FormControl><DateInput {...field} /></FormControl><FormMessage /></FormItem>
                   )} />
                 </div>
               </CardBody>

@@ -10,6 +10,8 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardBody } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DateInput } from "@/components/ui/date-input";
+import { notPast, PAST_DATE_MESSAGE, todayISO } from "@/lib/dates";
 import { Textarea } from "@/components/ui/textarea";
 import { SelectNative } from "@/components/ui/select-native";
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from "@/components/ui/form";
@@ -58,13 +60,13 @@ const ItemSchema = z.object({
   qtyReceived: z.coerce.number().min(0),
   qtyDamaged: z.coerce.number().min(0),
   batchNo: z.string().max(50).optional().or(z.literal("")),
-  expiryDate: z.string().optional().or(z.literal("")),
+  expiryDate: z.string().optional().or(z.literal("")).refine(notPast, PAST_DATE_MESSAGE),
 }).refine((d) => d.qtyReceived + d.qtyDamaged + d.alreadyReceived <= d.ordered, { message: "Total exceeds ordered qty", path: ["qtyReceived"] });
 
 const Schema = z.object({
   poId: z.coerce.number({ message: "Pick a PO" }).positive(),
   locationId: z.coerce.number().positive(),
-  receiptDate: z.string().min(1),
+  receiptDate: z.string().min(1).refine(notPast, PAST_DATE_MESSAGE),
   deliveryNoteNo: z.string().min(1, "Delivery note no. required"),
   vehicleNo: z.string().optional().or(z.literal("")),
   items: z.array(ItemSchema)
@@ -89,7 +91,7 @@ export default function NewGRNPage() {
     defaultValues: {
       poId: 0 as unknown as number,
       locationId: 0,
-      receiptDate: new Date().toISOString().slice(0, 10),
+      receiptDate: todayISO(),
       deliveryNoteNo: "",
       vehicleNo: "",
       items: [],
@@ -284,7 +286,7 @@ export default function NewGRNPage() {
                     <h3 className="text-sm font-semibold text-navy-900 dark:text-white mb-3">Receipt Details</h3>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <FormField control={form.control} name="receiptDate" render={({ field }) => (
-                        <FormItem><FormLabel required>Receipt date</FormLabel><FormControl><Input type="date" {...field} /></FormControl><FormMessage /></FormItem>
+                        <FormItem><FormLabel required>Receipt date</FormLabel><FormControl><DateInput {...field} /></FormControl><FormMessage /></FormItem>
                       )} />
                       <FormField control={form.control} name="locationId" render={({ field }) => (
                         <FormItem><FormLabel required>Receiving location</FormLabel><FormControl>
@@ -378,7 +380,7 @@ function GRNRow({ idx, control }: { idx: number; control: Control<Form> }) {
         <FormItem className="col-span-3 sm:col-span-2"><FormLabel className="text-2xs">Batch</FormLabel><FormControl><Input placeholder="e.g. 2026-04" {...field} /></FormControl></FormItem>
       )} />
       <FormField control={control} name={`items.${idx}.expiryDate`} render={({ field }) => (
-        <FormItem className="col-span-3 sm:col-span-2"><FormLabel className="text-2xs">Expiry</FormLabel><FormControl><Input type="date" {...field} /></FormControl></FormItem>
+        <FormItem className="col-span-3 sm:col-span-2"><FormLabel className="text-2xs">Expiry</FormLabel><FormControl><DateInput {...field} /></FormControl></FormItem>
       )} />
     </div>
   );

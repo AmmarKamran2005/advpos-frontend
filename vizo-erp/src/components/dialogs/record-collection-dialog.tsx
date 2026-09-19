@@ -10,6 +10,8 @@ import {
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DateInput } from "@/components/ui/date-input";
+import { notPast, PAST_DATE_MESSAGE, todayISO } from "@/lib/dates";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -32,10 +34,10 @@ const METHODS: { value: CollectionMethod; label: string; icon: typeof Banknote }
 const Schema = z.object({
   amount: z.coerce.number({ message: "Amount required" }).positive("Must be more than zero"),
   method: z.enum(["CASH", "CHEQUE", "BANK", "JAZZCASH", "EASYPAISA"]),
-  collectedOn: z.string().min(1, "Date required"),
+  collectedOn: z.string().min(1, "Date required").refine(notPast, PAST_DATE_MESSAGE),
   reference: z.string().optional(),
   bank: z.string().optional(),
-  chequeDate: z.string().optional(),
+  chequeDate: z.string().optional().refine(notPast, PAST_DATE_MESSAGE),
   note: z.string().max(300, "Max 300 characters").optional(),
 }).refine(
   (d) => d.method !== "CHEQUE" || (d.reference && d.reference.length > 0),
@@ -79,7 +81,7 @@ export function RecordCollectionDialog({
     defaultValues: {
       amount: 0,
       method: "CASH",
-      collectedOn: "2026-08-15",
+      collectedOn: todayISO(),
       reference: "",
       bank: "",
       chequeDate: "",
@@ -217,7 +219,7 @@ export function RecordCollectionDialog({
                   <FormField control={form.control} name="chequeDate" render={({ field }) => (
                     <FormItem className="col-span-2">
                       <FormLabel>Cheque date</FormLabel>
-                      <FormControl><Input type="date" {...field} /></FormControl>
+                      <FormControl><DateInput {...field} /></FormControl>
                       <FormDescription>Leave the future date if it is post-dated</FormDescription>
                       <FormMessage />
                     </FormItem>
@@ -239,7 +241,7 @@ export function RecordCollectionDialog({
               <FormField control={form.control} name="collectedOn" render={({ field }) => (
                 <FormItem className="mb-4">
                   <FormLabel required>Collected on</FormLabel>
-                  <FormControl><Input type="date" {...field} /></FormControl>
+                  <FormControl><DateInput {...field} /></FormControl>
                   <FormMessage />
                 </FormItem>
               )} />
