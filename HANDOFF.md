@@ -81,8 +81,8 @@ What the next session needs to know about **working** here:
 
 | | |
 |---|---|
-| **Frontend** | `AmmarKamran2005/advpos-frontend` @ `main` = **`fe3556e`** · **21 Sep work is committed locally and NOT pushed** (the owner asked for a private session) |
-| **Backend** | `muhammadtalhabinsuhail/vizo-backend` @ `master` = **`db0fe3a`** · **21 Sep work is committed locally and NOT pushed** |
+| **Frontend** | `AmmarKamran2005/advpos-frontend` @ `main` = **`aa9ce49`** (pushed 2026-09-21) |
+| **Backend** | `muhammadtalhabinsuhail/vizo-backend` @ `master` = **`5ceecb1`** (pushed 2026-09-21) |
 | **Database** | Neon PostgreSQL, Singapore. Migrations **15–18, 20** applied. **19 section 1 applied; 19 section 2 (drop `OpeningCost`) NOT run** — waits for the new API to be deployed (changa.txt §A1) |
 | **Stack** | Next.js 16 / React 19 / TypeScript / Tailwind 4 (Vercel) · ASP.NET Core 8 Web API + EF Core 8 + Npgsql · JWT with permission policies · SignalR · WebPush · Cloudinary · MailKit · Gemini Flash. Full list in `README.md` |
 | **Gate** | `npx tsc --noEmit` clean · `npx eslint src` **0 errors**, 69 warnings (old unused-vars) · `next build` **87 pages** · backend **0 errors**, 6 old warnings (4 `AuthController`, 2 `ProductHistoryController`) |
@@ -122,9 +122,10 @@ What the next session needs to know about **working** here:
 
 ## 2026-09-21 — In Transit deleted, rep-scoped customers, Invoiced/Edit, and a sales return built around the customer
 
-*Local session, at the owner's request: **nothing was pushed**. Both repos are
-committed locally and the branches are one commit ahead of their remotes.*
-Migration **20** WAS run on the live Neon database, on the owner's explicit
+Commits: backend **`5ceecb1`** · frontend **`aa9ce49`**. The work was done in a
+local session and pushed to both repos at the end of it, once the owner asked
+for it; neither remote had moved in the meantime, so both were fast-forwards.
+Migration **20** was run on the live Neon database, on the owner's explicit
 answer to a question that laid out what it would do.
 
 ### What the owner asked for (paraphrased faithfully)
@@ -1453,11 +1454,9 @@ is the full list.*
 
 ### Deploy steps (changa.txt)
 
-- **Not pushed.** The 21 Sep work is committed locally on both repos; push when
-  the owner says so (§0 point 2 has the recipe).
 - Assign customers to reps (§B1) — no deploy needed, and two reps are stuck
   until it is done.
-- Deploy the API, **then** drop `OpeningCost` (19 §2).
+- Deploy the API (`5ceecb1`), **then** drop `OpeningCost` (19 §2).
 - `npm install` (zxing). `App__WebBaseUrl` on the host. CORS origin check.
 - Everyone signs out/in — a rep's old token still carries the rights migration
   20 took away. Camera test on a real phone.
