@@ -92,9 +92,10 @@ What the next session needs to know about **working** here:
 
 **Two urgent ones first:**
 
-- 🔴 **Set `Gemini:ApiKey`** (changa.txt §C1) or the new customer screen only takes
-  pictures and every box is typed by hand. Free key, two minutes. It also
-  switches on the AI reports, which have been dark since September.
+- ✅ **The reader key is in** (22 Sep). Model `gemini-flash-latest`, two
+  fallbacks, proved against sample documents — see changa.txt §C1. It also
+  switched on the AI reports, which had been dark since September. **The key
+  is committed in a public repo**; rotating it is one paste.
 - 🔴 **Assign customers to the right salesman** (changa.txt §B1). Every dropdown
    now shows a rep only his own accounts, and **Imran Iqbal and Ammar Kamran
    have none**, so they cannot raise an order at all. Sara has 7, Zara 1; nine
@@ -121,7 +122,7 @@ What the next session needs to know about **working** here:
 |---|---|---|
 | **D1** | ✅ **Answered and done for new orders (22 Sep):** Dispatched takes the stock off, from the place the screen asks for. **What is left is the past** — 26 orders dispatched or delivered before that date still moved nothing, so Stock in Hand is overstated by everything on them | One correction script. It changes real shelf counts, so it waits for a word; the list is shown before anything runs |
 | **D2** | **No-past-dates rule scope.** Applied to 19 entry forms, NOT to list/report From–To filters (a report must look back). Also applied to **cheque date** and **supplier bill date**, which are often legitimately in the past. Not enforced by the API | Say which of those to loosen, or whether to add it to report filters / the API |
-| **D8** | **Nothing has ever read a CNIC here** — no `Gemini:ApiKey` is set, so the new customer screen files the photographs and the salesperson types the details. And no camera has taken one: the test browser has none | Set the key (changa.txt §C1) and put one real shop through the screen. The prompt is one file and is meant to be corrected |
+| **D8** | **The reader is proved, the camera is not.** With the key in (22 Sep) sample documents read correctly through the real endpoint — name without the father's name, address off the card, city matched, a blurred card refused. But no REAL CNIC has been photographed with a REAL phone: the test browser has no camera | Put one real shop through the screen. If a field reads wrongly, `PartyDocumentsController.Prompt` is the one place to change |
 | **D3** | **Six more exports silently stop at 50 rows** (list action caps `pageSize`, export asks for 5000): orders (46 rows today), invoices, walk-in, parties, journal entries (44), vouchers, expenses. Fixed for products only | One-line change per list action; say the word |
 | **D4** | Ahmed Riaz (order-dept) points at **Karachi Warehouse**; should be a department | Fix at `/admin/users` (form now only offers departments) |
 | **D5** | 🔴 **Now blocking.** Customer pickers are rep-scoped since 21 Sep, so a rep with no accounts cannot raise an order: Imran and Ammar have **0**, Zara 1, Sara 7. Nine accounts belong to an order-desk clerk or the accountant, two to nobody | Assign reps on those parties |
@@ -240,12 +241,27 @@ Migrations **21** and **22** run on the live Neon database, on the owner's instr
 - Gate: `tsc` clean, `eslint` 0 errors / 64 warnings, `next build` 86 pages (packing gone),
   backend 0 errors.
 
-### Not proven, and the owner needs to know
+### The reader, once the key arrived (same day)
 
-- **No CNIC has been read by the reader**, because no key is set. The screen behaves correctly
-  without one; the prompt is in one file and is meant to be argued with once a real card has been
-  through it (`convey.txt` §S8.1).
-- **No camera has taken a picture** — the test browser has none. Only the refusal path ran.
+The owner supplied a Gemini key a few hours later, so the part that could not be proved was
+proved:
+
+- Sample documents (a drawn identity card and a shop card) through the real endpoint returned
+  **the CNIC name without the father's name**, display name
+  `Imran Yousuf Mansoori - MANSOORI COMMUNICATION - Nayabad Market`, **the address off the card
+  and not the CNIC**, both phone numbers, `Karachi - Pakistan` matched from the CNIC's city, and
+  the identity number. ~20–25 s for three pictures.
+- A deliberately **blurred** card came back as `blurred` → *"That picture is not clear enough to
+  read. Take it again."*, and the screen returns to that section instead of half-filling the form.
+- **`gemini-2.0-flash` is retired** (404 "no longer available"); the model is `gemini-flash-latest`
+  with two fallbacks, because the flash models answer **503 "high demand"** often enough that a
+  single attempt is not reliable.
+- **A bug the test found**: a model that truncated its own JSON took the endpoint down with a
+  `JsonReaderException` on the screen. The parse is defensive now and answers "take the pictures
+  again in better light, or type the details in".
+
+**Still not proven:** a real CNIC photographed with a real phone camera. The test browser has
+none, so only the "camera refused" path has run.
 
 ---
 
@@ -1575,7 +1591,8 @@ is the full list.*
 - **D1 — the 26 past orders.** Answered for new orders on 22 September: stock
   comes off at Dispatched, from the place the screen asks for. The orders
   dispatched before that still need a one-off correction.
-- **D8 — no reader key**, so a CNIC has never actually been read here.
+- **D8 — one real shop through the new customer screen**, on a real phone. The
+  reader itself is proved; the camera and a genuine CNIC are not.
 - **D7 — nothing posts a sale invoice or a return to the ledger.** 39 invoices,
   12 journal entries, all seeded.
 - **D2 — scope of the no-past-dates rule** (report filters, cheque date,
