@@ -81,8 +81,8 @@ What the next session needs to know about **working** here:
 
 | | |
 |---|---|
-| **Frontend** | `AmmarKamran2005/advpos-frontend` @ `main` — 22 Sep work pushed |
-| **Backend** | `muhammadtalhabinsuhail/vizo-backend` @ `master` — 22 Sep work pushed |
+| **Frontend** | `AmmarKamran2005/advpos-frontend` @ `main` = **`6053504`** (pushed 2026-09-22, rebased onto Talha's `4cdb2a4`) |
+| **Backend** | `muhammadtalhabinsuhail/vizo-backend` @ `master` = **`29972d1`** (pushed 2026-09-22) |
 | **Database** | Neon PostgreSQL, Singapore. Migrations **15–18, 20, 21, 22** applied. **19 section 1 applied; 19 section 2 (drop `OpeningCost`) NOT run** — waits for the new API to be deployed (changa.txt §A1) |
 | **Stack** | Next.js 16 / React 19 / TypeScript / Tailwind 4 (Vercel) · ASP.NET Core 8 Web API + EF Core 8 + Npgsql · JWT with permission policies · SignalR · WebPush · Cloudinary · MailKit · Gemini Flash. Full list in `README.md` |
 | **Gate** | `npx tsc --noEmit` clean · `npx eslint src` **0 errors**, 64 warnings (old unused-vars) · `next build` **86 pages** (packing removed) · backend **0 errors**, 6 old warnings (4 `AuthController`, 2 `ProductHistoryController`) |
@@ -132,7 +132,11 @@ What the next session needs to know about **working** here:
 
 ## 2026-09-22 — Seven steps, stock that leaves when it is dispatched, and a customer opened from their papers
 
-Commits: backend **`1667625`** + the documents work · frontend **`f0941e5`** + the documents work.
+Commits: backend **`1667625`** (chain, dispatch, rights) and **`29972d1`** (customer documents) ·
+frontend **`3e36a26`** (order screen, dispatch dialog) and **`6053504`** (the customer's papers).
+Talha pushed twice to the frontend while this was in flight (`6eac03b`, `4cdb2a4` — a stray space
+and the new-product tax default moved from 18 to 0); this work is rebased on top of his, not merged
+over it.
 Migrations **21** and **22** run on the live Neon database, on the owner's instruction.
 
 ### What the owner asked for (paraphrased faithfully)
