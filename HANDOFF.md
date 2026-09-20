@@ -92,10 +92,13 @@ What the next session needs to know about **working** here:
 
 **Two urgent ones first:**
 
-- ✅ **The reader key is in** (22 Sep). Model `gemini-flash-latest`, two
-  fallbacks, proved against sample documents — see changa.txt §C1. It also
-  switched on the AI reports, which had been dark since September. **The key
-  is committed in a public repo**; rotating it is one paste.
+- 🟡 **The reader key is in — but only on the owner's machine** (22 Sep). Model
+  `gemini-flash-latest`, two fallbacks, proved against sample documents — see
+  changa.txt §C1. **It is not in the repository**: GitHub's secret scanning
+  refuses any push carrying a Google API key, and the owner's instruction was
+  to gitignore it. It lives in `backend/vizo-backend/appsettings.Development.json`
+  (untracked) here, and **must be set on Railway as `Gemini__ApiKey`** before
+  the reader — and the AI reports, dark since September — work in production.
 - 🔴 **Assign customers to the right salesman** (changa.txt §B1). Every dropdown
    now shows a rep only his own accounts, and **Imran Iqbal and Ammar Kamran
    have none**, so they cannot raise an order at all. Sara has 7, Zara 1; nine
@@ -684,6 +687,14 @@ of truth again:
 - `SETUP.md` §6 documents `appsettings.json` as the place to look.
 - Frontend variables stay in `vizo-erp/.env.local`, which is not committed.
   Copy `.env.example` and fill it in.
+- **One exception, added 20 Sep: the Gemini key.** GitHub's secret scanning
+  blocks any push carrying a Google API key, so it cannot sit in
+  `appsettings.json` with the others — the push was refused outright. It is in
+  `vizo-backend/appsettings.Development.json` instead, which is in `.gitignore`
+  and no longer tracked, and on the server it is the `Gemini__ApiKey`
+  environment variable. `appsettings.json` carries an empty `Gemini:ApiKey`,
+  and with no key the reader reports `configured:false` and the screen asks for
+  the details to be typed in.
 
 **`NEXT_PUBLIC_VAPID_PUBLIC_KEY` in `.env.local` must be the exact pair of
 `VapidSettings:PrivateKey` in `appsettings.json`.** They match right now. If they
@@ -795,9 +806,11 @@ message, and an anomaly check whose deviation maths is mean-and-standard-
 deviation over 90 days. AI only words the survivors. Asking a model "is anything
 wrong today" every night produces something wrong every night.
 
-**No Gemini key is set.** Every AI surface was verified with no key and with a
-bad one: the figures always arrive, `explanation` is null, and the panel says so.
-Set `Gemini:ApiKey` in user-secrets to switch it on.
+**No Gemini key is set** *(written before 22 Sep; a key exists now — see the
+reader section above)*. Every AI surface was verified with no key and with a bad
+one: the figures always arrive, `explanation` is null, and the panel says so.
+The key is supplied by the untracked `appsettings.Development.json` locally and
+by the `Gemini__ApiKey` environment variable on the server.
 
 ### Also
 
