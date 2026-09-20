@@ -15,10 +15,9 @@ import { Avatar } from "@/components/ui/avatar";
 import { Badge, StatusPill } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
-import { RecordPaymentDialog } from "@/components/dialogs/record-payment-dialog";
 import { WhatsAppShareDialog } from "@/components/dialogs/whatsapp-share-dialog";
 import { toast } from "@/components/ui/toaster";
-import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
+import { API_BASE_URL, authHeader, useSession } from "@/components/providers/session-provider";
 import { openDocument, openDocumentWhenReady, viewableUrl } from "@/lib/documents";
 import { formatMoney, formatDate } from "@/lib/format";
 import { statusLabel } from "@/lib/labels";
@@ -73,6 +72,11 @@ function apiMessage(e: unknown, fallback: string) {
 }
 
 export default function InvoiceDetailPage() {
+  /* Only these two record money coming in -- the owner's rule, and the same
+     two the receipt voucher screen lets in. */
+  const { role } = useSession();
+  const mayTakeMoney = role === "super-admin" || role === "accountant";
+
   const params = useParams<{ id: string }>();
   const id = parseInt(params.id ?? "", 10);
 
@@ -82,7 +86,6 @@ export default function InvoiceDetailPage() {
   const [rebuilding, setRebuilding] = React.useState(false);
 
   /* Declared before any early return so the hook order never changes. */
-  const [pay, setPay] = React.useState(false);
   const [shareOpen, setShareOpen] = React.useState(false);
 
   const load = React.useCallback(async () => {
@@ -205,9 +208,24 @@ export default function InvoiceDetailPage() {
             <Button variant="ghost" size="md" className="gap-1.5" onClick={() => void openBill(false)}><Printer /><span className="hidden sm:inline">Print</span></Button>
             <Button variant="ghost" size="md" className="gap-1.5" onClick={() => void openBill(true)}><Download /><span className="hidden sm:inline">Download</span></Button>
             <Button variant="ghost" size="md" className="gap-1.5" onClick={() => setShareOpen(true)}><MessageCircle /><span className="hidden sm:inline">WhatsApp</span></Button>
-            {invoice.status !== "PAID" && invoice.status !== "VOID" && (
-              <Button variant="accent" size="md" className="gap-1.5" onClick={() => setPay(true)}>
-                <ArrowRight />Record Payment
+            {/* RECORDING MONEY IS THE BACK OFFICE'S, AND IT GOES SOMEWHERE REAL.
+
+                Two things were wrong with this button. The owner's rule is the
+                first: "record payment can be done by only accountant and super
+                admin", so a rep no longer sees it. The second is worse -- the
+                dialog behind it wrote NOTHING. It validated a form, toasted
+                "Payment recorded" and closed, and no collection, voucher or
+                journal line was ever created. Anybody who used it believed a
+                payment had been taken.
+
+                It opens the receipt voucher instead, with this customer
+                already chosen. That screen posts a real double entry against
+                their open invoices. */}
+            {mayTakeMoney && invoice.status !== "PAID" && invoice.status !== "VOID" && (
+              <Button variant="accent" size="md" className="gap-1.5" asChild>
+                <Link href={`/accounting/vouchers/new?type=receipt&partyId=${invoice.customerId}`}>
+                  <ArrowRight />Record Payment
+                </Link>
               </Button>
             )}
           </>
@@ -406,14 +424,6 @@ export default function InvoiceDetailPage() {
         </CardBody>
       </Card>
 
-      <RecordPaymentDialog
-        open={pay}
-        onOpenChange={setPay}
-        invoiceNo={invoice.invoiceNo}
-        customerName={invoice.customerName}
-        totalAmount={invoice.total}
-        balanceAmount={invoice.balance}
-      />
       <WhatsAppShareDialog
         open={shareOpen}
         onOpenChange={setShareOpen}

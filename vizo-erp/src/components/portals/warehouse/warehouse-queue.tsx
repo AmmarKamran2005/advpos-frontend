@@ -4,15 +4,15 @@ import * as React from "react";
 import Link from "next/link";
 import axios from "axios";
 import {
-  Boxes, AlertCircle, RefreshCw, Truck, ChevronDown, Loader2, PackageCheck,
-  TriangleAlert, Eye, FileText,
+  Boxes, AlertCircle, RefreshCw, ChevronDown, PackageCheck,
+  TriangleAlert, FileText,
 } from "lucide-react";
 import { Card, CardBody } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge, StatusPill } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
-import { toast } from "@/components/ui/toaster";
+
 import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
 import { formatDate, formatNumber } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -69,7 +69,6 @@ export function WarehouseQueue() {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [open, setOpen] = React.useState<number | null>(null);
-  const [sending, setSending] = React.useState<number | null>(null);
 
   const load = React.useCallback(async () => {
     try {
@@ -92,36 +91,15 @@ export function WarehouseQueue() {
     void load();
   }, [load]);
 
-  /* THE KEEPER'S TWO MOVES, AND ONLY THESE TWO.
+  /* THE KEEPER MOVES NOTHING NOW.
 
-     An invoiced order is acknowledged first -- "Seen by Warehouse" -- and then
-     sent. Two steps rather than one because they answer different questions:
-     the first says somebody has the order in hand, the second says the goods
-     have physically left for the order desk. Between them is the picking, which
-     can take an afternoon, and during it everybody else can see that the order
-     is being worked on rather than sitting untouched.
-
-     The server holds the same rule (Services/OrderWorkflow.cs) and refuses
-     anything else from this role, so these buttons are the UI for a rule rather
-     than the rule itself. */
-  async function move(o: QueueOrder, statusKey: string, saying: string) {
-    setSending(o.id);
-    try {
-      const res = await axios.patch<{ message: string }>(
-        `${API_BASE_URL}/sales/orders/${o.id}/status`,
-        { statusKey, reason: null },
-        { headers: authHeader() }
-      );
-      toast.success(saying, { description: res.data.message });
-      await load();
-    } catch (e) {
-      toast.error("Could not update the order", {
-        description: apiMessage(e, "Please try again."),
-      });
-    } finally {
-      setSending(null);
-    }
-  }
+     There used to be two buttons here -- "Seen by Warehouse" and "Send to
+     Order Dept" -- and a move() that drove them. The owner took both steps out
+     of the chain on 22 September, so this screen is a picking list: invoiced
+     orders, what is on each one, what is on the shelf, and the bill to check
+     against. The order desk moves the order on when it takes it up, and the
+     server refuses this role any status change at all
+     (Services/OrderWorkflow.cs). */
 
   if (loading) {
     return (
@@ -262,29 +240,18 @@ export function WarehouseQueue() {
                     </Button>
                   )}
 
-                  {o.status === "INVOICED" ? (
-                    <Button
-                      variant="accent"
-                      size="sm"
-                      className="gap-1.5"
-                      disabled={sending !== null}
-                      onClick={() => void move(o, "SEEN_BY_WAREHOUSE", "Marked as seen")}
-                    >
-                      {sending === o.id ? <Loader2 className="size-4 animate-spin" /> : <Eye />}
-                      Seen by Warehouse
-                    </Button>
-                  ) : (
-                    <Button
-                      variant="accent"
-                      size="sm"
-                      className="gap-1.5"
-                      disabled={sending !== null}
-                      onClick={() => void move(o, "TO_ORDER_DEPT", "On its way")}
-                    >
-                      {sending === o.id ? <Loader2 className="size-4 animate-spin" /> : <Truck />}
-                      Send to Order Dept
-                    </Button>
-                  )}
+                  {/* THE TWO BUTTONS THAT USED TO BE HERE ARE GONE.
+
+                      "Seen by Warehouse" and "Send to Order Dept" were steps 5
+                      and 6 of the old ten-step chain, and the owner removed
+                      both on 22 September: three presses that said nothing the
+                      one before them had not already said. The keeper's screen
+                      is now what it always really was -- the list of invoiced
+                      orders to pick, with the bill beside each one. The order
+                      desk moves the order on when it takes it up. */}
+                  <span className="text-2xs text-slate-500 dark:text-slate-400 text-right max-w-[12rem]">
+                    Pick these and hand them to the order department.
+                  </span>
                 </div>
               </div>
 

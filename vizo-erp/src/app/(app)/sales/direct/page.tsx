@@ -43,6 +43,9 @@ type LookupProduct = {
 type Lookups = {
   locations: { id: number; code: string; name: string; kind: string; isSellable: boolean }[];
   paymentMethods: { id: number; key: string; name: string; kind: string }[];
+  /* Money coming IN -- Cash, Credit, Meezan, Faysal. The counter is a receipt
+     like any other, so it offers these and not the whole table. */
+  receivingMethods: { id: number; key: string; name: string; kind: string }[];
   customers: LookupCustomer[];
   products: LookupProduct[];
   defaultTaxPercent: number;
@@ -88,7 +91,7 @@ export default function CounterSalePage() {
   const { user } = useSession();
 
   const [lookups, setLookups] = React.useState<Lookups>({
-    locations: [], paymentMethods: [], customers: [], products: [],
+    locations: [], paymentMethods: [], receivingMethods: [], customers: [], products: [],
     defaultTaxPercent: 0, company: null,
   });
   const [loading, setLoading] = React.useState(true);
@@ -126,7 +129,10 @@ export default function CounterSalePage() {
       });
       setLookups({
         locations: res.data.locations ?? [],
-        paymentMethods: res.data.paymentMethods ?? [],
+        paymentMethods: res.data.receivingMethods?.length
+          ? res.data.receivingMethods
+          : res.data.paymentMethods ?? [],
+        receivingMethods: res.data.receivingMethods ?? [],
         customers: res.data.customers ?? [],
         products: res.data.products ?? [],
         defaultTaxPercent: res.data.defaultTaxPercent ?? 0,

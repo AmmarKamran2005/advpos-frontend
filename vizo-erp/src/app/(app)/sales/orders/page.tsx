@@ -30,9 +30,12 @@ import { openDocumentWhenReady, viewableUrl } from "@/lib/documents";
    The delivery keys are the REAL "DeliveryStatus".StatusKey values from the
    database, which are not the ones the mock used: there is no ON_THE_WAY, and
    there are three separate in-flight states plus two failure states. */
+/* The seven chain steps plus the four that sit off it. "Seen by Warehouse",
+   "On way to Order Dept" and "Packaging" were taken out on 22 September, and
+   the 2026 leftovers PROCESSING and PACKED went with them (migration 21). */
 type OrderStatus =
-  | "DRAFT" | "SUBMITTED" | "CREDIT_HOLD" | "CONFIRMED" | "PROCESSING"
-  | "PACKED" | "DISPATCHED" | "INVOICED" | "DELIVERED" | "CANCELLED" | "RETURNED";
+  | "DRAFT" | "SUBMITTED" | "CREDIT_HOLD" | "CONFIRMED" | "INVOICED"
+  | "AT_ORDER_DEPT" | "DISPATCHED" | "DELIVERED" | "DECLINED" | "CANCELLED" | "RETURNED";
 
 type DeliveryState =
   | "NOT_DISPATCHED" | "BOOKED" | "AWAITING" | "IN_TRANSIT"
@@ -41,17 +44,17 @@ type DeliveryState =
 type Variant = "success" | "warning" | "danger" | "info" | "muted";
 
 const STATUS_VARIANT: Record<OrderStatus, Variant> = {
-  DRAFT:       "muted",
-  SUBMITTED:   "info",
-  CREDIT_HOLD: "danger",
-  CONFIRMED:   "info",
-  PROCESSING:  "warning",
-  PACKED:      "warning",
-  DISPATCHED:  "info",
-  INVOICED:    "info",
-  DELIVERED:   "success",
-  CANCELLED:   "muted",
-  RETURNED:    "danger",
+  DRAFT:         "muted",
+  SUBMITTED:     "info",
+  CREDIT_HOLD:   "danger",
+  CONFIRMED:     "info",
+  INVOICED:      "info",
+  AT_ORDER_DEPT: "warning",
+  DISPATCHED:    "info",
+  DELIVERED:     "success",
+  DECLINED:      "danger",
+  CANCELLED:     "muted",
+  RETURNED:      "danger",
 };
 
 const DELIVERY_STATE_VARIANT: Record<DeliveryState, Variant> = {
@@ -122,7 +125,7 @@ const TABS = [
   { key: "ALL",       label: "All",        match: () => true },
   { key: "DRAFT",     label: "Draft",      match: (o: Order) => o.status === "DRAFT" },
   { key: "SENT",      label: "Sent",       match: (o: Order) => ["SUBMITTED", "CREDIT_HOLD"].includes(o.status) },
-  { key: "PREPARING", label: "Preparing",  match: (o: Order) => ["CONFIRMED", "PROCESSING", "PACKED"].includes(o.status) },
+  { key: "PREPARING", label: "Preparing",  match: (o: Order) => ["CONFIRMED", "INVOICED", "AT_ORDER_DEPT"].includes(o.status) },
   { key: "OUT",       label: "On the way", match: (o: Order) =>
       ["BOOKED", "AWAITING", "IN_TRANSIT", "OUT_FOR_DELIVERY"].includes(o.deliveryState ?? "") },
   { key: "DELIVERED", label: "Delivered",  match: (o: Order) => o.deliveryState === "DELIVERED" },

@@ -3,55 +3,96 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useForm, useFieldArray, useWatch, type Control } from "react-hook-form";
-import { vizoResolver } from "@/lib/zod-resolver";
-import { z } from "zod";
 import axios from "axios";
 import {
-  Save, X, Plus, Trash2, Search, Check, ArrowRight, ArrowLeft,
-  AlertTriangle, Loader2, ShoppingCart, AlertCircle, RefreshCw, FileText,
+  AlertCircle, AlertTriangle, FileText, ImageIcon, Loader2,
+  Minus, Plus, RefreshCw, Save, Search, ShoppingCart, Trash2, X,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardBody } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { DateInput } from "@/components/ui/date-input";
-import { notPast, PAST_DATE_MESSAGE, todayISO, addDaysISO } from "@/lib/dates";
 import { Textarea } from "@/components/ui/textarea";
 import { SelectNative } from "@/components/ui/select-native";
+import { DateInput } from "@/components/ui/date-input";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
-import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from "@/components/ui/form";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from "@/components/ui/command";
 import { toast } from "@/components/ui/toaster";
-import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
+import { API_BASE_URL, authHeader, useSession } from "@/components/providers/session-provider";
 import { formatMoney, formatCompact } from "@/lib/format";
+import { todayISO, addDaysISO } from "@/lib/dates";
+import { landedCost, reprice, round2 } from "@/lib/pricing";
 import { cn } from "@/lib/utils";
 
-/* GET /sales/lookups. Customers, locations, payment methods, sales people and
-   the whole live product catalogue. This screen used to import hard-coded
-   arrays out of @/data, which is why an item or a shop created minutes earlier
-   could not be put on an order at all -- it simply was not in the picker. */
+/* ───────────────────────────────────────────────────────────────────────────
+   TAKING AN ORDER, IN ONE SCREEN
+
+   This was a three-step wizard that asked for two things nobody knows when the
+   order is written and one thing nobody is allowed to choose:
+
+     "Selling from"  -- which shelf it would go out of, asked on the day the
+                        order was taken. It is asked at DISPATCH now, where it
+                        is both knowable and consequential: that is the moment
+                        the stock comes off (SalesController.SetOrderStatus).
+     "Sales rep"     -- a dropdown of everybody. The order belongs to whoever
+                        is signed in; the API records that and ignores anything
+                        the browser sends.
+     Disc % / Tax %  -- per line, typed. The rate is what the shopkeeper agrees
+                        and the tax is the product's own rate; neither is a
+                        decision for the order screen.
+
+   WHAT REPLACED THE DISCOUNT AND TAX BOXES: the margin, in money and in
+   percent, over what the piece cost to land (cost + duty). They are linked --
+   type either and the other follows, and both move the RATE, because the rate
+   IS landed cost plus margin. Same arithmetic as the product screen, from the
+   same file (lib/pricing.ts), so the two can never tell different stories
+   about the same item.
+
+   AND THE PICTURES. A rep takes an order by showing the shopkeeper a photo and
+   the shopkeeper pointing at it, so the picker leads with the image and every
+   line carries its own.
+   ─────────────────────────────────────────────────────────────────────────── */
+
 type LookupCustomer = {
   id: number; code: string; name: string; displayName: string | null;
   city: string; phone: string | null;
   creditLimit: number; creditDays: number; holdPolicy: string; outstanding: number;
 };
+
 type LookupProduct = {
   id: number; sku: string; name: string; packing: number;
-  salePrice: number; costPrice: number; taxRatePercent: number; totalStock: number;
+  salePrice: number; costPrice: number; dutyPrice: number;
+  taxRatePercent: number; totalStock: number; imageUrl: string | null;
 };
+
+type Method = { id: number; key: string; name: string; kind: string };
+
 type Lookups = {
-  locations: { id: number; code: string; name: string; kind: string; isSellable: boolean }[];
-  paymentMethods: { id: number; key: string; name: string; kind: string }[];
-  salesPeople: { id: number; name: string }[];
+  paymentMethods: Method[];
+  receivingMethods: Method[];
   customers: LookupCustomer[];
   products: LookupProduct[];
   defaultTaxPercent: number;
+};
+
+/** One line on the order, with everything the margin boxes need. */
+type Line = {
+  productId: number;
+  name: string;
+  sku: string;
+  imageUrl: string | null;
+  cost: number;
+  duty: number;
+  taxPercent: number;
+  stock: number;
+  qty: number;
+  rate: number;
+  marginPrice: number;
+  marginPercent: number;
 };
 
 /** Every failure comes back as { message } -- show the wording the API chose. */
@@ -62,215 +103,155 @@ function apiMessage(e: unknown, fallback: string) {
   return "Cannot reach the server.";
 }
 
-const STEPS = ["Customer & Items", "Pricing & Tax", "Review & Submit"] as const;
-
-const ItemSchema = z.object({
-  productId: z.coerce.number().positive("Pick a product"),
-  name: z.string(),
-  sku: z.string(),
-  qty: z.coerce.number().positive("Qty > 0").max(99999, "Too large"),
-  unitPrice: z.coerce.number().nonnegative("Cannot be negative"),
-  discount: z.coerce.number().min(0).max(100, "Max 100%"),
-  taxPercent: z.coerce.number().min(0).max(100),
-});
-
-const Schema = z.object({
-  customerId: z.coerce.number({ message: "Pick a customer" }).positive("Pick a customer"),
-  locationId: z.coerce.number().positive("Pick a location"),
-  salesPersonUserId: z.coerce.number().min(0),
-  items: z.array(ItemSchema).min(1, "Add at least one item"),
-  methodId: z.coerce.number().positive("Pick a payment method"),
-  orderDate: z.string().min(1, "Order date required").refine(notPast, PAST_DATE_MESSAGE),
-  deliveryDate: z.string().min(1, "Delivery date required").refine(notPast, PAST_DATE_MESSAGE),
-  raiseInvoice: z.boolean(),
-  notes: z.string().max(500, "Max 500 characters").optional(),
-});
-
-type Form = z.infer<typeof Schema>;
-
-/* Local date, not UTC -- see lib/dates.ts. */
-const today = () => todayISO();
+/** What a customer is called everywhere in this project: their display name. */
+const shownAs = (c: { name: string; displayName: string | null }) => c.displayName?.trim() || c.name;
 
 export default function NewOrderPage() {
   const router = useRouter();
-  const [step, setStep] = React.useState(0);
-  const [productPickerOpen, setProductPickerOpen] = React.useState(false);
-  const [customerPickerOpen, setCustomerPickerOpen] = React.useState(false);
+  const { role } = useSession();
+  /* Billing is the back office's since 21 September, so the "invoice it now"
+     switch is only drawn for the two roles that may actually do it. */
+  const mayInvoice = role === "super-admin" || role === "accountant";
 
-  const [lookups, setLookups] = React.useState<Lookups>({
-    locations: [], paymentMethods: [], salesPeople: [], customers: [], products: [],
-    defaultTaxPercent: 0,
-  });
+  const [lookups, setLookups] = React.useState<Lookups | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
-  const [savingDraft, setSavingDraft] = React.useState(false);
 
-  const form = useForm<Form>({
-    resolver: vizoResolver(Schema),
-    mode: "onChange",
-    defaultValues: {
-      customerId: 0 as unknown as number,
-      locationId: 0,
-      salesPersonUserId: 0,
-      items: [],
-      methodId: 0,
-      orderDate: today(),
-      deliveryDate: addDaysISO(todayISO(), 1),
-      raiseInvoice: true,
-      notes: "",
-    },
-  });
+  const [customerId, setCustomerId] = React.useState(0);
+  const [pickCustomer, setPickCustomer] = React.useState(false);
+  const [pickProduct, setPickProduct] = React.useState(false);
+
+  const [lines, setLines] = React.useState<Line[]>([]);
+  const [methodId, setMethodId] = React.useState(0);
+  const [orderDate, setOrderDate] = React.useState(todayISO());
+  const [deliveryDate, setDeliveryDate] = React.useState(addDaysISO(todayISO(), 1));
+  const [notes, setNotes] = React.useState("");
+  const [raiseInvoice, setRaiseInvoice] = React.useState(false);
+
+  const [saving, setSaving] = React.useState<"" | "draft" | "submit">("");
 
   const load = React.useCallback(async () => {
     try {
       const res = await axios.get<Lookups>(`${API_BASE_URL}/sales/lookups`, { headers: authHeader() });
-      setLookups({
-        locations: res.data.locations ?? [],
-        paymentMethods: res.data.paymentMethods ?? [],
-        salesPeople: res.data.salesPeople ?? [],
-        customers: res.data.customers ?? [],
-        products: res.data.products ?? [],
-        defaultTaxPercent: res.data.defaultTaxPercent ?? 0,
-      });
-      /* First SELLABLE location, not just the first one -- claim and
-         in-transit stock is held, never sold from. */
-      const sellable = (res.data.locations ?? []).filter((l) => l.isSellable);
-      form.setValue("locationId", sellable[0]?.id ?? res.data.locations?.[0]?.id ?? 0);
-      /* Default to Credit: an order taken by a rep is on the shop's account
-         unless somebody says otherwise. Cash orders go through Counter Sale. */
-      const credit = res.data.paymentMethods?.find((m) => m.key === "CREDIT");
-      form.setValue("methodId", credit?.id ?? res.data.paymentMethods?.[0]?.id ?? 0);
+      setLookups(res.data);
+      /* Credit by default: an order taken by a rep is on the shop's account
+         unless somebody says otherwise. Cash sales go through Counter Sale. */
+      const list = res.data.receivingMethods?.length ? res.data.receivingMethods : res.data.paymentMethods;
+      setMethodId(list?.find((m) => m.key === "CREDIT")?.id ?? list?.[0]?.id ?? 0);
       setError(null);
     } catch (e) {
-      setError(apiMessage(e, "Could not load customers, items and payment methods."));
+      setError(apiMessage(e, "Could not load your customers and the item list."));
     } finally {
       setLoading(false);
     }
-  }, [form]);
+  }, []);
 
   React.useEffect(() => {
+    /* eslint-disable-next-line react-hooks/set-state-in-effect --
+       axios inside the page is the brief for this project. */
     void load();
   }, [load]);
 
-  const { fields, append, remove } = useFieldArray({ control: form.control, name: "items" });
-  const items = form.watch("items");
-  const customerId = form.watch("customerId");
-  const methodId = form.watch("methodId");
-  const raiseInvoice = form.watch("raiseInvoice");
-  const locationId = form.watch("locationId");
-  const deliveryDate = form.watch("deliveryDate");
+  const customers = lookups?.customers ?? [];
+  const products = lookups?.products ?? [];
+  const methods = (lookups?.receivingMethods?.length ? lookups.receivingMethods : lookups?.paymentMethods) ?? [];
+  const customer = customers.find((c) => c.id === customerId) ?? null;
 
-  const customer = lookups.customers.find((p) => p.id === customerId);
-  const method = lookups.paymentMethods.find((m) => m.id === methodId);
+  /* The same arithmetic the API runs on the way in: tax on the line, on the
+     product's own rate. Nothing is discounted here any more -- a lower price
+     IS the discount, and it is typed as the rate. */
+  const subtotal = round2(lines.reduce((s, l) => s + l.rate * l.qty, 0));
+  const tax = round2(lines.reduce((s, l) => s + l.rate * l.qty * (l.taxPercent / 100), 0));
+  const total = round2(subtotal + tax);
+  const units = lines.reduce((s, l) => s + l.qty, 0);
+  const margin = round2(lines.reduce((s, l) => s + l.marginPrice * l.qty, 0));
 
-  /* The same arithmetic the API runs on the way in: discount per line, then
-     tax on what is left. Anything else and the review screen would promise a
-     total the invoice does not honour. */
-  const subtotal = items.reduce((s, i) => s + (Number(i.unitPrice) || 0) * (Number(i.qty) || 0), 0);
-  const discountAmount = items.reduce(
-    (s, i) => s + (Number(i.unitPrice) || 0) * (Number(i.qty) || 0) * ((Number(i.discount) || 0) / 100), 0);
-  const tax = items.reduce((s, i) => {
-    const net = (Number(i.unitPrice) || 0) * (Number(i.qty) || 0) * (1 - (Number(i.discount) || 0) / 100);
-    return s + net * ((Number(i.taxPercent) || 0) / 100);
-  }, 0);
-  const total = subtotal - discountAmount + tax;
-
-  /* Credit check, against the customer's real posted ledger balance. */
   const willExceed = !!customer && customer.creditLimit > 0 && customer.outstanding + total > customer.creditLimit;
 
-  function pickProduct(productId: number) {
-    const p = lookups.products.find((x) => x.id === productId);
-    if (!p) return;
-    const exists = items.findIndex((i) => i.productId === productId);
-    if (exists >= 0) {
-      form.setValue(`items.${exists}.qty`, Number(items[exists].qty) + 1);
-    } else {
-      append({
-        productId, name: p.name, sku: p.sku, qty: 1,
-        unitPrice: p.salePrice, discount: 0,
-        taxPercent: p.taxRatePercent ?? lookups.defaultTaxPercent,
-      });
-    }
-    setProductPickerOpen(false);
-  }
-
-
-  async function nextStep() {
-    let valid = false;
-    if (step === 0) valid = await form.trigger(["customerId", "locationId", "items"]);
-    else if (step === 1) valid = await form.trigger(["methodId", "orderDate", "deliveryDate"]);
-    if (valid) setStep((s) => s + 1);
-    else toast.error("Please fix the errors before continuing");
-  }
-
-  function payload(d: Form, saveAsDraft: boolean) {
-    return {
-      customerId: d.customerId,
-      locationId: d.locationId,
-      salesPersonUserId: Number(d.salesPersonUserId) > 0 ? Number(d.salesPersonUserId) : null,
-      orderDate: d.orderDate,
-      deliveryDate: d.deliveryDate,
-      methodId: d.methodId,
-      notes: d.notes?.trim() || null,
-      saveAsDraft,
-      raiseInvoice: saveAsDraft ? false : d.raiseInvoice,
-      lines: d.items.map((i) => ({
-        productId: i.productId,
-        qty: Number(i.qty) || 0,
-        rate: Number(i.unitPrice) || 0,
-        discountPercent: Number(i.discount) || 0,
-        taxPercent: Number(i.taxPercent) || 0,
-      })),
-    };
-  }
-
-  type CreateResponse = {
-    id: number; orderNo: string; status: string; onCreditHold: boolean;
-    invoiceId: number | null; invoiceNo: string | null;
-    invoicePdfUrl: string | null; invoiceShareUrl: string | null;
-    message: string;
-  };
-
-  async function onSubmit(d: Form) {
-    try {
-      const res = await axios.post<CreateResponse>(
-        `${API_BASE_URL}/sales/orders`, payload(d, false), { headers: authHeader() });
-
-      if (res.data.onCreditHold) {
-        toast.warning("Order placed on credit hold", { description: res.data.message });
-      } else if (res.data.invoiceNo) {
-        toast.success(`Order ${res.data.orderNo} submitted`, {
-          description: `Invoice ${res.data.invoiceNo} generated for ${formatMoney(total)}.`,
-        });
-      } else {
-        toast.success(`Order ${res.data.orderNo} submitted`, { description: res.data.message });
+  function addProduct(p: LookupProduct) {
+    setPickProduct(false);
+    setLines((prev) => {
+      const at = prev.findIndex((l) => l.productId === p.id);
+      if (at >= 0) {
+        const copy = [...prev];
+        copy[at] = { ...copy[at], qty: copy[at].qty + 1 };
+        return copy;
       }
-      router.push(`/sales/orders/${res.data.id}`);
-    } catch (e) {
-      toast.error("Order not created", { description: apiMessage(e, "Please try again.") });
-    }
+      const priced = reprice(
+        { cost: p.costPrice, duty: p.dutyPrice, marginPrice: 0, marginPercent: 0, sale: p.salePrice },
+        "sale");
+      return [...prev, {
+        productId: p.id, name: p.name, sku: p.sku, imageUrl: p.imageUrl,
+        cost: p.costPrice, duty: p.dutyPrice,
+        taxPercent: p.taxRatePercent ?? lookups?.defaultTaxPercent ?? 0,
+        stock: p.totalStock, qty: 1,
+        rate: priced.sale, marginPrice: priced.marginPrice, marginPercent: priced.marginPercent,
+      }];
+    });
   }
 
-  /* Save as draft skips validation of the later steps -- a draft is a scratch
-     pad, and demanding a delivery date before somebody can park a half-typed
-     order is how drafts stop being used. */
-  async function saveDraft() {
-    const d = form.getValues();
-    if (!d.customerId) { toast.error("Pick a customer first"); return; }
-    if (!d.items.length) { toast.error("Add at least one item first"); return; }
+  /** One line changed. `lead` says which box the person typed in. */
+  function setLine(idx: number, patch: Partial<Line>, lead?: "price" | "percent" | "sale") {
+    setLines((prev) => prev.map((l, i) => {
+      if (i !== idx) return l;
+      const next = { ...l, ...patch };
+      if (!lead) return next;
+      const priced = reprice(
+        { cost: next.cost, duty: next.duty, marginPrice: next.marginPrice, marginPercent: next.marginPercent, sale: next.rate },
+        lead);
+      return { ...next, rate: priced.sale, marginPrice: priced.marginPrice, marginPercent: priced.marginPercent };
+    }));
+  }
 
-    setSavingDraft(true);
+  const problem =
+    !customerId ? "Pick the customer."
+    : lines.length === 0 ? "Add at least one item."
+    : lines.some((l) => l.qty <= 0) ? "Every item needs a quantity."
+    : lines.some((l) => l.rate < 0) ? "A rate cannot be negative."
+    : !methodId ? "Pick how this is being paid."
+    : null;
+
+  async function save(asDraft: boolean) {
+    if (!asDraft && problem) { toast.error(problem); return; }
+    if (asDraft && (!customerId || lines.length === 0)) {
+      toast.error("Pick a customer and add an item before saving a draft");
+      return;
+    }
+
+    setSaving(asDraft ? "draft" : "submit");
     try {
-      const res = await axios.post<CreateResponse>(
-        `${API_BASE_URL}/sales/orders`,
-        payload({ ...d, deliveryDate: d.deliveryDate || today(), orderDate: d.orderDate || today() }, true),
-        { headers: authHeader() });
-      toast.success("Saved as draft", { description: res.data.message });
+      const res = await axios.post<{
+        id: number; orderNo: string; onCreditHold: boolean;
+        invoiceNo: string | null; message: string;
+      }>(`${API_BASE_URL}/sales/orders`, {
+        customerId,
+        methodId,
+        orderDate,
+        deliveryDate,
+        notes: notes.trim() || null,
+        saveAsDraft: asDraft,
+        raiseInvoice: asDraft ? false : raiseInvoice,
+        lines: lines.map((l) => ({
+          productId: l.productId,
+          qty: l.qty,
+          rate: l.rate,
+          discountPercent: 0,
+          /* The product's own rate, carried from the catalogue rather than
+             typed: the box is gone from the form, the tax is not. */
+          taxPercent: l.taxPercent,
+        })),
+      }, { headers: authHeader() });
+
+      if (res.data.onCreditHold) toast.warning("Order placed on credit hold", { description: res.data.message });
+      else toast.success(`Order ${res.data.orderNo} ${asDraft ? "saved as draft" : "submitted"}`, {
+        description: res.data.message,
+      });
       router.push(`/sales/orders/${res.data.id}`);
     } catch (e) {
-      toast.error("Draft not saved", { description: apiMessage(e, "Please try again.") });
-    } finally {
-      setSavingDraft(false);
+      toast.error(asDraft ? "Draft not saved" : "Order not created", {
+        description: apiMessage(e, "Please try again."),
+      });
+      setSaving("");
     }
   }
 
@@ -279,11 +260,18 @@ export default function NewOrderPage() {
       <PageHeader
         breadcrumbs={[{ label: "Sales" }, { label: "Orders", href: "/sales/orders" }, { label: "New Order" }]}
         title="New Sales Order"
+        subtitle="Pick the shop, add what they want, send it in."
         actions={
           <>
-            <Button variant="ghost" asChild><Link href="/sales/orders"><X /> Cancel</Link></Button>
-            <Button variant="secondary" onClick={saveDraft} disabled={savingDraft || loading}>
-              {savingDraft ? <><Loader2 className="size-4 animate-spin" /> Saving…</> : "Save as Draft"}
+            <Button variant="ghost" asChild><Link href="/sales/orders"><X />Cancel</Link></Button>
+            <Button variant="secondary" onClick={() => void save(true)} disabled={saving !== "" || loading}>
+              {saving === "draft" ? <><Loader2 className="size-4 animate-spin" />Saving…</> : "Save as draft"}
+            </Button>
+            <Button variant="accent" className="hidden sm:inline-flex" onClick={() => void save(false)}
+              disabled={saving !== "" || loading || Boolean(problem)}>
+              {saving === "submit"
+                ? <><Loader2 className="size-4 animate-spin" />Sending…</>
+                : raiseInvoice ? <><FileText />Submit &amp; invoice</> : <><Save />Submit order</>}
             </Button>
           </>
         }
@@ -293,418 +281,390 @@ export default function NewOrderPage() {
         <Card className="mb-6 border-danger/40">
           <CardBody className="flex items-center gap-3">
             <AlertCircle className="size-5 text-danger shrink-0" />
-            <div className="flex-1">
-              <div className="text-sm font-semibold text-navy-900 dark:text-white">{error}</div>
-              <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">The API must be running on {API_BASE_URL}.</div>
-            </div>
-            <Button variant="ghost" size="sm" className="gap-1.5" onClick={() => { setLoading(true); void load(); }}>
-              <RefreshCw className="size-4" /> Try again
+            <div className="flex-1 min-w-0 font-medium text-navy-900 dark:text-white">{error}</div>
+            <Button variant="secondary" size="sm" className="gap-1.5" onClick={() => { setLoading(true); void load(); }}>
+              <RefreshCw className="size-4" />Try again
             </Button>
           </CardBody>
         </Card>
       )}
 
-      {/* Step indicator */}
-      <Card className="mb-6">
-        <CardBody>
-          <div className="flex items-center gap-2">
-            {STEPS.map((s, i) => (
-              <React.Fragment key={s}>
-                <button
-                  type="button"
-                  onClick={() => i < step && setStep(i)}
-                  disabled={i > step}
-                  className={cn("flex items-center gap-2.5 group flex-shrink-0 outline-none", i <= step && "cursor-pointer")}
-                >
-                  <div className={cn(
-                    "size-9 rounded-full flex items-center justify-center text-sm font-bold transition-colors",
-                    i < step
-                      ? "bg-success text-white"
-                      : i === step
-                      ? "bg-brand-yellow text-navy-900 ring-4 ring-brand-yellow/20"
-                      : "bg-slate-100 dark:bg-navy-700 text-slate-400"
-                  )}>
-                    {i < step ? <Check className="size-4" /> : i + 1}
-                  </div>
-                  <div className="text-left hidden sm:block">
-                    <div className={cn("text-2xs uppercase tracking-wider font-semibold",
-                      i <= step ? "text-navy-900 dark:text-white" : "text-slate-400"
-                    )}>Step {i + 1}</div>
-                    <div className={cn("text-sm font-medium",
-                      i <= step ? "text-navy-900 dark:text-white" : "text-slate-400"
-                    )}>{s}</div>
-                  </div>
-                </button>
-                {i < STEPS.length - 1 && <div className={cn("flex-1 h-0.5", i < step ? "bg-success" : "bg-slate-200 dark:bg-navy-700")} />}
-              </React.Fragment>
-            ))}
-          </div>
-        </CardBody>
-      </Card>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 pb-24 sm:pb-0">
+        <div className="lg:col-span-2 space-y-6">
+          {/* ── 1. THE SHOP ──────────────────────────────────────────── */}
+          <Card>
+            <CardBody>
+              <h3 className="text-sm font-semibold text-navy-900 dark:text-white mb-3">
+                Customer <span className="text-danger">*</span>
+              </h3>
 
-      <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="grid grid-cols-1 lg:grid-cols-3 gap-6" noValidate>
-          <div className="lg:col-span-2 space-y-6">
-            {/* STEP 1 */}
-            {step === 0 && (
-              <>
-                <Card>
-                  <CardBody>
-                    <h3 className="text-sm font-semibold text-navy-900 dark:text-white mb-3">Customer <span className="text-danger">*</span></h3>
-                    {loading ? (
-                      <Skeleton className="h-16" />
-                    ) : customer ? (
-                      <div className="flex items-center justify-between p-3 border border-slate-200 dark:border-navy-700 rounded-lg">
-                        <div className="flex items-center gap-3">
-                          <Avatar initials={customer.name.slice(0, 2).toUpperCase()} size="md" />
-                          <div>
-                            <div className="font-semibold text-navy-900 dark:text-white">{customer.name}</div>
-                            <div className="text-xs text-slate-500 dark:text-slate-400">
-                              {customer.code} · {customer.city}
-                              {customer.creditDays > 0 && ` · NET ${customer.creditDays}`}
-                            </div>
-                          </div>
-                        </div>
-                        <Button type="button" variant="ghost" size="sm" onClick={() => form.setValue("customerId", 0 as unknown as number)}>Change</Button>
+              {loading ? <Skeleton className="h-16" /> : customer ? (
+                <div className="flex items-center justify-between gap-3 p-3 border border-slate-200 dark:border-navy-700 rounded-lg">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <Avatar initials={shownAs(customer).slice(0, 2).toUpperCase()} size="md" />
+                    <div className="min-w-0">
+                      {/* THE DISPLAY NAME, whole and not cut short: it carries
+                          the shop and the market, which is how the rep knows
+                          which of four Ahmeds this is. */}
+                      <div className="font-semibold text-navy-900 dark:text-white break-words">
+                        {shownAs(customer)}
                       </div>
-                    ) : (
-                      <Popover open={customerPickerOpen} onOpenChange={setCustomerPickerOpen}>
-                        <PopoverTrigger asChild>
-                          <button type="button" className="w-full p-3 border-2 border-dashed border-slate-200 dark:border-navy-700 rounded-lg text-sm text-slate-500 dark:text-slate-400 text-left hover:border-brand-yellow transition-colors">
-                            <Search className="size-4 inline-block mr-2" />
-                            Search customer by name or code…
-                          </button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-[440px] p-0" align="start">
-                          <Command>
-                            <CommandInput placeholder="Type customer name…" />
-                            <CommandList>
-                              <CommandEmpty>No customer found.</CommandEmpty>
-                              <CommandGroup heading={`${lookups.customers.length} customers`}>
-                                {lookups.customers.map((p) => (
-                                  <CommandItem key={p.id} value={`${p.name} ${p.code}`} onSelect={() => { form.setValue("customerId", p.id); setCustomerPickerOpen(false); }}>
-                                    <Avatar initials={p.name.slice(0, 2).toUpperCase()} size="sm" />
-                                    <div className="flex-1 min-w-0">
-                                      <div className="text-sm font-medium text-navy-900 dark:text-white truncate">{p.name}</div>
-                                      <div className="text-2xs text-slate-500 dark:text-slate-400">{p.code} · {p.city}</div>
-                                    </div>
-                                    {p.creditLimit > 0 && <Badge variant="muted" className="text-2xs tabular ml-auto">Limit {formatCompact(p.creditLimit, false)}</Badge>}
-                                  </CommandItem>
-                                ))}
-                              </CommandGroup>
-                            </CommandList>
-                          </Command>
-                        </PopoverContent>
-                      </Popover>
-                    )}
-                    <FormField control={form.control} name="customerId" render={() => <FormItem><FormMessage /></FormItem>} />
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
-                      <FormField control={form.control} name="locationId" render={({ field }) => (
-                        <FormItem>
-                          <FormLabel required>Selling from</FormLabel>
-                          <FormControl>
-                            {loading ? <Skeleton className="h-10" /> : (
-                              <SelectNative {...field}>
-                                {lookups.locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
-                              </SelectNative>
-                            )}
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )} />
-                      <FormField control={form.control} name="salesPersonUserId" render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Sales rep</FormLabel>
-                          <FormControl>
-                            {loading ? <Skeleton className="h-10" /> : (
-                              <SelectNative {...field}>
-                                <option value={0}>Me (whoever is signed in)</option>
-                                {lookups.salesPeople.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                              </SelectNative>
-                            )}
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )} />
-                    </div>
-                  </CardBody>
-                </Card>
-
-                <Card>
-                  <CardBody>
-                    <div className="flex items-center justify-between mb-3">
-                      <h3 className="text-sm font-semibold text-navy-900 dark:text-white">Items <span className="text-danger">*</span> ({fields.length})</h3>
-                      <Popover open={productPickerOpen} onOpenChange={setProductPickerOpen}>
-                        <PopoverTrigger asChild>
-                          <Button type="button" variant="accent" size="sm" className="gap-1" disabled={loading}><Plus />Add Product</Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-[480px] p-0" align="end">
-                          <Command>
-                            <CommandInput placeholder="Search products by code or name…" />
-                            <CommandList>
-                              <CommandEmpty>No product found.</CommandEmpty>
-                              <CommandGroup heading={`${lookups.products.length} items`}>
-                                {lookups.products.map((p) => (
-                                  <CommandItem key={p.id} value={`${p.sku} ${p.name}`} onSelect={() => pickProduct(p.id)}>
-                                    <div className="flex-1 min-w-0">
-                                      <div className="text-sm font-medium text-navy-900 dark:text-white truncate">{p.name}</div>
-                                      <div className="text-2xs tabular text-slate-500 dark:text-slate-400">{p.sku} · stock {p.totalStock}</div>
-                                    </div>
-                                    <span className="tabular text-sm font-bold text-navy-900 dark:text-white">{formatMoney(p.salePrice)}</span>
-                                  </CommandItem>
-                                ))}
-                              </CommandGroup>
-                            </CommandList>
-                          </Command>
-                        </PopoverContent>
-                      </Popover>
-                    </div>
-                    {fields.length === 0 ? (
-                      <div className="text-center py-12 text-slate-400 border-2 border-dashed border-slate-200 dark:border-navy-700 rounded-lg">
-                        <ShoppingCart className="size-8 mx-auto mb-2 opacity-30" />
-                        <p className="text-sm">No items added yet. Click <span className="font-semibold">&quot;Add Product&quot;</span> to start.</p>
-                      </div>
-                    ) : (
-                      <div className="space-y-2">
-                        <div className="hidden sm:grid grid-cols-12 gap-2 px-2 pb-1">
-                          <div className="col-span-4 text-2xs font-semibold uppercase tracking-wider text-slate-400">Item</div>
-                          <div className="col-span-2 text-2xs font-semibold uppercase tracking-wider text-slate-400 text-right">Qty</div>
-                          <div className="col-span-2 text-2xs font-semibold uppercase tracking-wider text-slate-400 text-right">Rate</div>
-                          <div className="col-span-1 text-2xs font-semibold uppercase tracking-wider text-slate-400 text-right">Disc %</div>
-                          <div className="col-span-1 text-2xs font-semibold uppercase tracking-wider text-slate-400 text-right">Tax %</div>
-                          <div className="col-span-1 text-2xs font-semibold uppercase tracking-wider text-slate-400 text-right">Amount</div>
-                          <div className="col-span-1" />
-                        </div>
-                        {fields.map((field, idx) => <ItemRow key={field.id} idx={idx} control={form.control} onRemove={() => remove(idx)} />)}
-                      </div>
-                    )}
-                    <FormField control={form.control} name="items" render={() => <FormItem><FormMessage /></FormItem>} />
-                  </CardBody>
-                </Card>
-              </>
-            )}
-
-            {/* STEP 2 */}
-            {step === 1 && (
-              <Card>
-                <CardBody>
-                  <h3 className="text-base font-semibold text-navy-900 dark:text-white mb-4">Pricing, Payment & Dates</h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <FormField control={form.control} name="methodId" render={({ field }) => (
-                      <FormItem>
-                        <FormLabel required>Payment method</FormLabel>
-                        <FormControl>
-                          {loading ? <Skeleton className="h-10" /> : (
-                            <SelectNative {...field}>
-                              {lookups.paymentMethods.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-                            </SelectNative>
-                          )}
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )} />
-                    <FormField control={form.control} name="orderDate" render={({ field }) => (
-                      <FormItem><FormLabel required>Order date</FormLabel><FormControl><DateInput {...field} /></FormControl><FormMessage /></FormItem>
-                    )} />
-                    <FormField control={form.control} name="deliveryDate" render={({ field }) => (
-                      <FormItem><FormLabel required>Delivery date</FormLabel><FormControl><DateInput {...field} /></FormControl><FormMessage /></FormItem>
-                    )} />
-                    <FormField control={form.control} name="notes" render={({ field }) => (
-                      <FormItem className="sm:col-span-2">
-                        <FormLabel>Notes (visible to the order team)</FormLabel>
-                        <FormControl><Textarea rows={3} placeholder="Any special instructions" {...field} /></FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )} />
-                  </div>
-
-                  <div className="mt-5 pt-4 border-t border-slate-200 dark:border-navy-700 flex items-start justify-between gap-4">
-                    <div>
-                      <Label htmlFor="raise-invoice" className="!mb-0">Raise the invoice with this order</Label>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-md">
-                        On by default. The invoice number is issued straight away and the bill is
-                        generated and saved, so it can be printed or sent the moment the order is in.
-                        Turn it off to invoice later from the order screen. An order that lands on
-                        credit hold is never invoiced.
-                      </p>
-                    </div>
-                    <FormField control={form.control} name="raiseInvoice" render={({ field }) => (
-                      <Switch id="raise-invoice" checked={field.value} onCheckedChange={field.onChange} />
-                    )} />
-                  </div>
-                </CardBody>
-              </Card>
-            )}
-
-            {/* STEP 3 */}
-            {step === 2 && (
-              <>
-                {willExceed && (
-                  <Card className="bg-warning/5 border-warning/30">
-                    <CardBody>
-                      <div className="flex items-start gap-3">
-                        <AlertTriangle className="size-5 flex-shrink-0 mt-0.5 text-warning" />
-                        <div>
-                          <h4 className="text-sm font-semibold text-warning-dark dark:text-warning-light">
-                            This will go on credit hold
-                          </h4>
-                          <p className="text-sm mt-1 text-warning-dark/80 dark:text-warning-light/80">
-                            {customer!.name} owes <span className="font-bold tabular">{formatMoney(customer!.outstanding)}</span> against
-                            a limit of <span className="font-bold tabular">{formatMoney(customer!.creditLimit)}</span>.
-                            This order takes them to <span className="font-bold tabular">{formatMoney(customer!.outstanding + total)}</span>,
-                            so it will be saved on hold and land on the Limit Alerts queue for the owner to release.
-                            No invoice is raised until it is.
-                          </p>
-                        </div>
-                      </div>
-                    </CardBody>
-                  </Card>
-                )}
-
-                <Card>
-                  <CardBody>
-                    <h3 className="text-base font-semibold text-navy-900 dark:text-white mb-4">Review Order</h3>
-                    <div className="space-y-2.5 text-sm">
-                      <Row label="Customer" value={customer?.name ?? "—"} />
-                      <Row label="Selling from" value={lookups.locations.find((l) => l.id === Number(locationId))?.name ?? "—"} />
-                      <Row label="Items" value={`${items.length} products · ${items.reduce((s, i) => s + Number(i.qty), 0)} units`} />
-                      <Row label="Payment method" value={method?.name ?? "—"} />
-                      <Row label="Delivery date" value={deliveryDate} />
-                      <Row label="Invoice" value={raiseInvoice ? "Raised with the order" : "Later, from the order screen"} />
-                      <div className="border-t border-slate-200 dark:border-navy-700 pt-2.5 mt-2.5">
-                        <Row label="Subtotal" value={formatMoney(subtotal)} />
-                        {discountAmount > 0 && <Row label="Discount" value={`- ${formatMoney(discountAmount)}`} />}
-                        <Row label="Sales tax" value={formatMoney(tax)} />
-                        <div className="text-base font-bold mt-2">
-                          <Row label="Total" value={formatMoney(total)} bold />
-                        </div>
+                      <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                        {customer.code} · {customer.city}
+                        {customer.creditDays > 0 && ` · NET ${customer.creditDays}`}
                       </div>
                     </div>
-                  </CardBody>
-                </Card>
-              </>
-            )}
-          </div>
+                  </div>
+                  <Button type="button" variant="ghost" size="sm" className="shrink-0"
+                    onClick={() => setCustomerId(0)}>Change</Button>
+                </div>
+              ) : (
+                <Popover open={pickCustomer} onOpenChange={setPickCustomer}>
+                  <PopoverTrigger asChild>
+                    <button type="button"
+                      className="w-full p-3 border-2 border-dashed border-slate-200 dark:border-navy-700 rounded-lg text-sm text-slate-500 dark:text-slate-400 text-left hover:border-brand-yellow transition-colors">
+                      <Search className="size-4 inline-block mr-2" />
+                      Search {customers.length} customer{customers.length === 1 ? "" : "s"}…
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[min(92vw,34rem)] p-0" align="start">
+                    <Command>
+                      <CommandInput placeholder="Shop name, code or city…" />
+                      <CommandList>
+                        <CommandEmpty>No customer found.</CommandEmpty>
+                        <CommandGroup heading="Your customers">
+                          {customers.map((c) => (
+                            <CommandItem key={c.id} value={`${shownAs(c)} ${c.name} ${c.code} ${c.city}`}
+                              onSelect={() => { setCustomerId(c.id); setPickCustomer(false); }}>
+                              <Avatar initials={shownAs(c).slice(0, 2).toUpperCase()} size="sm" />
+                              <div className="flex-1 min-w-0">
+                                <div className="text-sm font-medium text-navy-900 dark:text-white break-words">
+                                  {shownAs(c)}
+                                </div>
+                                <div className="text-2xs text-slate-500 dark:text-slate-400">{c.code} · {c.city}</div>
+                              </div>
+                              {c.creditLimit > 0 && (
+                                <Badge variant="muted" className="text-2xs tabular ml-auto shrink-0">
+                                  Limit {formatCompact(c.creditLimit, false)}
+                                </Badge>
+                              )}
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+              )}
+            </CardBody>
+          </Card>
 
-          {/* Sidebar */}
-          <div className="space-y-6">
-            <Card className="lg:sticky lg:top-20">
+          {/* ── 2. THE ITEMS ─────────────────────────────────────────── */}
+          <Card>
+            <CardBody>
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <div>
+                  <h3 className="text-sm font-semibold text-navy-900 dark:text-white">
+                    Items <span className="text-danger">*</span>
+                    {lines.length > 0 && <span className="text-slate-400 font-normal"> · {lines.length}</span>}
+                  </h3>
+                  <p className="text-2xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    Rate is what the shop pays. The margin is over cost and duty.
+                  </p>
+                </div>
+
+                <Popover open={pickProduct} onOpenChange={setPickProduct}>
+                  <PopoverTrigger asChild>
+                    <Button type="button" variant="accent" size="sm" className="gap-1.5 shrink-0" disabled={loading}>
+                      <Plus className="size-4" />Add product
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[min(94vw,38rem)] p-0" align="end">
+                    <Command>
+                      <CommandInput placeholder="Search by name or code…" />
+                      <CommandList className="max-h-[60vh]">
+                        <CommandEmpty>No product found.</CommandEmpty>
+                        <CommandGroup heading={`${products.length} items`}>
+                          {products.map((p) => (
+                            <CommandItem key={p.id} value={`${p.name} ${p.sku}`} onSelect={() => addProduct(p)}
+                              className="gap-3 py-2">
+                              <ProductImage url={p.imageUrl} name={p.name} size="lg" />
+                              <div className="flex-1 min-w-0">
+                                <div className="text-sm font-medium text-navy-900 dark:text-white line-clamp-2">
+                                  {p.name}
+                                </div>
+                                <div className="text-2xs tabular text-slate-500 dark:text-slate-400 mt-0.5">
+                                  {p.sku} · {p.totalStock} in stock
+                                </div>
+                              </div>
+                              <span className="tabular text-sm font-bold text-navy-900 dark:text-white shrink-0">
+                                {formatMoney(p.salePrice)}
+                              </span>
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+              </div>
+
+              {lines.length === 0 ? (
+                <div className="text-center py-10 text-slate-400 border-2 border-dashed border-slate-200 dark:border-navy-700 rounded-lg">
+                  <ShoppingCart className="size-8 mx-auto mb-2 opacity-30" />
+                  <p className="text-sm">Nothing on the order yet. Press <b>Add product</b>.</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {lines.map((l, idx) => (
+                    <LineCard key={l.productId} line={l} idx={idx}
+                      onChange={setLine}
+                      onRemove={() => setLines((prev) => prev.filter((_, i) => i !== idx))} />
+                  ))}
+                </div>
+              )}
+            </CardBody>
+          </Card>
+
+          {/* ── 3. WHEN AND HOW ──────────────────────────────────────── */}
+          <Card>
+            <CardBody className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <label className="text-xs font-medium text-slate-600 dark:text-slate-300 mb-1.5 block">
+                    Paying by <span className="text-danger">*</span>
+                  </label>
+                  {loading ? <Skeleton className="h-10" /> : (
+                    <SelectNative value={methodId} onChange={(e) => setMethodId(Number(e.target.value))}>
+                      {methods.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+                    </SelectNative>
+                  )}
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-slate-600 dark:text-slate-300 mb-1.5 block">
+                    Order date <span className="text-danger">*</span>
+                  </label>
+                  <DateInput value={orderDate} onChange={(e) => setOrderDate(e.target.value)} />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-slate-600 dark:text-slate-300 mb-1.5 block">
+                    Wanted by <span className="text-danger">*</span>
+                  </label>
+                  <DateInput value={deliveryDate} onChange={(e) => setDeliveryDate(e.target.value)} />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-medium text-slate-600 dark:text-slate-300 mb-1.5 block">
+                  Notes for the order desk
+                </label>
+                <Textarea rows={2} value={notes} maxLength={500}
+                  placeholder="Anything they need to know when they pack it"
+                  onChange={(e) => setNotes(e.target.value)} />
+              </div>
+
+              {/* Only the two roles that may bill see this at all. */}
+              {mayInvoice && (
+                <div className="flex items-start justify-between gap-4 pt-3 border-t border-slate-200 dark:border-navy-700">
+                  <div>
+                    <div className="text-sm font-medium text-navy-900 dark:text-white">Invoice it straight away</div>
+                    <p className="text-2xs text-slate-500 dark:text-slate-400 mt-0.5 max-w-md">
+                      Cuts the bill with the order instead of at the Invoiced/Edit step. An order
+                      that lands on credit hold is never invoiced.
+                    </p>
+                  </div>
+                  <Switch checked={raiseInvoice} onCheckedChange={setRaiseInvoice} />
+                </div>
+              )}
+            </CardBody>
+          </Card>
+        </div>
+
+        {/* ── THE RUNNING TOTAL ──────────────────────────────────────── */}
+        <div className="space-y-6">
+          <Card className="lg:sticky lg:top-20">
+            <CardBody>
+              <h3 className="text-sm font-semibold text-navy-900 dark:text-white mb-3">Order</h3>
+              <dl className="space-y-1.5 text-sm">
+                <Row label="Items" v={`${lines.length}`} />
+                <Row label="Units" v={units.toLocaleString()} />
+                <Row label="Goods" v={formatMoney(subtotal)} />
+                <Row label="Sales tax" v={formatMoney(tax)} />
+                <Row label="Margin on this order" v={formatMoney(margin)} tone={margin < 0 ? "danger" : "success"} />
+                <div className="flex items-center justify-between pt-2 mt-2 border-t border-slate-200 dark:border-navy-700">
+                  <span className="font-bold text-navy-900 dark:text-white">Total</span>
+                  <span className="tabular text-lg font-bold text-navy-900 dark:text-white">{formatMoney(total)}</span>
+                </div>
+              </dl>
+              {problem && <p className="text-2xs text-slate-500 dark:text-slate-400 mt-3">{problem}</p>}
+            </CardBody>
+          </Card>
+
+          {customer && (
+            <Card className={cn(willExceed && "border-warning/40")}>
               <CardBody>
-                <h3 className="text-sm font-semibold text-navy-900 dark:text-white mb-3">Summary</h3>
-                <div className="space-y-2 text-sm">
-                  <Row label="Items" value={`${items.length}`} />
-                  <Row label="Subtotal" value={formatMoney(subtotal)} />
-                  {discountAmount > 0 && <Row label="Discount" value={`- ${formatMoney(discountAmount)}`} />}
-                  <Row label="Sales tax" value={formatMoney(tax)} />
-                  <div className="border-t border-slate-200 dark:border-navy-700 pt-2 mt-2">
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-navy-900 dark:text-white">Total</span>
-                      <span className="tabular text-lg font-bold text-navy-900 dark:text-white">{formatMoney(total)}</span>
-                    </div>
+                <h3 className="text-sm font-semibold text-navy-900 dark:text-white mb-3">This shop</h3>
+                <dl className="space-y-1.5 text-sm">
+                  <Row label="Credit limit" v={customer.creditLimit > 0 ? formatMoney(customer.creditLimit) : "No limit"} />
+                  <Row label="Owes now" v={formatMoney(customer.outstanding)} tone={customer.outstanding > 0 ? "warning" : undefined} />
+                  <Row label="After this order" v={formatMoney(customer.outstanding + total)} tone={willExceed ? "danger" : undefined} />
+                </dl>
+                {willExceed && (
+                  <div className="flex items-start gap-2 mt-3 text-2xs text-warning-dark dark:text-warning-light">
+                    <AlertTriangle className="size-4 shrink-0 mt-0.5" />
+                    <span>
+                      Over the limit, so this order is saved on hold and lands on the owner&rsquo;s
+                      Limit Alerts queue. No invoice is cut until it is released.
+                    </span>
                   </div>
-                </div>
-
-                <div className="mt-6 flex flex-col gap-2">
-                  {step < STEPS.length - 1 ? (
-                    <Button type="button" variant="accent" size="md" className="w-full gap-1.5" onClick={nextStep} disabled={loading}>
-                      Next: {STEPS[step + 1]} <ArrowRight />
-                    </Button>
-                  ) : (
-                    <Button type="submit" variant="accent" size="md" className="w-full gap-1.5" disabled={form.formState.isSubmitting}>
-                      {form.formState.isSubmitting
-                        ? <><Loader2 className="size-4 animate-spin" /> Submitting…</>
-                        : raiseInvoice ? <><FileText />Submit &amp; Invoice</> : <><Save />Submit Order</>}
-                    </Button>
-                  )}
-                  {step > 0 && (
-                    <Button type="button" variant="ghost" size="md" className="w-full gap-1.5" onClick={() => setStep(step - 1)}>
-                      <ArrowLeft />Back
-                    </Button>
-                  )}
-                </div>
+                )}
               </CardBody>
             </Card>
+          )}
+        </div>
+      </div>
 
-            {customer && (
-              <Card>
-                <CardBody>
-                  <h3 className="text-sm font-semibold text-navy-900 dark:text-white mb-3">Customer Status</h3>
-                  <div className="space-y-2.5 text-sm">
-                    <Row label="Credit limit" value={customer.creditLimit > 0 ? formatMoney(customer.creditLimit) : "No limit"} />
-                    <Row label="Outstanding" value={formatMoney(customer.outstanding)} valueClass={customer.outstanding > 0 ? "text-warning" : undefined} />
-                    <Row label="After this order" value={formatMoney(customer.outstanding + total)} valueClass={willExceed ? "text-danger" : "text-navy-900 dark:text-white"} bold />
-                    <Row label="Hold policy" value={customer.holdPolicy} />
-                  </div>
-                </CardBody>
-              </Card>
-            )}
+      {/* The phone's submit bar -- the header button is off-screen by the time
+          anybody has added three items on a handset. */}
+      <div className="sm:hidden fixed bottom-0 inset-x-0 z-30 border-t border-slate-200 dark:border-navy-700 bg-white/95 dark:bg-navy-900/95 backdrop-blur px-4 py-3 flex items-center gap-3">
+        <div className="min-w-0">
+          <div className="tabular text-base font-bold text-navy-900 dark:text-white leading-tight">
+            {formatMoney(total)}
           </div>
-        </form>
-      </Form>
+          <div className="text-2xs text-slate-500 dark:text-slate-400 truncate">
+            {lines.length} item{lines.length === 1 ? "" : "s"} · {units} unit{units === 1 ? "" : "s"}
+          </div>
+        </div>
+        <Button variant="accent" className="ml-auto" onClick={() => void save(false)}
+          disabled={saving !== "" || loading || Boolean(problem)}>
+          {saving === "submit" ? <><Loader2 className="size-4 animate-spin" />Sending…</> : <><Save />Submit</>}
+        </Button>
+      </div>
     </>
   );
 }
 
-function ItemRow({ idx, control, onRemove }: { idx: number; control: Control<Form>; onRemove: () => void }) {
-  const qty = useWatch({ control, name: `items.${idx}.qty` });
-  const rate = useWatch({ control, name: `items.${idx}.unitPrice` });
-  const disc = useWatch({ control, name: `items.${idx}.discount` });
-  const amount = (Number(rate) || 0) * (Number(qty) || 0) * (1 - (Number(disc) || 0) / 100);
+/* ─────────────────────────────── one line ─────────────────────────────── */
+
+function LineCard({
+  line, idx, onChange, onRemove,
+}: {
+  line: Line;
+  idx: number;
+  onChange: (idx: number, patch: Partial<Line>, lead?: "price" | "percent" | "sale") => void;
+  onRemove: () => void;
+}) {
+  const base = landedCost(line.cost, line.duty);
+  const amount = round2(line.rate * line.qty);
+  const belowCost = base > 0 && line.rate < base;
 
   return (
-    <div className="grid grid-cols-12 gap-2 items-start p-2 border border-slate-200 dark:border-navy-700 rounded-lg">
-      <FormField control={control} name={`items.${idx}.name`} render={({ field }) => (
-        <div className="col-span-12 sm:col-span-4">
-          <div className="text-sm font-medium text-navy-900 dark:text-white truncate">{field.value}</div>
-          <FormField control={control} name={`items.${idx}.sku`} render={({ field: f }) => (
-            <div className="text-2xs tabular text-slate-500 dark:text-slate-400">{f.value}</div>
-          )} />
+    <div className={cn(
+      "rounded-lg border p-3",
+      belowCost ? "border-danger/40 bg-danger/5" : "border-slate-200 dark:border-navy-700"
+    )}>
+      <div className="flex items-start gap-3">
+        <ProductImage url={line.imageUrl} name={line.name} size="xl" />
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-semibold text-navy-900 dark:text-white line-clamp-2">{line.name}</div>
+          <div className="text-2xs tabular text-slate-500 dark:text-slate-400 mt-0.5">
+            {line.sku} · {line.stock} in stock
+            {base > 0 && <> · lands at {formatMoney(base)}</>}
+          </div>
         </div>
-      )} />
-      <FormField control={control} name={`items.${idx}.qty`} render={({ field }) => (
-        <FormItem className="col-span-3 sm:col-span-2">
-          <FormLabel className="sm:hidden text-2xs">Qty</FormLabel>
-          <FormControl><Input type="number" min={1} className="text-right tabular" {...field} /></FormControl>
-          <FormMessage />
-        </FormItem>
-      )} />
-      <FormField control={control} name={`items.${idx}.unitPrice`} render={({ field }) => (
-        <FormItem className="col-span-3 sm:col-span-2">
-          <FormLabel className="sm:hidden text-2xs">Rate</FormLabel>
-          <FormControl><Input type="number" step="0.01" min={0} className="text-right tabular" {...field} /></FormControl>
-          <FormMessage />
-        </FormItem>
-      )} />
-      <FormField control={control} name={`items.${idx}.discount`} render={({ field }) => (
-        <FormItem className="col-span-2 sm:col-span-1">
-          <FormLabel className="sm:hidden text-2xs">Disc %</FormLabel>
-          <FormControl><Input type="number" min={0} max={100} className="text-right tabular" {...field} /></FormControl>
-          <FormMessage />
-        </FormItem>
-      )} />
-      <FormField control={control} name={`items.${idx}.taxPercent`} render={({ field }) => (
-        <FormItem className="col-span-2 sm:col-span-1">
-          <FormLabel className="sm:hidden text-2xs">Tax %</FormLabel>
-          <FormControl><Input type="number" min={0} max={100} step="0.01" className="text-right tabular" {...field} /></FormControl>
-          <FormMessage />
-        </FormItem>
-      )} />
-      <div className="col-span-1 sm:col-span-1 text-right tabular text-sm font-semibold text-navy-900 dark:text-white pt-2">
-        {Math.round(amount).toLocaleString("en-PK")}
+        <Button type="button" variant="ghost" size="icon-sm" aria-label={`Remove ${line.name}`} onClick={onRemove}>
+          <Trash2 className="size-4 text-danger" />
+        </Button>
       </div>
-      <Button type="button" variant="ghost" size="icon-sm" className="col-span-1 text-danger ml-auto mt-1" onClick={onRemove} aria-label="Remove item">
-        <Trash2 />
-      </Button>
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3">
+        <Field label="Qty">
+          <div className="flex items-center gap-1">
+            <Button type="button" variant="secondary" size="icon-sm" aria-label="One less"
+              onClick={() => onChange(idx, { qty: Math.max(1, line.qty - 1) })}>
+              <Minus className="size-4" />
+            </Button>
+            <Input type="number" inputMode="numeric" min={1} className="text-center tabular"
+              value={line.qty}
+              onChange={(e) => onChange(idx, { qty: Math.max(0, Math.floor(Number(e.target.value) || 0)) })} />
+            <Button type="button" variant="secondary" size="icon-sm" aria-label="One more"
+              onClick={() => onChange(idx, { qty: line.qty + 1 })}>
+              <Plus className="size-4" />
+            </Button>
+          </div>
+        </Field>
+
+        <Field label="Rate">
+          <Input type="number" inputMode="decimal" step="0.01" min={0} className="text-right tabular"
+            value={line.rate}
+            onChange={(e) => onChange(idx, { rate: Number(e.target.value) || 0 }, "sale")} />
+        </Field>
+
+        <Field label="Margin">
+          <Input type="number" inputMode="decimal" step="0.01" className="text-right tabular"
+            value={line.marginPrice}
+            onChange={(e) => onChange(idx, { marginPrice: Number(e.target.value) || 0 }, "price")} />
+        </Field>
+
+        <Field label="Margin %">
+          <Input type="number" inputMode="decimal" step="0.01" className="text-right tabular"
+            value={line.marginPercent}
+            disabled={base <= 0}
+            onChange={(e) => onChange(idx, { marginPercent: Number(e.target.value) || 0 }, "percent")} />
+        </Field>
+      </div>
+
+      <div className="flex items-center justify-between gap-2 mt-2 pt-2 border-t border-slate-100 dark:border-navy-700">
+        <span className="text-2xs text-slate-500 dark:text-slate-400">
+          {belowCost
+            ? "Below what this piece cost to land"
+            : base > 0
+              ? `${formatMoney(line.marginPrice)} a piece`
+              : "No cost on this item, so there is no margin to show"}
+        </span>
+        <span className="tabular text-sm font-bold text-navy-900 dark:text-white">{formatMoney(amount)}</span>
+      </div>
     </div>
   );
 }
 
-function Row({ label, value, bold, valueClass }: { label: string; value: React.ReactNode; bold?: boolean; valueClass?: string }) {
+/** The product photo, or its initials when there is none. */
+function ProductImage({ url, name, size }: { url: string | null; name: string; size: "lg" | "xl" }) {
+  const box = size === "xl" ? "size-16 sm:size-20" : "size-12";
+  if (!url) {
+    return (
+      <div className={cn(box, "shrink-0 rounded-lg bg-slate-100 dark:bg-navy-800 flex items-center justify-center")}>
+        <ImageIcon className="size-5 text-slate-300 dark:text-slate-600" />
+      </div>
+    );
+  }
+  return (
+    <div className={cn(box, "shrink-0 rounded-lg bg-white dark:bg-navy-800 border border-slate-200 dark:border-navy-700 overflow-hidden")}>
+      {/* eslint-disable-next-line @next/next/no-img-element --
+          the images are Cloudinary URLs on a domain that is not in
+          next.config, and next/image would need every one whitelisted. */}
+      <img src={url} alt={name} loading="lazy" className="size-full object-contain p-1" />
+    </div>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <div className="text-2xs uppercase tracking-wider font-semibold text-slate-400 mb-1">{label}</div>
+      {children}
+    </div>
+  );
+}
+
+function Row({ label, v, tone }: { label: string; v: string; tone?: "success" | "warning" | "danger" }) {
   return (
     <div className="flex items-center justify-between gap-3">
-      <span className={cn("text-slate-500 dark:text-slate-400 text-sm", bold && "font-bold text-navy-900 dark:text-white")}>{label}</span>
-      <span className={cn("tabular text-sm font-semibold text-navy-900 dark:text-white", valueClass)}>{value}</span>
+      <span className="text-slate-500 dark:text-slate-400">{label}</span>
+      <span className={cn("tabular font-medium text-navy-900 dark:text-white",
+        tone === "success" && "text-success", tone === "warning" && "text-warning", tone === "danger" && "text-danger")}>
+        {v}
+      </span>
     </div>
   );
 }

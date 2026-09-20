@@ -102,7 +102,6 @@ const ROUTE_RULES: { prefix: string; roles: RoleKey[]; perm?: string }[] = [
     roles: ["super-admin", "accountant", "order-dept", "warehouse-keeper"],
     perm: "stock.view",
   },
-  { prefix: "/packing", roles: ["super-admin", "order-dept"] },
   { prefix: "/dispatch", roles: ["super-admin", "order-dept"] },
   {
     prefix: "/delivery",

@@ -25,21 +25,28 @@ const STATUS_LABELS: Record<string, string> = {
   /* The client asked for this one by name: "void" reads as nothing to them. */
   VOID: "Deleted",
 
-  /* Customer orders. SUBMITTED used to read "Sent to Order Dept", which was
-     true when that was the next thing that happened to an order. It is not any
-     more: a submitted order is waiting on the owner, and the order department
-     does not see it until the warehouse has picked it. There is now a step
-     called TO_ORDER_DEPT that means what the old label claimed. */
+  /* Customer orders, and the chain is SEVEN steps since 22 September:
+
+         Draft · Submitted · Confirmed · Invoiced/Edit ·
+         Processing in Order Dept · Dispatched · Delivered
+
+     "Seen by Warehouse", "On way to Order Dept" and "Packaging" were taken out
+     of the workflow and out of the database (migration 21), and the two 2026
+     leftovers PROCESSING and PACKED went with them. The keys below are kept
+     only so an old row in the activity log still renders as words rather than
+     as SHOUTING_SNAKE_CASE. */
   SUBMITTED: "Waiting to be confirmed",
-  SEEN_BY_WAREHOUSE: "Seen by Warehouse",
   CREDIT_HOLD: "Limit Cross",
   DECLINED: "Declined",
-  PROCESSING: "Being Prepared",
-  PACKED: "Packed",
-  TO_ORDER_DEPT: "On way to Order Dept",
-  AT_ORDER_DEPT: "Received at Order Dept",
-  PACKAGING: "Packaging",
+  AT_ORDER_DEPT: "Processing in Order Dept",
   DISPATCHED: "Dispatched",
+
+  /* ── retired, kept for old history rows ── */
+  SEEN_BY_WAREHOUSE: "Seen by Warehouse (retired)",
+  TO_ORDER_DEPT: "On way to Order Dept (retired)",
+  PACKAGING: "Packaging (retired)",
+  PROCESSING: "Being Prepared (retired)",
+  PACKED: "Packed (retired)",
   /* "Invoiced/Edit" -- the step where accounts cut the bill and may still
      correct the order before they do. The API sends "OrderStatus"."StatusName"
      with the chain, so the strip on the order screen reads it from the

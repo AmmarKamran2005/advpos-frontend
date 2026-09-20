@@ -20,30 +20,43 @@ import {
 } from "@/components/ui/form";
 import { formatMoney } from "@/lib/format";
 import { toast } from "@/components/ui/toaster";
-import type { CollectionMethod } from "@/data/collections";
+/* The four keys are the database's own ("PaymentMethod"."MethodKey"), not the
+   mock type this file used to import from @/data/collections -- that array
+   still carries Cheque, JazzCash and Easypaisa, which are no longer ways money
+   comes in. */
+type CollectionMethod = "CASH" | "CREDIT" | "MEEZAN" | "FAISAL";
 import { cn } from "@/lib/utils";
 
+/* THE FOUR WAYS MONEY COMES IN -- Cash, Credit, Meezan, Faysal.
+
+   This list used to be Cash, Cheque, Bank, JazzCash and Easypaisa, typed here
+   rather than read from the database. The owner cut it to four on
+   22 September; they are marked in the database
+   ("PaymentMethod"."IsForReceiving") and served as `receivingMethods` on every
+   lookups call, which is where a screen with an API behind it should take them
+   from. This dialog has no API behind it yet -- see the note on the Record
+   payment button on the invoice screen -- so the four are named here and the
+   keys match the database exactly. */
 const METHODS: { value: CollectionMethod; label: string; icon: typeof Banknote }[] = [
   { value: "CASH", label: "Cash", icon: Banknote },
-  { value: "CHEQUE", label: "Cheque", icon: FileText },
-  { value: "BANK", label: "Bank", icon: Landmark },
-  { value: "JAZZCASH", label: "JazzCash", icon: Smartphone },
-  { value: "EASYPAISA", label: "Easypaisa", icon: Smartphone },
+  { value: "CREDIT", label: "Credit", icon: FileText },
+  { value: "MEEZAN", label: "Meezan", icon: Landmark },
+  { value: "FAISAL", label: "Faisal", icon: Landmark },
 ];
 
 const Schema = z.object({
   amount: z.coerce.number({ message: "Amount required" }).positive("Must be more than zero"),
-  method: z.enum(["CASH", "CHEQUE", "BANK", "JAZZCASH", "EASYPAISA"]),
+  method: z.enum(["CASH", "CREDIT", "MEEZAN", "FAISAL"]),
   collectedOn: z.string().min(1, "Date required").refine(notPast, PAST_DATE_MESSAGE),
   reference: z.string().optional(),
   bank: z.string().optional(),
   chequeDate: z.string().optional().refine(notPast, PAST_DATE_MESSAGE),
   note: z.string().max(300, "Max 300 characters").optional(),
 }).refine(
-  (d) => d.method !== "CHEQUE" || (d.reference && d.reference.length > 0),
+  (d) => d.method !== "MEEZAN" || (d.reference && d.reference.length > 0),
   { message: "Cheque number is required", path: ["reference"] }
 ).refine(
-  (d) => !["BANK", "JAZZCASH", "EASYPAISA"].includes(d.method) || (d.reference && d.reference.length > 0),
+  (d) => !["MEEZAN", "FAISAL"].includes(d.method) || (d.reference && d.reference.length > 0),
   { message: "Transaction number is required", path: ["reference"] }
 );
 
@@ -200,7 +213,7 @@ export function RecordCollectionDialog({
                 </FormItem>
               )} />
 
-              {method === "CHEQUE" && (
+              {method === "MEEZAN" && (
                 <div className="grid grid-cols-2 gap-3 mb-4">
                   <FormField control={form.control} name="reference" render={({ field }) => (
                     <FormItem>
@@ -227,7 +240,7 @@ export function RecordCollectionDialog({
                 </div>
               )}
 
-              {(method === "BANK" || method === "JAZZCASH" || method === "EASYPAISA") && (
+              {(method === "MEEZAN" || method === "FAISAL") && (
                 <FormField control={form.control} name="reference" render={({ field }) => (
                   <FormItem className="mb-4">
                     <FormLabel required>Transaction number</FormLabel>

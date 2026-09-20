@@ -134,14 +134,13 @@ export const navigation: NavNode[] = [
       { label: "Purchase Returns",   href: "/purchases/returns",  match: "purchases.returns",  perms: ["purchases.view"] },
     ],
   },
-  {
-    type: "item",
-    label: "Packing",
-    icon: PackageCheck,
-    href: "/packing",
-    match: "packing",
-    perms: ["orders.approve"],
-  },
+  /* PACKING IS GONE. It was the pre-chain screen: its own queue, its own
+     PACKED status and the only place in the whole application where stock ever
+     came off a shelf for a sale. Stock now leaves at Dispatched, from the place
+     the order screen asks for, and two screens taking the same goods off the
+     same shelf is how a count goes wrong. Migration 21 deleted the statuses it
+     ran on; the API endpoints answer with a sentence saying where the work
+     moved to. */
   {
     type: "item",
     label: "Dispatch",

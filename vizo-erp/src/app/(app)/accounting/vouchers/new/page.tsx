@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import axios from "axios";
@@ -40,6 +40,9 @@ type Lookups = {
   accounts: LookupAccount[];
   voucherTypes: LookupVoucherType[];
   paymentMethods: LookupMethod[];
+  /* Money coming in. A receipt voucher offers these four; a payment voucher
+     is money going OUT and keeps the whole list. */
+  receivingMethods: LookupMethod[];
   locations: LookupRow[];
   parties: LookupParty[];
 };
@@ -126,6 +129,7 @@ export default function NewVoucherPage() {
     },
   });
   const { reset, setValue } = form;
+  const search = useSearchParams();
 
   const load = React.useCallback(async () => {
     setLoading(true);
@@ -134,22 +138,39 @@ export default function NewVoucherPage() {
       setLookups(res.data);
       setError(null);
 
-      const firstType = res.data.voucherTypes[0];
+      /* ARRIVING FROM AN INVOICE.
+
+         "Record Payment" on a sale invoice sends the accountant here with
+         ?type=receipt&partyId=12, because this screen is the one that actually
+         posts the money -- the dialog that used to sit on the invoice wrote
+         nothing at all. Honouring those two parameters is what makes the
+         journey one click instead of three, and the open invoices for that
+         customer load straight away. */
+      const wantReceipt = search.get("type") === "receipt";
+      const wantParty = Number(search.get("partyId") ?? 0);
+
+      const firstType = wantReceipt
+        ? res.data.voucherTypes.find((t) => t.isReceipt) ?? res.data.voucherTypes[0]
+        : res.data.voucherTypes[0];
       const cash = res.data.accounts.find((a) => !a.isGroup && a.type === "Cash & Bank");
-      const cashMethod = res.data.paymentMethods.find((m) => m.key === "CASH");
+      const methodList = res.data.receivingMethods?.length ? res.data.receivingMethods : res.data.paymentMethods;
+      const cashMethod = methodList.find((m) => m.key === "CASH");
       reset((current) => ({
         ...current,
         voucherTypeId: firstType?.id ?? 0,
         locationId: res.data.locations[0]?.id ?? 0,
         cashBankAccountId: cash?.id ?? 0,
-        methodId: cashMethod?.id ?? res.data.paymentMethods[0]?.id ?? 0,
+        methodId: cashMethod?.id ?? methodList[0]?.id ?? 0,
+        partyId: wantParty > 0 && res.data.parties.some((pa) => pa.id === wantParty)
+          ? wantParty
+          : current.partyId,
       }));
     } catch (e) {
       setError(apiMessage(e, "Could not load the voucher types and accounts."));
     } finally {
       setLoading(false);
     }
-  }, [reset]);
+  }, [reset, search]);
 
   React.useEffect(() => {
     void load();
@@ -450,7 +471,10 @@ export default function NewVoucherPage() {
                   <FormField control={form.control} name="methodId" render={({ field }) => (
                     <FormItem><FormLabel required>Method</FormLabel><FormControl>
                       <SelectNative {...field}>
-                        {lookups?.paymentMethods.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+                        {(isReceipt && lookups?.receivingMethods?.length
+                            ? lookups.receivingMethods
+                            : lookups?.paymentMethods ?? []
+                         ).map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
                       </SelectNative>
                     </FormControl><FormMessage /></FormItem>
                   )} />

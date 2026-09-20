@@ -25,7 +25,7 @@ import { AlertCircle } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
 
-/* GET /dispatch -> { waiting, late, items } -- packed orders with no
+/* GET /dispatch -> { waiting, late, items } -- dispatched orders with no
    delivery booked yet.
 
    POST /dispatch/{id}/dispatch books the delivery. The channel chosen here
@@ -119,7 +119,13 @@ function addDays(iso: string, days: number) {
 }
 
 /**
- * Packed orders leaving the building.
+ * Booking the courier for orders that have already left.
+ *
+ * This screen used to be the step BEFORE dispatch: a queue of packed orders,
+ * and booking a courier here is what moved them to Dispatched. Since
+ * 22 September the order screen does that -- and takes the stock off the shelf
+ * with it -- so this is where the bilty, the parcels and the COD are recorded
+ * afterwards.
  *
  * The route chosen here decides who will later be asked whether it arrived —
  * the rep for a Karachi hand-delivery, the back office for a courier, the
@@ -163,7 +169,7 @@ export default function DispatchPage() {
       <PageHeader
         breadcrumbs={[{ label: "Daily Work" }, { label: "Dispatch" }]}
         title="Dispatch"
-        subtitle="Packed orders waiting for a route out."
+        subtitle="Dispatched orders waiting for a route out."
         actions={
           <>
             <Button variant="ghost" size="md" className="gap-1.5" asChild>
@@ -213,7 +219,7 @@ export default function DispatchPage() {
           <EmptyState
             icon={Send}
             title="Nothing waiting to go out"
-            description="Everything packed has already been dispatched."
+            description="Every dispatched order already has a courier booked."
             action={<Button variant="accent" asChild><Link href="/packing">Go to packing</Link></Button>}
           />
         </Card>
