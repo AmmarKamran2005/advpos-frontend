@@ -20,6 +20,28 @@ import axios from "axios";
 import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
 import { cn } from "@/lib/utils";
 import { PARTY_COPY, refineParty, type PartyOrigin } from "@/lib/party-tax";
+import {
+  CustomerDocumentsStep, type DocumentUrls, type ReadFields,
+} from "@/components/parties/customer-documents-step";
+
+/* ───────────────────────────────────────────────────────────────────────────
+   OPENING A SHOP ACCOUNT IS TWO PAGES NOW
+
+     1  the paperwork -- CNIC, the shop's business card, the affidavit, each
+        photographed or uploaded, each set skippable
+     2  this form, with whatever could be read off them already in the boxes
+
+   The second page is the form that was always here. It is not filled in by a
+   machine and then saved: every box is editable, the salesperson reads them
+   against the documents in their hand, and what they save is what goes in.
+
+   A SUPPLIER SKIPS PAGE ONE. The documents are a customer's; a supplier is
+   opened the way it always was.
+
+   EDITING NEVER RE-READS. This is the NEW screen -- /parties/[id]/edit takes
+   pictures too, and files them, but leaves the details alone: once a person
+   has checked a name, a machine does not get to have another go at it.
+   ─────────────────────────────────────────────────────────────────────────── */
 
 /* GET /parties/lookups -- categories, cities, hold policies, locations and
    sales reps, all from the database. The form used to carry these as hardcoded
@@ -103,6 +125,14 @@ type Form = z.infer<typeof Schema>;
 
 export default function NewPartyPage() {
   const router = useRouter();
+
+  /* Page one until the paperwork is done with, then the form. A supplier
+     never sees page one -- see `wantsDocuments` below. */
+  const [stage, setStage] = React.useState<"documents" | "form">("documents");
+  const [docs, setDocs] = React.useState<DocumentUrls>({
+    cnicFrontUrl: null, cnicBackUrl: null, cardFrontUrl: null,
+    cardBackUrl: null, affidavitFrontUrl: null, affidavitBackUrl: null,
+  });
   const form = useForm<Form>({
     resolver: vizoResolver(Schema),
     defaultValues: {
@@ -130,6 +160,35 @@ export default function NewPartyPage() {
   });
 
   const { can, user } = useSession();
+
+  /* WHAT THE READER FOUND GOES INTO THE BOXES, and nowhere else.
+
+     Each field is written with react-hook-form's setValue so it behaves like
+     something typed: it validates, it can be edited, and it is what gets
+     saved. Nothing here writes to the database. */
+  const applyRead = React.useCallback((fields: ReadFields | null) => {
+    if (!fields) return;
+    const put = (name: keyof Form, value: string | number) => {
+      if (value === "" || value === null || value === undefined) return;
+      form.setValue(name, value as never, { shouldValidate: false, shouldDirty: true });
+    };
+
+    put("legalName", fields.legalName);
+    put("displayName", fields.displayName);
+    put("industry", fields.industry);
+    put("phone", fields.phone ?? "");
+    put("altPhone", fields.altPhone ?? "");
+    put("email", fields.email);
+    put("addressLine1", fields.addressLine);
+    put("cnic", fields.cnic);
+    put("ntn", fields.ntn);
+    if (fields.cityId) put("cityId", fields.cityId);
+    /* Retailer unless the card says otherwise -- and only one of the three
+       kinds a rep is allowed to open. */
+    if (["RETAILER", "WHOLESALER", "AGENT"].includes(fields.categoryKey)) {
+      put("category", fields.categoryKey as Form["category"]);
+    }
+  }, [form]);
 
   const [lookups, setLookups] = React.useState<Lookups>(NO_LOOKUPS);
   const [loadError, setLoadError] = React.useState<string | null>(null);
@@ -196,9 +255,18 @@ export default function NewPartyPage() {
   /* Once the admin has said where the supplier is, only that country's cities
      are offered -- a Chinese supplier in Lahore is a typo, not a choice. The
      customer path is untouched and still lists every city, exactly as before. */
+  /* A CUSTOMER IS IN PAKISTAN. The owner asked for the city list on the sales
+     side to be Pakistani only -- this business sells here and buys abroad, so
+     a shop in Guangzhou on the customer form is a mis-click waiting to happen
+     (and the CNIC reader matches against these same cities).
+
+     A supplier still gets the country it was opened under, which is how the
+     Chinese suppliers were added in September. */
   const cities = asksOrigin
     ? lookups.cities.filter((c) => c.country === chosen)
-    : lookups.cities;
+    : partyType === "CUSTOMER"
+      ? lookups.cities.filter((c) => c.country === "PK")
+      : lookups.cities;
 
   /* Switching country strands whatever city was picked under the old one. */
   React.useEffect(() => {
@@ -250,17 +318,45 @@ export default function NewPartyPage() {
           rating: "C",
           notes: d.notes || null,
           isActive: true,
+          /* The photographs taken on page one. Null for every set the
+             salesperson marked as not available. */
+          ...docs,
         },
         { headers: authHeader() }
       );
 
       toast.success(res.data.message);
+
+      /* THE ONE PDF, built after the account exists because it is stored
+         against it. Swallowed on failure on purpose -- the customer is
+         created either way, the pictures are all on file, and the PDF can be
+         rebuilt from the customer's own screen. Failing the save because a
+         document store had a bad moment would be the tail wagging the dog. */
+      const hasDocs = Object.values(docs).some(Boolean);
+      if (hasDocs) {
+        try {
+          await axios.post(`${API_BASE_URL}/parties/${res.data.id}/documents/pdf`, {},
+            { headers: authHeader() });
+        } catch {
+          toast.warning("The documents PDF could not be built", {
+            description: "The pictures are saved. Rebuild it from the customer's screen.",
+          });
+        }
+      }
+
       router.push(`/parties/${res.data.id}`);
     } catch (e) {
       /* Stay on the form so nothing typed is lost. */
       toast.error(apiMessage(e, "Could not save the party."));
     }
   }
+
+  /* PAGE ONE IS FOR A CUSTOMER ONLY. A supplier has no CNIC and no shop card
+     in this business -- it is a company -- so it goes straight to the form. */
+  const wantsDocuments = partyType === "CUSTOMER";
+  const onDocuments = stage === "documents" && wantsDocuments;
+
+  const documentCount = Object.values(docs).filter(Boolean).length;
 
   return (
     <>
@@ -271,18 +367,53 @@ export default function NewPartyPage() {
             : [{ label: "People" }, { label: "Customers", href: "/parties/customers" }, { label: "New Customer" }]
         }
         title={canChooseType ? "New Party" : "New Customer"}
-        subtitle={canChooseType ? "Create a customer, a supplier, or both" : "Open a new customer account"}
+        subtitle={
+          onDocuments
+            ? "First the paperwork. Photograph what the shop has; skip what it does not."
+            : canChooseType ? "Create a customer, a supplier, or both" : "Open a new customer account"
+        }
         actions={
           <>
             <Button variant="ghost" asChild>
               <Link href={canChooseType ? "/parties" : "/parties/customers"}><ArrowLeft /> Back</Link>
             </Button>
-            <Button variant="accent" onClick={form.handleSubmit(onSubmit)} disabled={form.formState.isSubmitting}>
-              {form.formState.isSubmitting ? <><Loader2 className="size-4 animate-spin" /> Saving…</> : <><Save /> {canChooseType ? "Save Party" : "Save Customer"}</>}
-            </Button>
+            {!onDocuments && (
+              <Button variant="accent" onClick={form.handleSubmit(onSubmit)} disabled={form.formState.isSubmitting}>
+                {form.formState.isSubmitting ? <><Loader2 className="size-4 animate-spin" /> Saving…</> : <><Save /> {canChooseType ? "Save Party" : "Save Customer"}</>}
+              </Button>
+            )}
           </>
         }
       />
+
+      {/* ── page one: the documents ───────────────────────────────────── */}
+      {onDocuments && (
+        <CustomerDocumentsStep
+          onDone={(taken, fields) => {
+            setDocs(taken);
+            applyRead(fields);
+            setStage("form");
+          }}
+        />
+      )}
+
+      {/* What page one found, kept in view on page two so nobody has to
+          remember what they photographed. */}
+      {!onDocuments && wantsDocuments && (
+        <Card className="mb-6">
+          <CardBody className="flex flex-wrap items-center gap-3 py-3">
+            <Info className="size-4 text-brand-yellow shrink-0" />
+            <div className="text-sm text-slate-600 dark:text-slate-300 flex-1 min-w-0">
+              {documentCount > 0
+                ? <>{documentCount} document {documentCount === 1 ? "picture" : "pictures"} will be saved with this customer, and bound into one PDF.</>
+                : <>No documents were photographed. Everything here is typed in.</>}
+            </div>
+            <Button type="button" variant="ghost" size="sm" onClick={() => setStage("documents")}>
+              {documentCount > 0 ? "Change them" : "Take them now"}
+            </Button>
+          </CardBody>
+        </Card>
+      )}
 
       {loadError && (
         <Card className="p-4 mb-6 border-danger/40">
@@ -294,6 +425,7 @@ export default function NewPartyPage() {
         </Card>
       )}
 
+      <div className={onDocuments ? "hidden" : undefined}>
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} noValidate>
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -638,6 +770,7 @@ export default function NewPartyPage() {
           </div>
         </form>
       </Form>
+      </div>
     </>
   );
 }

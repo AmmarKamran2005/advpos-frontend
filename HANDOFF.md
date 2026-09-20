@@ -1,6 +1,6 @@
 # AdvPOS (VIZO) — Handoff
 
-**Updated 2026-09-21.** Newest first. Read **§0** and **§1** before anything
+**Updated 2026-09-22.** Newest first. Read **§0** and **§1** before anything
 else; they are enough to carry on in a new chat. Everything below them is the
 dated history, then [What is left](#what-is-left) and
 [Standing facts](#standing-facts) at the bottom.
@@ -81,16 +81,21 @@ What the next session needs to know about **working** here:
 
 | | |
 |---|---|
-| **Frontend** | `AmmarKamran2005/advpos-frontend` @ `main` = **`aa9ce49`** (pushed 2026-09-21) |
-| **Backend** | `muhammadtalhabinsuhail/vizo-backend` @ `master` = **`5ceecb1`** (pushed 2026-09-21) |
-| **Database** | Neon PostgreSQL, Singapore. Migrations **15–18, 20** applied. **19 section 1 applied; 19 section 2 (drop `OpeningCost`) NOT run** — waits for the new API to be deployed (changa.txt §A1) |
+| **Frontend** | `AmmarKamran2005/advpos-frontend` @ `main` — 22 Sep work pushed |
+| **Backend** | `muhammadtalhabinsuhail/vizo-backend` @ `master` — 22 Sep work pushed |
+| **Database** | Neon PostgreSQL, Singapore. Migrations **15–18, 20, 21, 22** applied. **19 section 1 applied; 19 section 2 (drop `OpeningCost`) NOT run** — waits for the new API to be deployed (changa.txt §A1) |
 | **Stack** | Next.js 16 / React 19 / TypeScript / Tailwind 4 (Vercel) · ASP.NET Core 8 Web API + EF Core 8 + Npgsql · JWT with permission policies · SignalR · WebPush · Cloudinary · MailKit · Gemini Flash. Full list in `README.md` |
-| **Gate** | `npx tsc --noEmit` clean · `npx eslint src` **0 errors**, 69 warnings (old unused-vars) · `next build` **87 pages** · backend **0 errors**, 6 old warnings (4 `AuthController`, 2 `ProductHistoryController`) |
+| **Gate** | `npx tsc --noEmit` clean · `npx eslint src` **0 errors**, 64 warnings (old unused-vars) · `next build` **86 pages** (packing removed) · backend **0 errors**, 6 old warnings (4 `AuthController`, 2 `ProductHistoryController`) |
 | **Live site** | `https://advpos-frontend.vercel.app` |
 
 ### What the owner must still do (full text in `changa.txt`)
 
-0. 🔴 **Assign customers to the right salesman** (changa.txt §B1). Every dropdown
+**Two urgent ones first:**
+
+- 🔴 **Set `Gemini:ApiKey`** (changa.txt §C1) or the new customer screen only takes
+  pictures and every box is typed by hand. Free key, two minutes. It also
+  switches on the AI reports, which have been dark since September.
+- 🔴 **Assign customers to the right salesman** (changa.txt §B1). Every dropdown
    now shows a rep only his own accounts, and **Imran Iqbal and Ammar Kamran
    have none**, so they cannot raise an order at all. Sara has 7, Zara 1; nine
    accounts are assigned to an order-desk clerk or the accountant, two to
@@ -105,18 +110,138 @@ What the next session needs to know about **working** here:
    invoicing and returns rights it took away.
 6. Try the barcode camera on a real phone (could not be tested — see 2026-09-20).
 7. Tell the accountant that billing is theirs now (changa.txt §B4).
+8. Tell the order desk that **Dispatched now takes the stock off the shelf**, asks
+   which place it left from, and that the packing screen is gone (changa.txt §C3).
+9. Decide on the **correction script for the 26 past orders** that were dispatched
+   or delivered without moving any stock (changa.txt §C4, D1).
 
 ### Decisions waiting on the owner
 
 | # | Question | What happens on each answer |
 |---|---|---|
-| **D1** | **Orders never take stock off the shelf.** An order moving through the 10-step chain writes no stock movement at any step; only `/packing` and counter sales do. **26 of 31** order invoices have no stock movement, so Stock in Hand is overstated (e.g. Redmi 14C shows 463; 100 were sold on ORD-26-0171). **At which step should stock leave?** Seen by Warehouse / On way to Order Dept (really a transfer) / Dispatched | Implement in the status endpoint (`SalesController.SetOrderStatus` + `OrderWorkflow`), then a one-off correction script for the 26 past orders. Ask before running the correction on live data |
+| **D1** | ✅ **Answered and done for new orders (22 Sep):** Dispatched takes the stock off, from the place the screen asks for. **What is left is the past** — 26 orders dispatched or delivered before that date still moved nothing, so Stock in Hand is overstated by everything on them | One correction script. It changes real shelf counts, so it waits for a word; the list is shown before anything runs |
 | **D2** | **No-past-dates rule scope.** Applied to 19 entry forms, NOT to list/report From–To filters (a report must look back). Also applied to **cheque date** and **supplier bill date**, which are often legitimately in the past. Not enforced by the API | Say which of those to loosen, or whether to add it to report filters / the API |
+| **D8** | **Nothing has ever read a CNIC here** — no `Gemini:ApiKey` is set, so the new customer screen files the photographs and the salesperson types the details. And no camera has taken one: the test browser has none | Set the key (changa.txt §C1) and put one real shop through the screen. The prompt is one file and is meant to be corrected |
 | **D3** | **Six more exports silently stop at 50 rows** (list action caps `pageSize`, export asks for 5000): orders (46 rows today), invoices, walk-in, parties, journal entries (44), vouchers, expenses. Fixed for products only | One-line change per list action; say the word |
 | **D4** | Ahmed Riaz (order-dept) points at **Karachi Warehouse**; should be a department | Fix at `/admin/users` (form now only offers departments) |
 | **D5** | 🔴 **Now blocking.** Customer pickers are rep-scoped since 21 Sep, so a rep with no accounts cannot raise an order: Imran and Ammar have **0**, Zara 1, Sara 7. Nine accounts belong to an order-desk clerk or the accountant, two to nobody | Assign reps on those parties |
 | **D6** | Old items still open: public credentials never rotated; `UpdateCategory` writes `ParentCategoryId = 0` (FK error when editing a category to top level — Talha's area); `NextNumber` is not atomic; VAPID key in `.env.example` does not match the server; warehouse panel missing on the login screen; trial balance opening balances 51,256,709 out | See [What is left](#what-is-left) |
 | **D7** | **Sale invoices never reach the ledger** — 39 invoices, 12 journal entries, and all 12 are seeded. Sales returns are consistent with that (they post nothing either). Aged receivables and the credit-limit check under-state by everything billed through the app; the customer statement is built from documents and is right | Decide the accounts and post both sides — a session of its own. convey.txt §R7.1 |
+
+---
+
+## 2026-09-22 — Seven steps, stock that leaves when it is dispatched, and a customer opened from their papers
+
+Commits: backend **`1667625`** + the documents work · frontend **`f0941e5`** + the documents work.
+Migrations **21** and **22** run on the live Neon database, on the owner's instruction.
+
+### What the owner asked for (paraphrased faithfully)
+
+1. `/sales/orders/new`: **remove "Sales rep"** — the database records whoever is signed in, and
+   accounts and the owner can still see which salesperson wrote which customer's order.
+2. **Delete order ORD-26-0171 and invoice INV-26-8893** from the database.
+3. `/sales/orders/new`: **remove "Selling from"**. Instead, before an order can be **Dispatched**,
+   ask in a popup where it is selling from — **all warehouses, all order departments and Shop 2**,
+   never Claim Stock. Give that step to **accountant, order department and super admin**.
+4. **A new customer in two pages**: CNIC front/back, business card front/back, affidavit page 1/2,
+   each by camera or upload, each skippable, with clear errors when a picture cannot be read;
+   then the form, filled from what was read (legal name from the CNIC without the father's name;
+   display name = *cnic name - shop name - shop location*; industry = shop with location; phones
+   from the CNIC; email and **address from the business card**; city from the CNIC matched to the
+   Pakistani list; Retailer by default; English only). Pictures to Cloudinary, one
+   **legal_documents.pdf** for anybody who may see the customer, and **no re-reading on an edit**.
+5. **Display Name throughout the project**, not the legal name.
+6. **Category options**: a rep and the accountant get Retailer / Wholesaler / Agent; the owner
+   gets all.
+7. **Receiving payments**: Cash, Credit, Meezan, Faisal only.
+8. `/sales/orders/new` simpler and quicker: full display name in the picker, **big product
+   pictures**, and per line **Qty · RATE · Margin · Margin %** with discount and tax gone.
+9. **Remove the statuses** *Seen by Warehouse*, *On way to Order Dept* and *Packaging*; rename
+   *Received at Order Dept* to **Processing in Order Dept**.
+10. **Remove "Ask for permission"** from the rep's order screen.
+11. **Remove "Record payment"** from the sales panel — accountant and owner only.
+
+### The four decisions the owner was asked for, and the answers
+
+| | Answer |
+|---|---|
+| What should read a CNIC photograph | **Gemini**, with a key the owner supplies — free, and the code already had a client |
+| What a typed margin does to the RATE | **Margin sets the rate**: rate = landed cost + margin, either box drives the other |
+| What happens to sales tax with the tax box gone | **Applied automatically** from the product's own rate; the bill is unchanged |
+| Should dispatch take the stock off the shelf | **Yes** — and it names the place it came off |
+
+### What was built
+
+**Backend**
+
+| Piece | Where |
+|---|---|
+| Seven-step chain, `MayDispatch`, re-aimed announcements | `Services/OrderWorkflow.cs` |
+| Dispatch asks for a place, checks every line, deducts, writes a SALE movement, sets the order's location | `SalesController.SetOrderStatus` |
+| Order form's two removed questions: `LocationId` optional (defaults), `SalesPersonUserId` ignored (always the signed-in person) | `SalesController`, `OrderRequest` |
+| Product pictures and duty on the sales lookups; `receivingMethods` on the sales and accounting lookups | `SalesController`, `AccountingController` |
+| Display name in 128 projections | thirteen files |
+| Category list cut by role | `PartiesController.Lookups` |
+| `PaymentMethod.IsForReceiving`; Meezan and Faysal | `Models/PaymentMethod.Custom.cs`, migration 21 |
+| Six document columns and the bound PDF's link | `Models/Party.Custom.cs`, migration 22 |
+| Reading a CNIC / business card, and the prompt that governs it | `Controllers/PartyDocumentsController.cs` |
+| Sending pictures to Gemini at all | `Services/GeminiClient.ReadImagesAsync` |
+| The customer's document set as one PDF | `Documents/LegalDocsPdf.cs` |
+| **JPEG embedding in the PDF writer** (`/DCTDecode` XObjects, SOF parsing, per-page resources) | `Documents/PdfCanvas.cs` |
+| /packing retired; /dispatch repointed behind the chain | `PackingController`, `DispatchController` |
+
+**Frontend**
+
+| Piece | Where |
+|---|---|
+| The one-page order screen: display-name picker, product photographs, Qty/RATE/Margin/Margin %, sticky mobile bar | `app/(app)/sales/orders/new/page.tsx` |
+| "Where is this going out of?" dialog, with the shortage list the API sends back | `components/sales/order-workflow.tsx` |
+| Page one of a new customer: three sections, camera or upload, skip, read | `components/parties/customer-documents-step.tsx` |
+| One photograph: in-page camera (getUserMedia) or the phone's gallery, uploaded as taken | `components/parties/document-capture.tsx` |
+| The two pages together, prefill, PDF build after save, Pakistan-only cities | `app/(app)/parties/new/page.tsx` |
+| Record Payment gated and pointed at the receipt voucher (which prefills from `?type=receipt&partyId=`) | `sales/invoices/[id]`, `accounting/vouchers/new` |
+| Seven steps in the labels and the order filters; no Packing; the warehouse screen is a list | `lib/labels.ts`, `lib/nav-config.ts`, `proxy.ts`, `warehouse-queue.tsx` |
+
+### Live data touched
+
+- **Migration 21**: the chain shortened (7 orders moved, each logged), `IsForReceiving` + Meezan +
+  Faysal, **ORD-26-0171 and INV-26-8893 deleted** after checking nothing hung off them.
+- **Migration 22**: eight nullable columns on `Party`.
+- **One test order** (ORD-26-0174) raised through the new form, dispatched out of Karachi
+  Warehouse to prove the stock comes off (270 → 269), then deleted with the unit put back and the
+  order number wound back.
+- **One test customer** (VZ-C-0018) created to prove the documents PDF — which came back a real
+  5-page, 693 KB PDF with four embedded JPEGs, served by Cloudinary — then deleted. 26 parties
+  before and after.
+- 🔴 **One mistake**: a check meant to be refused ("dispatch from a short shelf") was not refused,
+  and **ORD-26-0163** really went out: three units off Shop 2 and a notification. Put back within
+  the minute — stock, movements, status, location, notifications — with an `ORDER_STATUS_RESTORED`
+  row in its history saying so.
+
+### How it was verified
+
+- The order form driven as a rep: no Sales rep, no Selling from, four payment methods, the
+  customer picker showing one display name, a product added from the picture list, **50 % typed
+  into Margin % giving margin 360 and rate 1,080 over a landed cost of 720**, and the order saved
+  with tax carried from the product (18 %) and the rep recorded as the signed-in user.
+- The dispatch dialog driven as the owner: three places offered, no Claim Stock, and the stock
+  movement, balance and activity row checked in the database afterwards.
+- Every dispatch refusal: no place (400 `needsLocation`), Claim Stock, a closed place, and a rep
+  (403).
+- The documents step at desktop and 375 px: three sections, camera dialog refusal handled
+  ("The camera was refused…", button disabled), skip-all reaching the form, Pakistan-only cities.
+- The reader endpoint answering "not configured" and the screen saying so.
+- The documents PDF: structure, page count, four `/DCTDecode` image streams, and each embedded
+  JPEG intact with dimensions matching what the PDF declares.
+- Gate: `tsc` clean, `eslint` 0 errors / 64 warnings, `next build` 86 pages (packing gone),
+  backend 0 errors.
+
+### Not proven, and the owner needs to know
+
+- **No CNIC has been read by the reader**, because no key is set. The screen behaves correctly
+  without one; the prompt is in one file and is meant to be argued with once a real card has been
+  through it (`convey.txt` §S8.1).
+- **No camera has taken a picture** — the test browser has none. Only the refusal path ran.
 
 ---
 
@@ -1443,8 +1568,10 @@ is the full list.*
 - **D5 — assign customers to the right salesman. Now blocking**: two reps have
   none, and the picker is their own list since 21 Sep, so they cannot raise an
   order. `changa.txt` §B1.
-- **D1 — which order step takes stock off the shelf** (26 of 31 order invoices
-  never moved stock). The biggest correctness issue in the system right now.
+- **D1 — the 26 past orders.** Answered for new orders on 22 September: stock
+  comes off at Dispatched, from the place the screen asks for. The orders
+  dispatched before that still need a one-off correction.
+- **D8 — no reader key**, so a CNIC has never actually been read here.
 - **D7 — nothing posts a sale invoice or a return to the ledger.** 39 invoices,
   12 journal entries, all seeded.
 - **D2 — scope of the no-past-dates rule** (report filters, cheque date,
@@ -1747,7 +1874,18 @@ of the whole folder reverts his work. Two further traps that recipe avoids:
     have a value"* on the first row where it is null. Cast them —
     `(DateOnly?)x.Invoice.InvoiceDate` — and guard with `x.Invoice != null`.
     Done for `SalesReturn.InvoiceId` in migration 20; four files had to change.
-26. **`int.ToString()` inside an EF query** — avoided on purpose (e.g. matching
+26. **A PDF can carry a JPEG almost unchanged, and nothing else easily.**
+    `PdfCanvas.Jpeg` writes the file's own bytes as a `/DCTDecode` image
+    XObject -- no decoding, no library. The declared `/Width`, `/Height` and
+    `/ColorSpace` must match the JPEG's SOF marker exactly or the file will not
+    open at all, so they are parsed from the marker rather than assumed, and
+    CMYK and arithmetic-coded JPEGs are refused. Fetch pictures from Cloudinary
+    with `f_jpg` and whatever the phone took arrives as a baseline JPEG.
+27. **A method call inside an EF `Where` is a run-time failure, not a build
+    one.** `.Where(c => CurrentRole() == "…")` compiles and then throws "could
+    not be translated" the first time the screen is opened. Read it into a
+    local first -- EF treats a local as a constant.
+28. **`int.ToString()` inside an EF query** — avoided on purpose (e.g. matching
     `DocumentFile.DocKey`). Build the string list in C# and use `Contains`.
 
 ### Reference
@@ -1771,6 +1909,10 @@ of the whole folder reverts his work. Two further traps that recipe avoids:
 | `backend/database/18_sales_scope_returns_and_places.sql` | Sales permissions, `PdfDeliverable`, `Party.CreatedByUserId`, Lahore pair. **Applied** |
 | `backend/database/19_product_pricing.sql` | `DutyPrice`, `MarginPrice` (**§1 applied**); drop `OpeningCost` (**§2 not run — after deploy**) |
 | `backend/database/20_places_rights_and_returns.sql` | In Transit deleted (documents moved first, 240 duplicate units dropped), billing and returns rights narrowed, `SalesReturn.InvoiceId` nullable, INVOICED renamed *Invoiced/Edit*. **Applied** |
+| `backend/database/21_order_chain_and_receiving.sql` | Chain cut to seven steps (7 live orders moved), `PaymentMethod.IsForReceiving` + Meezan/Faysal, ORD-26-0171 and INV-26-8893 deleted. **Applied** |
+| `backend/database/22_customer_documents.sql` | Eight columns on `Party`: the six document pictures and the bound PDF. **Applied** |
+| `backend/vizo-backend/Controllers/PartyDocumentsController.cs` | Reads a CNIC and a shop card, and binds a customer's documents into one PDF. **The prompt that decides every field is in this file** |
+| `backend/vizo-backend/Documents/LegalDocsPdf.cs` · `PdfCanvas.Jpeg` | The customer's document set, and the JPEG embedding written for it |
 | `vizo-erp/src/app/(app)/sales/returns/new/page.tsx` | The customer-first sales return: what may come back, how much of it, and onto which shelf |
 | `backend/database/changa.txt` / `convey.txt` | Owner's manual steps / found-not-changed. **Read both** |
 | `backend/vizo-backend/Services/SkuGenerator.cs` | SKU rules |
