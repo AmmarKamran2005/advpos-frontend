@@ -19,6 +19,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage, FormDescription } from "@/components/ui/form";
 import { toast } from "@/components/ui/toaster";
 import { useSession, API_BASE_URL, authHeader } from "@/components/providers/session-provider";
+import { DocumentCapture, type CaptureValue } from "@/components/parties/document-capture";
 import { cn } from "@/lib/utils";
 import { PARTY_COPY, partyOrigin, refineParty, type PartyOrigin } from "@/lib/party-tax";
 
@@ -62,6 +63,13 @@ type Party = {
   openingBalance: number;
   salesPersonUserId: number | null;
   defaultLocationId: number | null;
+  /* What is already on file, so each tile can show it and say "replace". */
+  documents?: {
+    cnicFront: string | null; cnicBack: string | null;
+    cardFront: string | null; cardBack: string | null;
+    affidavitFront: string | null; affidavitBack: string | null;
+    pdfUrl: string | null;
+  } | null;
   rating: string | null; notes: string | null;
   isActive: boolean;
 };
@@ -200,6 +208,26 @@ export default function EditPartyPage() {
 
   const isCustomer = party?.type === "CUSTOMER" || party?.type === "BOTH";
 
+  /* WHAT IS ON FILE, AND WHAT HAS JUST BEEN TAKEN.
+
+     A picture is only sent when somebody has just taken one -- the API keeps
+     whatever it already had for every slot left null, so opening a customer
+     and pressing Save cannot quietly wipe their papers.
+
+     AND NOTHING IS RE-READ. The owner's rule: on an edit the details already
+     in the database win, and a later photograph is filed, not obeyed. Once a
+     person has checked a name, a machine does not get another go at it. */
+  const [newDocs, setNewDocs] = React.useState<Record<string, CaptureValue>>({});
+
+  const DOCUMENT_SLOTS = [
+    { slot: "cnicFrontUrl", label: "CNIC front", on: party?.documents?.cnicFront ?? null },
+    { slot: "cnicBackUrl", label: "CNIC back", on: party?.documents?.cnicBack ?? null },
+    { slot: "cardFrontUrl", label: "Business card front", on: party?.documents?.cardFront ?? null },
+    { slot: "cardBackUrl", label: "Business card back", on: party?.documents?.cardBack ?? null },
+    { slot: "affidavitFrontUrl", label: "Affidavit page 1", on: party?.documents?.affidavitFront ?? null },
+    { slot: "affidavitBackUrl", label: "Affidavit page 2", on: party?.documents?.affidavitBack ?? null },
+  ] as const;
+
   async function onSubmit(d: FormValues) {
     if (!party) return;
     try {
@@ -240,9 +268,29 @@ export default function EditPartyPage() {
           defaultLocationId: Number(d.defaultLocationId),
           notes: d.notes || null,
           isActive: party.isActive,
+          /* Only what was taken just now. Everything else is left alone. */
+          cnicFrontUrl: newDocs.cnicFrontUrl?.url ?? null,
+          cnicBackUrl: newDocs.cnicBackUrl?.url ?? null,
+          cardFrontUrl: newDocs.cardFrontUrl?.url ?? null,
+          cardBackUrl: newDocs.cardBackUrl?.url ?? null,
+          affidavitFrontUrl: newDocs.affidavitFrontUrl?.url ?? null,
+          affidavitBackUrl: newDocs.affidavitBackUrl?.url ?? null,
         },
         { headers: authHeader() }
       );
+
+      /* A new picture means the bound PDF is now out of date. Swallowed on
+         failure -- the edit is saved either way and the customer's screen has
+         a Rebuild button. */
+      if (Object.values(newDocs).some(Boolean)) {
+        try {
+          await axios.post(`${API_BASE_URL}/parties/${id}/documents/pdf`, {}, { headers: authHeader() });
+        } catch {
+          toast.warning("The documents PDF could not be rebuilt", {
+            description: "The pictures are saved. Rebuild it from the customer's screen.",
+          });
+        }
+      }
 
       toast.success(res.data.message);
       router.push(`/parties/${id}`);
@@ -450,6 +498,50 @@ export default function EditPartyPage() {
                 </div>
               </CardBody>
             </Card>
+
+            {/* ── THE CUSTOMER'S PAPERS, ADDED LATER ──────────────────────
+
+                A shop that had no CNIC to hand when the account was opened
+                brings it next week. Each tile shows what is already on file
+                and takes a replacement; a tile left alone changes nothing,
+                because the API keeps whatever it had for any picture this
+                form does not send.
+
+                NOTHING IS RE-READ. The owner's rule for an edit: the details
+                in the database win, and the photograph is filed beside them.
+                The one PDF is rebuilt on save so it matches. */}
+            {party.type !== "SUPPLIER" && (
+              <Card>
+                <CardBody>
+                  <div className="flex items-start justify-between gap-3 mb-4">
+                    <div>
+                      <h3 className="text-sm font-semibold text-navy-900 dark:text-white">Documents</h3>
+                      <p className="text-2xs text-slate-500 dark:text-slate-400 mt-0.5 max-w-xl">
+                        CNIC, the shop&rsquo;s business card and the affidavit. Adding one files it and
+                        rebuilds the PDF &mdash; it does not change any of the details above.
+                      </p>
+                    </div>
+                    {party.documents?.pdfUrl && (
+                      <Button type="button" variant="ghost" size="sm" asChild>
+                        <a href={party.documents.pdfUrl} target="_blank" rel="noopener noreferrer">Open the PDF</a>
+                      </Button>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {DOCUMENT_SLOTS.map((d) => (
+                      <div key={d.slot}>
+                        <DocumentCapture
+                          label={d.label}
+                          hint={d.on && !newDocs[d.slot] ? "On file. Take another to replace it." : undefined}
+                          value={newDocs[d.slot] ?? (d.on ? { url: d.on, publicId: "" } : null)}
+                          onChange={(v) => setNewDocs((n) => ({ ...n, [d.slot]: v }))} />
+                      </div>
+                    ))}
+                  </div>
+                </CardBody>
+              </Card>
+            )}
 
             {canFillTax && (
               <Card>

@@ -6,7 +6,7 @@ import { useParams } from "next/navigation";
 import axios from "axios";
 import {
   AlertCircle, Phone, Mail, MapPin, Building2, FileText, Receipt,
-  RefreshCw, Loader2, Power, CreditCard, Star, User, Pencil,
+  RefreshCw, Loader2, Power, CreditCard, Star, User, Pencil, IdCard,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardBody } from "@/components/ui/card";
@@ -22,6 +22,7 @@ import { API_BASE_URL, authHeader, useSession } from "@/components/providers/ses
 import { formatMoney, formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { PARTY_TAX, partyOrigin } from "@/lib/party-tax";
+import { openDocument, asAttachment } from "@/lib/documents";
 
 /* GET /parties/{id}. The whole page ran off getParty() in src/data/parties
    before, so a customer created on /parties/new opened a "not found" screen. */
@@ -43,6 +44,15 @@ type Party = {
   rating: string | null; notes: string | null;
   isActive: boolean; createdAt: string;
   orderCount: number; invoiceCount: number; currentBalance: number;
+  /* The six photographs taken when the account was opened, and the one PDF
+     they are bound into. Null everywhere for an account opened before
+     22 September, which is most of them. */
+  documents?: {
+    cnicFront: string | null; cnicBack: string | null;
+    cardFront: string | null; cardBack: string | null;
+    affidavitFront: string | null; affidavitBack: string | null;
+    pdfUrl: string | null;
+  } | null;
 };
 
 /* GET /parties/{id}/statement — the ledger tab. */
@@ -91,6 +101,7 @@ export default function PartyDetailPage() {
   const [notFound, setNotFound] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [toggling, setToggling] = React.useState(false);
+  const [rebuilding, setRebuilding] = React.useState(false);
 
   const load = React.useCallback(async () => {
     if (!partyId) { setNotFound(true); setLoading(false); return; }
@@ -130,6 +141,27 @@ export default function PartyDetailPage() {
       setLoading(false);
     }
   }, [partyId]);
+
+  /* Bind whatever photographs this customer has into one PDF again. Used when
+     a picture was added from the edit screen after the account was opened --
+     the party row is updated there and then, and this is what makes the file
+     match it. */
+  const rebuildDocs = React.useCallback(async () => {
+    setRebuilding(true);
+    try {
+      const res = await axios.post<{ built: boolean; url: string | null; pages: number; message: string }>(
+        `${API_BASE_URL}/parties/${partyId}/documents/pdf`, {}, { headers: authHeader() });
+      toast.success(res.data.built ? "Documents PDF rebuilt" : "Nothing to bind", {
+        description: res.data.message,
+      });
+      await load();
+    } catch (e) {
+      toast.error("The PDF could not be built", { description: apiMessage(e, "Please try again.") });
+    } finally {
+      setRebuilding(false);
+    }
+  }, [partyId, load]);
+
 
   React.useEffect(() => {
     /* eslint-disable-next-line react-hooks/set-state-in-effect --
@@ -202,6 +234,14 @@ export default function PartyDetailPage() {
   }
 
   const overLimit = party.creditLimit > 0 && party.currentBalance > party.creditLimit;
+
+  /* How many of the six photographs this customer actually gave. The Rebuild
+     button is pointless without at least one. */
+  const documentCount = [
+    party.documents?.cnicFront, party.documents?.cnicBack,
+    party.documents?.cardFront, party.documents?.cardBack,
+    party.documents?.affidavitFront, party.documents?.affidavitBack,
+  ].filter(Boolean).length;
   const usedPercent = party.creditLimit > 0 ? Math.min(100, (party.currentBalance / party.creditLimit) * 100) : 0;
 
   const ledgerColumns: Column<StatementLine>[] = [
@@ -253,6 +293,29 @@ export default function PartyDetailPage() {
             <Button variant="secondary" className="gap-1.5" asChild>
               <Link href={`/parties/${party.id}/statement`}><FileText />Statement</Link>
             </Button>
+
+            {/* THE CUSTOMER'S OWN PAPERS, as one file.
+
+                Anybody who may open this screen may download them -- the owner
+                asked for that in those words, and the three roles who reach a
+                customer at all (sales, the order desk and you) are exactly the
+                three who need to be able to prove who a shop is.
+
+                Rebuild is here rather than automatic because a picture added
+                later goes on the party immediately and the PDF is the thing
+                that has to catch up. */}
+            {party.documents?.pdfUrl && (
+              <Button variant="secondary" className="gap-1.5"
+                onClick={() => openDocument(asAttachment(party.documents!.pdfUrl!))}>
+                <IdCard />Legal documents
+              </Button>
+            )}
+            {can("customers.manage") && documentCount > 0 && (
+              <Button variant="ghost" className="gap-1.5" onClick={() => void rebuildDocs()} disabled={rebuilding}>
+                {rebuilding ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
+                <span className="hidden sm:inline">{party.documents?.pdfUrl ? "Rebuild PDF" : "Build documents PDF"}</span>
+              </Button>
+            )}
             {/* PUT /parties/{id} had existed since the controller was written
                 and nothing called it -- there was no way in. Gated on the same
                 permission that lets somebody open an account in the first
