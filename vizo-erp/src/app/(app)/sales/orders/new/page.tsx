@@ -26,7 +26,7 @@ import { toast } from "@/components/ui/toaster";
 import { API_BASE_URL, authHeader, useSession } from "@/components/providers/session-provider";
 import { formatMoney, formatCompact } from "@/lib/format";
 import { todayISO, addDaysISO } from "@/lib/dates";
-import { landedCost, reprice, round2 } from "@/lib/pricing";
+import { landedCost, round2 } from "@/lib/pricing";
 import { cn } from "@/lib/utils";
 
 /* ───────────────────────────────────────────────────────────────────────────
@@ -80,28 +80,30 @@ type Lookups = {
   defaultTaxPercent: number;
 };
 
-/* THE MARGIN A SALESPERSON MAY ADD.
+/* THE RATE IS FIXED; THE MARGIN IS WHAT A SALESPERSON ADDS.
 
-   Two rules from the owner, 21 September:
+   The owner, 21 September (second message about this screen):
 
-     "by default margin percent must be 0, and salesperson cannot exceed margin
-      percent above 10"
+     Rate    -- fills itself with the selling price the Super Admin set for the
+                item, and cannot be edited.
+     Margin  -- in rupees, added ON TOP of that rate.
+     Margin % -- a percentage OF THAT RATE: Rs. 100 at 10% adds Rs. 10, so the
+                piece is sold at Rs. 110.
+     The line then shows the final price per piece (rate + margin).
 
-   So a line STARTS at what the piece landed at (cost + duty) -- margin 0 --
-   and a rep can add up to ten percent on top and no more. The catalogue's own
-   sale price is no longer where the line starts: it was a rate somebody typed
-   on the product screen, and on the live data it averaged nearly double the
-   landed cost, which is not a starting point a rep should be handed.
+   The base never moves. Typing a margin used to re-derive the rate from the
+   landed cost, which is why entering one appeared to shift everything: the two
+   boxes were fighting over which of them was the truth. Now there is one fixed
+   figure and one added figure, and the final price is their sum.
 
-   The cap belongs to the SALES role. The accountant edits an order at
-   Invoiced/Edit and the Super Admin can price anything; neither is "the
-   salesperson". The API enforces the same number
-   (SalesController.MaxSalesMarginPercent), because a limit that only the
-   browser knows about is a suggestion.
-
-   It bites only where there IS a landed cost. A product with no cost on file
-   has nothing to measure a percentage against, so it starts at its catalogue
-   price and is not capped -- the API makes the same exception. */
+   Earlier the same day: "salesperson cannot exceed margin percent above 10". That
+   stands, and is now measured against the fixed rate. It is the SALES role's --
+   the accountant editing at Invoiced/Edit and the Super Admin are not "the
+   salesperson" -- and the API enforces the same limits
+   (SalesController.ValidateOrderRequest), because a rate that is only locked in
+   the browser is a suggestion. A margin cannot be negative: the rate is the
+   floor. An item with no selling price on file has nothing to take a percentage
+   of, so it is not capped. */
 const MAX_SALES_MARGIN_PERCENT = 10;
 
 /** One line on the order, with everything the margin boxes need. */
@@ -115,9 +117,15 @@ type Line = {
   taxPercent: number;
   stock: number;
   qty: number;
+  /** The selling price set by the Super Admin. Fixed for the life of the line. */
+  base: number;
+  /** The FINAL price per piece: base + margin. This is what is sent as the rate. */
   rate: number;
   marginPrice: number;
   marginPercent: number;
+  /** What is in the two margin boxes, as typed -- so "0." and an empty box survive. */
+  marginPriceText: string;
+  marginPercentText: string;
   /** Set when the last thing typed was over the cap and was pulled back to it. */
   capped?: boolean;
 };
@@ -206,42 +214,56 @@ export default function NewOrderPage() {
         copy[at] = { ...copy[at], qty: copy[at].qty + 1 };
         return copy;
       }
-      /* Margin 0, so the rate is exactly what the piece landed at. A product
-         with no cost on file has no landed cost to add nothing to, so it keeps
-         its catalogue price instead of starting at a rate of zero. */
-      const hasCost = landedCost(p.costPrice, p.dutyPrice) > 0;
-      const priced = reprice(
-        { cost: p.costPrice, duty: p.dutyPrice, marginPrice: 0, marginPercent: 0, sale: p.salePrice },
-        hasCost ? "percent" : "sale");
+      /* The rate is the selling price the Super Admin set, and margin starts at
+         nothing, so the final price is that price. */
       return [...prev, {
         productId: p.id, name: p.name, sku: p.sku, imageUrl: p.imageUrl,
         cost: p.costPrice, duty: p.dutyPrice,
         taxPercent: p.taxRatePercent ?? lookups?.defaultTaxPercent ?? 0,
         stock: p.totalStock, qty: 1,
-        rate: priced.sale, marginPrice: priced.marginPrice, marginPercent: priced.marginPercent,
+        base: p.salePrice, rate: p.salePrice,
+        marginPrice: 0, marginPercent: 0, marginPriceText: "", marginPercentText: "",
       }];
     });
   }
 
-  /** One line changed. `lead` says which box the person typed in. */
-  function setLine(idx: number, patch: Partial<Line>, lead?: "price" | "percent" | "sale") {
+  /** A quantity changed. */
+  function setLine(idx: number, patch: Partial<Line>) {
+    setLines((prev) => prev.map((l, i) => (i === idx ? { ...l, ...patch } : l)));
+  }
+
+  /** A margin box was typed in. `lead` says which one; the other follows, and the base never moves. */
+  function setMargin(idx: number, lead: "price" | "percent", text: string) {
     setLines((prev) => prev.map((l, i) => {
       if (i !== idx) return l;
-      const next = { ...l, ...patch };
-      if (!lead) return next;
-      let priced = reprice(
-        { cost: next.cost, duty: next.duty, marginPrice: next.marginPrice, marginPercent: next.marginPercent, sale: next.rate },
-        lead);
+
+      const typed = parseFloat(text);
+      const n = Number.isFinite(typed) && typed > 0 ? typed : 0;     // the rate is the floor
+
+      let rs = lead === "price" ? n : round2((l.base * n) / 100);
+      let pct = lead === "percent" ? n : l.base > 0 ? round2((rs / l.base) * 100) : 0;
 
       /* Over the cap: whichever box was typed in, the answer is the same --
-         the most the rep may add. Checked on the rounded figure the API will
-         see, and only where there is a landed cost to measure against. */
+         the most the rep may add. Only where there is a rate to take a
+         percentage of. */
       let capped = false;
-      if (marginCapped && landedCost(next.cost, next.duty) > 0 && priced.marginPercent > MAX_SALES_MARGIN_PERCENT) {
-        priced = reprice({ ...priced, marginPercent: MAX_SALES_MARGIN_PERCENT }, "percent");
+      if (marginCapped && l.base > 0 && (rs / l.base) * 100 > MAX_SALES_MARGIN_PERCENT) {
+        rs = round2((l.base * MAX_SALES_MARGIN_PERCENT) / 100);
+        pct = MAX_SALES_MARGIN_PERCENT;
         capped = true;
       }
-      return { ...next, rate: priced.sale, marginPrice: priced.marginPrice, marginPercent: priced.marginPercent, capped };
+
+      const pretty = (v: number) => (v > 0 ? String(v) : "");
+      return {
+        ...l,
+        marginPrice: rs, marginPercent: pct,
+        rate: round2(l.base + rs),
+        /* The box being typed in keeps exactly what was typed, unless it was
+           pulled back to the cap; the other one shows the result. */
+        marginPriceText: lead === "price" && !capped ? text : pretty(rs),
+        marginPercentText: lead === "percent" && !capped ? text : pretty(pct),
+        capped,
+      };
     }));
   }
 
@@ -250,7 +272,7 @@ export default function NewOrderPage() {
     : lines.length === 0 ? "Add at least one item."
     : lines.some((l) => l.qty <= 0) ? "Every item needs a quantity."
     : lines.some((l) => l.rate < 0) ? "A rate cannot be negative."
-    : marginCapped && lines.some((l) => landedCost(l.cost, l.duty) > 0 && l.marginPercent > MAX_SALES_MARGIN_PERCENT + 0.005)
+    : marginCapped && lines.some((l) => l.base > 0 && l.marginPercent > MAX_SALES_MARGIN_PERCENT + 0.005)
       ? `Margin cannot be more than ${MAX_SALES_MARGIN_PERCENT}%.`
     : !methodId ? "Pick how this is being paid."
     : null;
@@ -442,8 +464,7 @@ export default function NewOrderPage() {
                                 </div>
                               </div>
                               <span className="tabular text-base font-bold text-navy-900 dark:text-white shrink-0">
-                                {formatMoney(landedCost(p.costPrice, p.dutyPrice) > 0
-                                  ? landedCost(p.costPrice, p.dutyPrice) : p.salePrice)}
+                                {formatMoney(p.salePrice)}
                               </span>
                             </CommandItem>
                           ))}
@@ -465,6 +486,7 @@ export default function NewOrderPage() {
                     <LineCard key={l.productId} line={l} idx={idx}
                       marginCapped={marginCapped}
                       onChange={setLine}
+                      onMargin={setMargin}
                       onRemove={() => setLines((prev) => prev.filter((_, i) => i !== idx))} />
                   ))}
                 </div>
@@ -593,18 +615,21 @@ export default function NewOrderPage() {
 /* ─────────────────────────────── one line ─────────────────────────────── */
 
 function LineCard({
-  line, idx, onChange, onRemove, marginCapped,
+  line, idx, onChange, onMargin, onRemove, marginCapped,
 }: {
   line: Line;
   idx: number;
   /** True for a salesperson: the margin boxes stop at MAX_SALES_MARGIN_PERCENT. */
   marginCapped: boolean;
-  onChange: (idx: number, patch: Partial<Line>, lead?: "price" | "percent" | "sale") => void;
+  onChange: (idx: number, patch: Partial<Line>) => void;
+  onMargin: (idx: number, lead: "price" | "percent", text: string) => void;
   onRemove: () => void;
 }) {
-  const base = landedCost(line.cost, line.duty);
+  const landed = landedCost(line.cost, line.duty);
   const amount = round2(line.rate * line.qty);
-  const belowCost = base > 0 && line.rate < base;
+  /* The base is the Super Admin's number; if it is under what the piece cost to
+     land, say so -- the rep cannot change it, but the owner would want to know. */
+  const belowCost = landed > 0 && line.base > 0 && line.base < landed;
 
   return (
     <div className={cn(
@@ -617,7 +642,7 @@ function LineCard({
           <div className="text-sm font-semibold text-navy-900 dark:text-white line-clamp-2">{line.name}</div>
           <div className="text-2xs tabular text-slate-500 dark:text-slate-400 mt-0.5">
             {line.sku} · {line.stock} in stock
-            {base > 0 && <> · lands at {formatMoney(base)}</>}
+            {landed > 0 && <> · lands at {formatMoney(landed)}</>}
           </div>
         </div>
         <Button type="button" variant="ghost" size="icon-sm" aria-label={`Remove ${line.name}`} onClick={onRemove}>
@@ -643,23 +668,25 @@ function LineCard({
         </Field>
 
         <Field label="Rate">
-          <Input type="number" inputMode="decimal" step="0.01" min={0} className="text-right tabular"
-            value={line.rate}
-            onChange={(e) => onChange(idx, { rate: Number(e.target.value) || 0 }, "sale")} />
+          {/* Fixed: the selling price the Super Admin set. Not editable. */}
+          <Input type="number" className="text-right tabular bg-slate-50 dark:bg-navy-800 cursor-not-allowed"
+            value={line.base} disabled readOnly aria-readonly title="Set by the Super Admin" />
         </Field>
 
-        <Field label="Margin">
-          <Input type="number" inputMode="decimal" step="0.01" className="text-right tabular"
-            value={line.marginPrice}
-            onChange={(e) => onChange(idx, { marginPrice: Number(e.target.value) || 0 }, "price")} />
+        <Field label="Margin (in Rs.)">
+          <Input type="number" inputMode="decimal" step="0.01" min={0} placeholder="e.g. 10"
+            className="text-right tabular"
+            value={line.marginPriceText}
+            onChange={(e) => onMargin(idx, "price", e.target.value)} />
         </Field>
 
-        <Field label={marginCapped && base > 0 ? `Margin % (max ${MAX_SALES_MARGIN_PERCENT})` : "Margin %"}>
-          <Input type="number" inputMode="decimal" step="0.01" className="text-right tabular"
-            value={line.marginPercent}
-            max={marginCapped && base > 0 ? MAX_SALES_MARGIN_PERCENT : undefined}
-            disabled={base <= 0}
-            onChange={(e) => onChange(idx, { marginPercent: Number(e.target.value) || 0 }, "percent")} />
+        <Field label={marginCapped && line.base > 0 ? `Margin % (max ${MAX_SALES_MARGIN_PERCENT})` : "Margin %"}>
+          <Input type="number" inputMode="decimal" step="0.01" min={0} placeholder="e.g. 10"
+            className="text-right tabular"
+            value={line.marginPercentText}
+            max={marginCapped && line.base > 0 ? MAX_SALES_MARGIN_PERCENT : undefined}
+            disabled={line.base <= 0}
+            onChange={(e) => onMargin(idx, "percent", e.target.value)} />
         </Field>
       </div>
 
@@ -670,12 +697,15 @@ function LineCard({
       )}
 
       <div className="flex items-center justify-between gap-2 mt-2 pt-2 border-t border-slate-100 dark:border-navy-700">
-        <span className="text-2xs text-slate-500 dark:text-slate-400">
-          {belowCost
-            ? "Below what this piece cost to land"
-            : base > 0
-              ? `${formatMoney(line.marginPrice)} a piece`
-              : "No cost on this item, so there is no margin to show"}
+        <span className={cn("text-xs", belowCost ? "text-danger" : "text-slate-600 dark:text-slate-300")}>
+          {/* The number the rep is really selling at, per piece, before the order is made. */}
+          Final price: <b className="tabular text-navy-900 dark:text-white">{formatMoney(line.rate)} / piece</b>
+          {line.marginPrice > 0 && (
+            <span className="text-2xs text-slate-500 dark:text-slate-400">
+              {" "}({formatMoney(line.base)} + {formatMoney(line.marginPrice)} margin)
+            </span>
+          )}
+          {belowCost && <span className="block text-2xs">The fixed rate is below what this piece cost to land</span>}
         </span>
         <span className="tabular text-sm font-bold text-navy-900 dark:text-white">{formatMoney(amount)}</span>
       </div>
