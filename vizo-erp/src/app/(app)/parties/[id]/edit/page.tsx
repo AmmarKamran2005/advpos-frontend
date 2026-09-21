@@ -19,7 +19,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage, FormDescription } from "@/components/ui/form";
 import { toast } from "@/components/ui/toaster";
 import { useSession, API_BASE_URL, authHeader } from "@/components/providers/session-provider";
-import { DocumentCapture, type CaptureValue } from "@/components/parties/document-capture";
+import { DocumentCapture, type CaptureGuard, type CaptureValue } from "@/components/parties/document-capture";
+import { kindOfSlot, PARTNER, SAME_AS_PARTNER, type Slot } from "@/components/parties/customer-documents-step";
+import { dHashOfUrl, hashDistance, SAME_PICTURE_BITS } from "@/lib/image-hash";
+import { imageAt } from "@/lib/images";
 import { cn } from "@/lib/utils";
 import { PARTY_COPY, partyOrigin, refineParty, type PartyOrigin } from "@/lib/party-tax";
 
@@ -227,6 +230,23 @@ export default function EditPartyPage() {
     { slot: "affidavitFrontUrl", label: "Affidavit page 1", on: party?.documents?.affidavitFront ?? null },
     { slot: "affidavitBackUrl", label: "Affidavit page 2", on: party?.documents?.affidavitBack ?? null },
   ] as const;
+
+  /* A NEW PICTURE IS CHECKED AGAINST THE OTHER SIDE, WHETHER THAT WAS JUST
+     TAKEN OR HAS BEEN ON FILE FOR MONTHS. The same rule as when the account was
+     opened: a back that is "very much the same" as the front is refused. A
+     picture already on file has no fingerprint kept with it, so its is worked
+     out from the copy on Cloudinary. */
+  const guardFor = (slotKey: string): CaptureGuard => async (hash) => {
+    if (!hash) return null;
+    const name = slotKey.replace(/Url$/, "") as Slot;
+    const partnerKey = `${PARTNER[name]}Url`;
+    const partner = DOCUMENT_SLOTS.find((x) => x.slot === partnerKey);
+    const just = newDocs[partnerKey];
+    const source = just?.url ?? partner?.on ?? null;
+    if (!source) return null;
+    const other = just?.hash ?? await dHashOfUrl(imageAt(source, 240) ?? source);
+    return hashDistance(hash, other) <= SAME_PICTURE_BITS[kindOfSlot(name)] ? SAME_AS_PARTNER[name] : null;
+  };
 
   async function onSubmit(d: FormValues) {
     if (!party) return;
@@ -535,6 +555,7 @@ export default function EditPartyPage() {
                           label={d.label}
                           hint={d.on && !newDocs[d.slot] ? "On file. Take another to replace it." : undefined}
                           value={newDocs[d.slot] ?? (d.on ? { url: d.on, publicId: "" } : null)}
+                          guard={guardFor(d.slot)}
                           onChange={(v) => setNewDocs((n) => ({ ...n, [d.slot]: v }))} />
                       </div>
                     ))}

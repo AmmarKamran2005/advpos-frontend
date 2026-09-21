@@ -27,12 +27,13 @@ import { toast } from "@/components/ui/toaster";
 import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
 import { formatMoney } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { ProductImage } from "@/components/products/product-image";
 
 /* GET /purchases/lookups. Suppliers, payment methods and the product catalogue
    all came from hard-coded arrays before, so a supplier or item added through
    the app could never be invoiced. */
 type LookupSupplier = { id: number; code: string; name: string };
-type LookupProduct = { id: number; sku: string; name: string; costPrice: number; taxRatePercent?: number };
+type LookupProduct = { id: number; sku: string; name: string; imageUrl?: string | null; costPrice: number; taxRatePercent?: number };
 type LookupMethod = { id: number; key: string; name: string };
 type Lookups = { suppliers: LookupSupplier[]; products: LookupProduct[]; paymentMethods: LookupMethod[] };
 
@@ -172,7 +173,7 @@ export default function NewPurchaseInvoicePage() {
       setProductOpen(false);
       return;
     }
-    append({ productId: id, sku: p.sku, name: p.name, qty: 1, unitCost: p.costPrice, taxPercent: p.taxRatePercent ?? 18 });
+    append({ productId: id, sku: p.sku, name: p.name, qty: 1, unitCost: p.costPrice, taxPercent: p.taxRatePercent ?? 0 });
     setProductOpen(false);
   }
 
@@ -368,17 +369,18 @@ export default function NewPurchaseInvoicePage() {
                     <PopoverTrigger asChild>
                       <Button type="button" variant="accent" size="sm" className="gap-1" disabled={loading}><Plus />Add</Button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-[480px] p-0">
+                    <PopoverContent className="w-[min(96vw,44rem)] p-0">
                       <Command>
                         <CommandInput placeholder="Search product…" />
-                        <CommandList>
+                        <CommandList className="max-h-[72vh]">
                           <CommandEmpty>No product found.</CommandEmpty>
                           <CommandGroup>
                             {lookups.products.map((p) => (
-                              <CommandItem key={p.id} value={`${p.sku} ${p.name}`} onSelect={() => pickProduct(p.id)}>
-                                <div className="flex-1">
-                                  <div className="text-sm">{p.name}</div>
-                                  <div className="text-2xs tabular text-slate-500">{p.sku} · cost {formatMoney(p.costPrice)}</div>
+                              <CommandItem key={p.id} value={`${p.sku} ${p.name}`} onSelect={() => pickProduct(p.id)} className="gap-4 py-3">
+                                <ProductImage url={p.imageUrl} name={p.name} size="xl" zoom={false} />
+                                <div className="flex-1 min-w-0">
+                                  <div className="text-base font-semibold">{p.name}</div>
+                                  <div className="text-xs tabular text-slate-500 mt-1">{p.sku} · cost {formatMoney(p.costPrice)}</div>
                                 </div>
                               </CommandItem>
                             ))}

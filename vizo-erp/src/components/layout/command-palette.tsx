@@ -53,7 +53,7 @@ export function CommandPalette() {
     { label: "Parties",           icon: Users,           href: "/parties",                       perm: "customers.view" },
     { label: "Customers",         icon: Users,           href: "/parties/customers",             perm: "customers.view" },
     { label: "Suppliers",         icon: Users,           href: "/parties/suppliers",             perm: "purchases.view" },
-    { label: "Products",          icon: Box,             href: "/inventory/products",            perm: "stock.view" },
+    { label: "Products",          icon: Box,             href: "/inventory/products",            perm: "products.view" },
     { label: "Stock Levels",      icon: Package,         href: "/inventory/stock-levels",        perm: "stock.view" },
     { label: "Stock Transfers",   icon: Package,         href: "/inventory/transfers",           perm: "stock.transfer" },
     { label: "Chart of Accounts", icon: BookOpen,        href: "/accounting/coa",                perm: "ledger.view" },

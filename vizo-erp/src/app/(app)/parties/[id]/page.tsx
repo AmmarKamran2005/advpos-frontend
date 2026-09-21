@@ -276,7 +276,15 @@ export default function PartyDetailPage() {
           <div className="flex items-center gap-3">
             <Avatar initials={party.initials} size="xl" className="size-12" />
             <div>
-              <div>{party.legalName}</div>
+              {/* The display name, as everywhere else in the project. The legal
+                  name is the same account's paper name, so it stays visible --
+                  underneath, and only when it says something different. */}
+              <div>{party.displayName}</div>
+              {party.legalName && party.legalName !== party.displayName && (
+                <div className="text-xs font-normal text-slate-500 dark:text-slate-400 mt-0.5">
+                  Legal name: {party.legalName}
+                </div>
+              )}
               <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                 <span className="tabular text-xs text-slate-500 dark:text-slate-400">{party.partyCode}</span>
                 <Badge variant={TYPE_LABEL[party.type].variant}>{TYPE_LABEL[party.type].label}</Badge>

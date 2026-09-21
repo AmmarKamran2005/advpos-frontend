@@ -23,6 +23,7 @@ import { vizoResolver } from "@/lib/zod-resolver";
 import { toast } from "@/components/ui/toaster";
 import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
 import { cn } from "@/lib/utils";
+import { ProductImage } from "@/components/products/product-image";
 
 /* GET /inventory/lookups.
    `products` used to be a hard-coded array imported from src/data/products, so
@@ -30,7 +31,7 @@ import { cn } from "@/lib/utils";
    was simply missing from this picker. Same for locations and the reason list,
    which was six <option> tags written into the page while the database carries
    the AdjustmentReason rows that the API actually validates against. */
-type LookupProduct = { id: number; sku: string; name: string; packing: number; costPrice: number; totalStock: number };
+type LookupProduct = { id: number; sku: string; name: string; imageUrl?: string | null; packing: number; costPrice: number; totalStock: number };
 type LookupLocation = { id: number; code: string; name: string };
 type LookupReason = { id: number; key: string; name: string };
 
@@ -264,18 +265,19 @@ export default function NewAdjustmentPage() {
                     <PopoverTrigger asChild>
                       <Button type="button" variant="accent" size="sm" className="gap-1" disabled={loading}><Plus />Add</Button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-[480px] p-0">
+                    <PopoverContent className="w-[min(96vw,44rem)] p-0">
                       <Command>
                         <CommandInput placeholder="Search product…" />
-                        <CommandList>
+                        <CommandList className="max-h-[72vh]">
                           <CommandEmpty>No product found.</CommandEmpty>
                           <CommandGroup>
                             {/* Whole active catalogue, straight off the API. */}
                             {lookups.products.map((p) => (
-                              <CommandItem key={p.id} value={`${p.sku} ${p.name}`} onSelect={() => pickProduct(p.id)}>
-                                <div className="flex-1">
-                                  <div className="text-sm">{p.name}</div>
-                                  <div className="text-2xs tabular text-slate-500">
+                              <CommandItem key={p.id} value={`${p.sku} ${p.name}`} onSelect={() => pickProduct(p.id)} className="gap-4 py-3">
+                                <ProductImage url={p.imageUrl} name={p.name} size="xl" zoom={false} />
+                                <div className="flex-1 min-w-0">
+                                  <div className="text-base font-semibold">{p.name}</div>
+                                  <div className="text-xs tabular text-slate-500 mt-1">
                                     {p.sku} · here {stock.get(p.id) ?? 0} · all locations {p.totalStock}
                                   </div>
                                 </div>

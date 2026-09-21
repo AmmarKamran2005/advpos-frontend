@@ -12,7 +12,8 @@ import { Badge } from "@/components/ui/badge";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SelectNative } from "@/components/ui/select-native";
-import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
+import { API_BASE_URL, authHeader, useSession } from "@/components/providers/session-provider";
+import { itemHref } from "@/lib/item-links";
 import { formatMoney, formatCompact } from "@/lib/format";
 import { toast } from "@/components/ui/toaster";
 
@@ -50,6 +51,7 @@ function apiMessage(e: unknown, fallback: string) {
 }
 
 export default function DeadStockPage() {
+  const { can } = useSession();
   const [days, setDays] = React.useState(90);
   const [locationId, setLocationId] = React.useState<number | null>(null);
   const [data, setData] = React.useState<DeadResponse>({ windowDays: 90, count: 0, tiedUpValue: 0, items: [] });
@@ -207,7 +209,7 @@ export default function DeadStockPage() {
             </div>
           </div>
         ) : (
-          <DataTable columns={columns} data={data.items} rowHref={(p) => `/inventory/products/${p.id}`} pageSize={15} />
+          <DataTable columns={columns} data={data.items} rowHref={(p) => itemHref(can, p.id)} pageSize={15} />
         )}
       </Card>
 

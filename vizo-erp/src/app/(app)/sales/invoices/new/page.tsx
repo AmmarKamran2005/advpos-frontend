@@ -28,6 +28,7 @@ import { toast } from "@/components/ui/toaster";
 import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
 import { formatMoney, formatCompact } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { ProductImage } from "@/components/products/product-image";
 
 /* GET /sales/lookups. A direct invoice is raised without an upstream order, so
    this screen needs the same live customers, locations, payment methods and
@@ -39,7 +40,7 @@ type LookupCustomer = {
   creditLimit: number; creditDays: number; holdPolicy: string; outstanding: number;
 };
 type LookupProduct = {
-  id: number; sku: string; name: string; packing: number;
+  id: number; sku: string; name: string; imageUrl?: string | null; packing: number;
   salePrice: number; taxRatePercent: number; totalStock: number;
 };
 type Lookups = {
@@ -327,17 +328,18 @@ export default function NewInvoicePage() {
                     <PopoverTrigger asChild>
                       <Button type="button" variant="accent" size="sm" className="gap-1" disabled={loading}><Plus />Add Product</Button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-[480px] p-0" align="end">
+                    <PopoverContent className="w-[min(96vw,44rem)] p-0" align="end">
                       <Command>
                         <CommandInput placeholder="Search products…" />
-                        <CommandList>
+                        <CommandList className="max-h-[72vh]">
                           <CommandEmpty>No product found.</CommandEmpty>
                           <CommandGroup heading={`${lookups.products.length} items`}>
                             {lookups.products.map((p) => (
-                              <CommandItem key={p.id} value={`${p.sku} ${p.name}`} onSelect={() => pickProduct(p.id)}>
+                              <CommandItem key={p.id} value={`${p.sku} ${p.name}`} onSelect={() => pickProduct(p.id)} className="gap-4 py-3">
+                                <ProductImage url={p.imageUrl} name={p.name} size="xl" zoom={false} />
                                 <div className="flex-1 min-w-0">
-                                  <div className="text-sm font-medium text-navy-900 dark:text-white truncate">{p.name}</div>
-                                  <div className="text-2xs tabular text-slate-500 dark:text-slate-400">{p.sku} · stock {p.totalStock}</div>
+                                  <div className="text-base font-semibold text-navy-900 dark:text-white line-clamp-2">{p.name}</div>
+                                  <div className="text-xs tabular text-slate-500 dark:text-slate-400 mt-1">{p.sku} · stock {p.totalStock}</div>
                                 </div>
                                 <span className="tabular text-sm font-bold text-navy-900 dark:text-white">{formatMoney(p.salePrice)}</span>
                               </CommandItem>

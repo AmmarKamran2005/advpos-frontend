@@ -22,6 +22,7 @@ import { toast } from "@/components/ui/toaster";
 import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
 import { formatMoney, formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { ProductImage } from "@/components/products/product-image";
 
 /* ───────────────────────────────────────────────────────────────────────────
    A SALES RETURN, THE WAY THE OWNER ASKED FOR IT
@@ -79,7 +80,7 @@ type Lookups = {
 };
 
 type BoughtItem = {
-  productId: number; name: string; sku: string; packing: string | null;
+  productId: number; name: string; sku: string; imageUrl?: string | null; packing: string | null;
   purchased: number; returned: number; returnable: number;
   unitPrice: number; spent: number;
   firstBought: string; lastBought: string; invoices: number;
@@ -419,19 +420,21 @@ export default function NewSalesReturnPage() {
                       <Plus className="size-4" />Add product
                     </Button>
                   </PopoverTrigger>
-                  <PopoverContent className="w-[min(92vw,34rem)] p-0" align="end">
+                  <PopoverContent className="w-[min(96vw,44rem)] p-0" align="end">
                     <Command>
                       <CommandInput placeholder="Search what they bought…" />
-                      <CommandList>
+                      <CommandList className="max-h-[72vh]">
                         <CommandEmpty>Nothing matches.</CommandEmpty>
                         <CommandGroup heading={`${items.length} item${items.length === 1 ? "" : "s"} ever bought`}>
                           {items.map((i) => (
                             <CommandItem key={i.productId} value={`${i.name} ${i.sku}`}
                               disabled={i.returnable <= 0}
+                              className="gap-4 py-3"
                               onSelect={() => { addUnits(i.productId, 1); setAddOpen(false); }}>
+                              <ProductImage url={i.imageUrl} name={i.name} size="xl" zoom={false} />
                               <div className="flex-1 min-w-0">
-                                <div className="text-sm font-medium text-navy-900 dark:text-white truncate">{i.name}</div>
-                                <div className="text-2xs tabular text-slate-500 dark:text-slate-400">
+                                <div className="text-base font-semibold text-navy-900 dark:text-white line-clamp-2">{i.name}</div>
+                                <div className="text-xs tabular text-slate-500 dark:text-slate-400 mt-1">
                                   {i.sku} · bought {i.purchased}
                                   {i.returned > 0 && ` · ${i.returned} back already`}
                                 </div>

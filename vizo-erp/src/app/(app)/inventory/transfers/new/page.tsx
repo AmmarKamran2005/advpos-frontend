@@ -22,12 +22,13 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { vizoResolver } from "@/lib/zod-resolver";
 import { toast } from "@/components/ui/toaster";
 import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
+import { ProductImage } from "@/components/products/product-image";
 
 /* GET /inventory/lookups. The product picker and both location dropdowns used
    to read hard-coded arrays out of src/data -- so an item or a location added
    through the app could never be transferred, because it was not in the list.
    Fetched on every mount, which is what keeps this current. */
-type LookupProduct = { id: number; sku: string; name: string; packing: number; totalStock: number };
+type LookupProduct = { id: number; sku: string; name: string; imageUrl?: string | null; packing: number; totalStock: number };
 type LookupLocation = { id: number; code: string; name: string };
 type Lookups = { products: LookupProduct[]; locations: LookupLocation[] };
 
@@ -240,13 +241,14 @@ export default function NewTransferPage() {
                   <h3 className="text-sm font-semibold text-navy-900 dark:text-white">Items <span className="text-danger">*</span> ({fields.length})</h3>
                   <Popover open={productOpen} onOpenChange={setProductOpen}>
                     <PopoverTrigger asChild><Button type="button" variant="accent" size="sm" className="gap-1" disabled={loading}><Plus />Add</Button></PopoverTrigger>
-                    <PopoverContent className="w-[480px] p-0">
-                      <Command><CommandInput placeholder="Search product…" /><CommandList><CommandEmpty>No product found.</CommandEmpty><CommandGroup>
+                    <PopoverContent className="w-[min(96vw,44rem)] p-0">
+                      <Command><CommandInput placeholder="Search product…" /><CommandList className="max-h-[72vh]"><CommandEmpty>No product found.</CommandEmpty><CommandGroup>
                         {lookups.products.map((p) => (
-                          <CommandItem key={p.id} value={`${p.sku} ${p.name}`} onSelect={() => pickProduct(p.id)}>
-                            <div className="flex-1">
-                              <div className="text-sm">{p.name}</div>
-                              <div className="text-2xs tabular text-slate-500">
+                          <CommandItem key={p.id} value={`${p.sku} ${p.name}`} onSelect={() => pickProduct(p.id)} className="gap-4 py-3">
+                            <ProductImage url={p.imageUrl} name={p.name} size="xl" zoom={false} />
+                            <div className="flex-1 min-w-0">
+                              <div className="text-base font-semibold">{p.name}</div>
+                              <div className="text-xs tabular text-slate-500 mt-1">
                                 {p.sku} · here {stock.get(p.id) ?? 0} · all locations {p.totalStock}
                               </div>
                             </div>

@@ -10,7 +10,9 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/components/ui/toaster";
 import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
-import { DocumentCapture, type CaptureValue } from "@/components/parties/document-capture";
+import { DocumentCapture, type CaptureGuard, type CaptureValue } from "@/components/parties/document-capture";
+import { dHashOfUrl, hashDistance, SAME_PICTURE_BITS, type DocumentKind } from "@/lib/image-hash";
+import { imageAt } from "@/lib/images";
 import { cn } from "@/lib/utils";
 
 /* ───────────────────────────────────────────────────────────────────────────
@@ -67,7 +69,33 @@ export type ReadFields = {
 
 type Problem = { image: string; reason: string; message: string };
 
-type Slot = "cnicFront" | "cnicBack" | "cardFront" | "cardBack" | "affidavitFront" | "affidavitBack";
+export type Slot = "cnicFront" | "cnicBack" | "cardFront" | "cardBack" | "affidavitFront" | "affidavitBack";
+
+/* THE OTHER SIDE OF THE SAME DOCUMENT, and what to say when a picture turns
+   out to be a copy of it.
+
+   The owner's rule: photograph the CNIC front, then try the same picture in the
+   back slot, and there must be an error that the two are very much the same.
+   The same is asked of the card and the affidavit -- a second copy of page 1 is
+   no more use as page 2 than a second copy of the front is as the back. */
+/** Which document a slot belongs to -- the threshold for "very much the same" depends on it. */
+export const kindOfSlot = (slot: Slot): DocumentKind =>
+  slot.startsWith("cnic") ? "cnic" : slot.startsWith("card") ? "card" : "affidavit";
+
+export const PARTNER: Record<Slot, Slot> = {
+  cnicFront: "cnicBack", cnicBack: "cnicFront",
+  cardFront: "cardBack", cardBack: "cardFront",
+  affidavitFront: "affidavitBack", affidavitBack: "affidavitFront",
+};
+
+export const SAME_AS_PARTNER: Record<Slot, string> = {
+  cnicFront: "The CNIC front and back pictures are very much the same. The front is the side with the photograph and the name -- turn the card over and take the other side.",
+  cnicBack: "The CNIC front and back pictures are very much the same. The back is the side with the address -- turn the card over and take the other side.",
+  cardFront: "The card front and back pictures are very much the same. Take the other side, or mark the back as not available.",
+  cardBack: "The card front and back pictures are very much the same. Take the other side, or mark the back as not available.",
+  affidavitFront: "Affidavit page 1 and page 2 are very much the same picture. Take the other page.",
+  affidavitBack: "Affidavit page 1 and page 2 are very much the same picture. Take the other page.",
+};
 
 const SECTIONS: {
   key: "cnic" | "card" | "affidavit";
@@ -154,6 +182,15 @@ export function CustomerDocumentsStep({
   const canRead = Boolean(urls.cnicFrontUrl || urls.cardFrontUrl);
   const problemFor = (slot: Slot) => problems.find((p) => p.image === slot)?.message ?? null;
 
+  /** The check a tile runs on a picture before it is uploaded. */
+  const guardFor = (slot: Slot): CaptureGuard => async (hash) => {
+    if (!hash) return null;                       // could not fingerprint it: do not block anybody
+    const other = shots[PARTNER[slot]];
+    if (!other) return null;
+    const otherHash = other.hash ?? await dHashOfUrl(imageAt(other.url, 240) ?? other.url);
+    return hashDistance(hash, otherHash) <= SAME_PICTURE_BITS[kindOfSlot(slot)] ? SAME_AS_PARTNER[slot] : null;
+  };
+
   function set(slot: Slot, v: CaptureValue) {
     setShots((s) => ({ ...s, [slot]: v }));
     setProblems((p) => p.filter((x) => x.image !== slot));
@@ -205,7 +242,11 @@ export function CustomerDocumentsStep({
   }
 
   const section = SECTIONS[at];
-  const done = section.slots.every((s) => shots[s.slot]) || skipped[section.key];
+  /* A section is finished once ANY side of it is in, or it has been marked not
+     available. It used to need every side, which contradicted the card's own
+     hint ("skip it if it is blank") and the owner's brief that partial sets are
+     fine: a shop with a one-sided card had to throw the front away to go on. */
+  const done = section.slots.some((s) => shots[s.slot]) || skipped[section.key];
   const last = at === SECTIONS.length - 1;
 
   return (
@@ -273,6 +314,7 @@ export function CustomerDocumentsStep({
                   hint={s.hint}
                   value={shots[s.slot]}
                   problem={problemFor(s.slot)}
+                  guard={guardFor(s.slot)}
                   onChange={(v) => set(s.slot, v)} />
               ))}
             </div>

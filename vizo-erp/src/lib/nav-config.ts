@@ -97,7 +97,14 @@ export const navigation: NavNode[] = [
     icon: Package,
     match: "inventory",
     children: [
-      { label: "Items",            href: "/inventory/products",     match: "inventory.products",     perms: ["stock.view"] },
+      /* ITEMS ARE NOT THE ORDER DESK'S. The owner's rule, 21 September: the
+         Order Department works Stock in Hand, Transfers, Stock Correction and
+         Stock History -- and never sees the item catalogue, Categories or
+         Brands, and cannot create any of them. Items therefore has its OWN
+         right, products.view, instead of hanging off stock.view (which the
+         order desk needs for the four screens below). Migration 23 makes the
+         grants. */
+      { label: "Items",            href: "/inventory/products",     match: "inventory.products",     perms: ["products.view"] },
       { label: "Categories",       href: "/inventory/categories",   match: "inventory.categories",   perms: ["products.manage"] },
       { label: "Brands",           href: "/inventory/brands",       match: "inventory.brands",       perms: ["products.manage"] },
       { label: "Stock in Hand",    href: "/inventory/stock-levels", match: "inventory.stock-levels", perms: ["stock.view"] },

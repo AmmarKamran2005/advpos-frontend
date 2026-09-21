@@ -14,6 +14,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Counter, CounterSkeletons } from "@/components/portals/dashboard-counter";
 import { API_BASE_URL, authHeader, useSession } from "@/components/providers/session-provider";
+import { itemHref } from "@/lib/item-links";
 import { formatMoney, formatCompact, formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -84,7 +85,7 @@ const STATUS_VARIANT: Record<string, "success" | "muted" | "warning" | "danger" 
 };
 
 export function OrderDeptDashboard() {
-  const { user } = useSession();
+  const { user, can } = useSession();
 
   const [data, setData] = React.useState<Data | null>(null);
   const [loading, setLoading] = React.useState(true);
@@ -305,7 +306,7 @@ export function OrderDeptDashboard() {
                   {data.stock.items.map((p) => (
                     <Link
                       key={p.id}
-                      href={`/inventory/products/${p.id}`}
+                      href={itemHref(can, p.id)}
                       className="flex items-center gap-2 text-sm hover:bg-slate-50 dark:hover:bg-navy-700/50 -mx-2 px-2 py-1.5 rounded-lg"
                     >
                       <TriangleAlert className={cn("size-3.5 shrink-0",

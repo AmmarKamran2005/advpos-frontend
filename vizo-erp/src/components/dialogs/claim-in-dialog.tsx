@@ -13,6 +13,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { SelectNative } from "@/components/ui/select-native";
+import { ProductImage } from "@/components/products/product-image";
+import { ProductPicker } from "@/components/products/product-picker";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Form, FormField, FormItem, FormLabel, FormControl, FormMessage, FormDescription,
@@ -29,7 +31,7 @@ type Lookups = {
   reasons: { id: number; key: string; name: string; usuallyAccepted: boolean }[];
   outcomes: { id: number; key: string; name: string }[];
   customers: { id: number; code: string; name: string }[];
-  products: { id: number; sku: string; name: string; costPrice: number }[];
+  products: { id: number; sku: string; name: string; imageUrl?: string | null; costPrice: number }[];
   policy: { remindUnsentAfterDays: number; replaceUpfront: boolean };
 };
 
@@ -208,12 +210,25 @@ export function ClaimInDialog({
                     <FormItem className="mb-4">
                       <FormLabel required>Which item?</FormLabel>
                       <FormControl>
-                        <SelectNative {...field}>
-                          <option value={0}>— Pick an item —</option>
-                          {lookups.products.map((p) => (
-                            <option key={p.id} value={p.id}>{p.sku} · {p.name}</option>
-                          ))}
-                        </SelectNative>
+                        <ProductPicker
+                          products={lookups.products}
+                          onPick={(p) => field.onChange(p.id)}
+                          trigger={
+                            <button type="button"
+                              className="w-full flex items-center gap-3 rounded-lg border border-slate-200 dark:border-navy-700 p-2 text-left hover:border-brand-yellow focus:outline-none focus:ring-2 focus:ring-brand-yellow">
+                              {product ? (
+                                <>
+                                  <ProductImage url={product.imageUrl} name={product.name} size="lg" zoom={false} />
+                                  <span className="min-w-0">
+                                    <span className="block text-sm font-semibold text-navy-900 dark:text-white">{product.name}</span>
+                                    <span className="block text-2xs tabular text-slate-500">{product.sku}</span>
+                                  </span>
+                                </>
+                              ) : (
+                                <span className="px-2 py-4 text-sm text-slate-500">— Pick an item —</span>
+                              )}
+                            </button>
+                          } />
                       </FormControl>
                       <FormMessage />
                     </FormItem>

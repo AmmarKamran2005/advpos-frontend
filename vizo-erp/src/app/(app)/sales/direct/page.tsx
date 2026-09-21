@@ -26,6 +26,7 @@ import { useSession, API_BASE_URL, authHeader } from "@/components/providers/ses
 import { openDocument, openDocumentWhenReady, viewableUrl } from "@/lib/documents";
 import { formatMoney } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { ProductImage } from "@/components/products/product-image";
 
 /* GET /sales/lookups?locationId= -- customers, locations, payment methods and
    the live catalogue with stock at the till you are standing at. This screen
@@ -37,7 +38,7 @@ type LookupCustomer = {
   creditLimit: number; creditDays: number; holdPolicy: string; outstanding: number;
 };
 type LookupProduct = {
-  id: number; sku: string; name: string; packing: number;
+  id: number; sku: string; name: string; imageUrl?: string | null; packing: number;
   salePrice: number; taxRatePercent: number; totalStock: number; stockHere: number | null;
 };
 type Lookups = {
@@ -394,19 +395,20 @@ export default function CounterSalePage() {
                       <Plus />Add Item
                     </Button>
                   </PopoverTrigger>
-                  <PopoverContent className="w-[480px] p-0" align="end">
+                  <PopoverContent className="w-[min(96vw,44rem)] p-0" align="end">
                     <Command>
                       <CommandInput placeholder="Scan a barcode, or search by code or name…" />
-                      <CommandList>
+                      <CommandList className="max-h-[72vh]">
                         <CommandEmpty>No item found.</CommandEmpty>
                         <CommandGroup heading={`${lookups.products.length} items`}>
                           {lookups.products.map((p) => {
                             const here = p.stockHere ?? p.totalStock;
                             return (
-                              <CommandItem key={p.id} value={`${p.sku} ${p.name}`} onSelect={() => addProduct(p.id)}>
+                              <CommandItem key={p.id} value={`${p.sku} ${p.name}`} onSelect={() => addProduct(p.id)} className="gap-4 py-3">
+                                <ProductImage url={p.imageUrl} name={p.name} size="xl" zoom={false} />
                                 <div className="flex-1 min-w-0">
-                                  <div className="text-sm font-medium text-navy-900 dark:text-white truncate">{p.name}</div>
-                                  <div className={cn("tabular text-2xs", here > 0 ? "text-slate-500 dark:text-slate-400" : "text-danger")}>
+                                  <div className="text-base font-semibold text-navy-900 dark:text-white line-clamp-2">{p.name}</div>
+                                  <div className={cn("tabular text-xs mt-1", here > 0 ? "text-slate-500 dark:text-slate-400" : "text-danger")}>
                                     {p.sku} · {here > 0 ? `${here} here` : "none here"}
                                   </div>
                                 </div>

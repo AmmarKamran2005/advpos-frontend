@@ -16,6 +16,7 @@ import { FilterBar } from "@/components/ui/filter-bar";
 import { Pager } from "@/components/ui/pager";
 import { Skeleton } from "@/components/ui/skeleton";
 import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
+import { ProductImage } from "@/components/products/product-image";
 import { downloadXlsx, exportError } from "@/lib/export";
 import { formatMoney, formatCompact } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -149,7 +150,7 @@ export default function ProductsPage() {
       header: "Product",
       cell: (p) => (
         <div className="flex items-center gap-2.5">
-          <Thumb url={p.imageUrl} alt={p.name} className="size-10" />
+          <ProductImage url={p.imageUrl} name={p.name} size="md" />
           <div className="min-w-0">
             <div className="font-medium text-navy-900 dark:text-white truncate">{p.name}</div>
             <div className="text-xs text-slate-500 dark:text-slate-400 tabular">{p.sku}</div>
@@ -400,17 +401,6 @@ function Fact({ label, value, tone }: { label: string; value: string; tone?: str
     <div>
       <div className={cn("tabular text-sm font-bold text-navy-900 dark:text-white", tone)}>{value}</div>
       <div className="text-2xs uppercase tracking-wide text-slate-500 dark:text-slate-400">{label}</div>
-    </div>
-  );
-}
-
-function Thumb({ url, alt, className }: { url: string | null; alt: string; className?: string }) {
-  return (
-    <div className={cn("rounded-lg bg-white dark:bg-navy-700 border border-slate-100 dark:border-navy-700 flex items-center justify-center flex-shrink-0 overflow-hidden", className)}>
-      {url
-        // eslint-disable-next-line @next/next/no-img-element
-        ? <img src={url} alt={alt} loading="lazy" className="size-full object-contain p-0.5" />
-        : <Package className="size-4 text-slate-400" />}
     </div>
   );
 }

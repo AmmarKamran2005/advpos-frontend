@@ -19,7 +19,8 @@ import { ConfirmDialog } from "@/components/dialogs";
 import { SelectNative } from "@/components/ui/select-native";
 import { Label } from "@/components/ui/label";
 import { toast } from "@/components/ui/toaster";
-import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
+import { API_BASE_URL, authHeader, useSession } from "@/components/providers/session-provider";
+import { itemHref } from "@/lib/item-links";
 import { formatMoney, formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -117,6 +118,7 @@ function daysSince(iso: string | null) {
 }
 
 export default function ClaimDetailPage() {
+  const { can } = useSession();
   const params = useParams<{ id: string }>();
   const id = parseInt(params.id ?? "0", 10);
 
@@ -378,7 +380,7 @@ export default function ClaimDetailPage() {
                   <PackageX className="size-6 text-warning" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <Link href={`/inventory/products/${claim.productId}`} className="text-base font-semibold text-navy-900 dark:text-white hover:text-brand-yellow">
+                  <Link href={itemHref(can, claim.productId)} className="text-base font-semibold text-navy-900 dark:text-white hover:text-brand-yellow">
                     {claim.qty} × {claim.productName}
                   </Link>
                   <div className="tabular text-xs text-slate-500 dark:text-slate-400 mt-0.5">{claim.sku}</div>

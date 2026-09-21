@@ -11,7 +11,8 @@ import { DataTable, type Column } from "@/components/ui/data-table";
 import { FilterBar } from "@/components/ui/filter-bar";
 import { SelectNative } from "@/components/ui/select-native";
 import { Skeleton } from "@/components/ui/skeleton";
-import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
+import { API_BASE_URL, authHeader, useSession } from "@/components/providers/session-provider";
+import { itemHref } from "@/lib/item-links";
 import { formatMoney, formatCompact } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -96,6 +97,7 @@ function apiMessage(e: unknown, fallback: string) {
 const WHOLE_SYSTEM = 0;
 
 export default function StockLevelsPage() {
+  const { can } = useSession();
   const [rows, setRows] = React.useState<StockRow[]>([]);
   const [locations, setLocations] = React.useState<LocationRef[]>([]);
   const [byCity, setByCity] = React.useState<CityStock[]>([]);
@@ -198,7 +200,7 @@ export default function StockLevelsPage() {
       cell: (r) => (
         <div>
           <Link
-            href={`/inventory/products/${r.productId}`}
+            href={itemHref(can, r.productId)}
             className="text-sm font-medium text-navy-900 dark:text-white hover:text-brand-yellow-700 dark:hover:text-brand-yellow"
           >
             {r.name}

@@ -18,6 +18,8 @@ import { DateInput } from "@/components/ui/date-input";
 import { isPastDate, PAST_DATE_MESSAGE } from "@/lib/dates";
 import { Textarea } from "@/components/ui/textarea";
 import { SelectNative } from "@/components/ui/select-native";
+import { ProductImage } from "@/components/products/product-image";
+import { ProductPicker } from "@/components/products/product-picker";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from "@/components/ui/form";
@@ -46,7 +48,7 @@ import { formatMoney } from "@/lib/format";
    ─────────────────────────────────────────────────────────────────────────── */
 
 type LookupProduct = {
-  id: number; sku: string; name: string; packing: number;
+  id: number; sku: string; name: string; imageUrl?: string | null; packing: number;
   salePrice: number; costPrice: number; taxRatePercent: number; totalStock: number;
 };
 
@@ -112,7 +114,6 @@ export default function EditOrderPage() {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [saving, setSaving] = React.useState(false);
-  const [adding, setAdding] = React.useState("");
 
   const form = useForm<FormValues>({
     resolver: vizoResolver(Schema),
@@ -193,7 +194,6 @@ export default function EditOrderPage() {
       discount: 0,
       taxPercent: p.taxRatePercent ?? lookups?.defaultTaxPercent ?? 0,
     });
-    setAdding("");
   }
 
   async function onSubmit(d: FormValues) {
@@ -422,23 +422,17 @@ export default function EditOrderPage() {
               <CardBody className="space-y-4">
                 <div className="flex items-center justify-between gap-3">
                   <h3 className="text-base font-semibold text-navy-900 dark:text-white">Items</h3>
-                  <div className="w-64">
-                    <SelectNative
-                      value={adding}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        if (v) addProduct(Number(v));
-                      }}
-                      aria-label="Add an item"
-                    >
-                      <option value="">Add an item…</option>
-                      {lookups.products.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.name} — {p.sku}
-                        </option>
-                      ))}
-                    </SelectNative>
-                  </div>
+                  <ProductPicker
+                    products={lookups.products}
+                    align="end"
+                    onPick={(p) => addProduct(p.id)}
+                    detail={(p) => `${p.sku} · ${p.totalStock} in stock`}
+                    right={(p) => formatMoney(p.salePrice)}
+                    trigger={
+                      <Button type="button" variant="accent" size="sm" className="gap-1.5 shrink-0">
+                        <Plus className="size-4" />Add an item
+                      </Button>
+                    } />
                 </div>
 
                 {fields.length === 0 && (
@@ -454,11 +448,16 @@ export default function EditOrderPage() {
                       key={f.id}
                       className="grid grid-cols-12 gap-2 items-end p-3 rounded-lg border border-slate-200 dark:border-navy-700"
                     >
-                      <div className="col-span-12 sm:col-span-4">
-                        <div className="text-sm font-medium text-navy-900 dark:text-white">
-                          {items[idx]?.name}
+                      <div className="col-span-12 sm:col-span-4 flex items-center gap-3">
+                        <ProductImage
+                          url={lookups.products.find((x) => x.id === Number(items[idx]?.productId))?.imageUrl}
+                          name={items[idx]?.name ?? "Item"} size="lg" />
+                        <div className="min-w-0">
+                          <div className="text-sm font-semibold text-navy-900 dark:text-white">
+                            {items[idx]?.name}
+                          </div>
+                          <div className="text-2xs tabular text-slate-500">{items[idx]?.sku}</div>
                         </div>
-                        <div className="text-2xs tabular text-slate-500">{items[idx]?.sku}</div>
                       </div>
 
                       <FormField

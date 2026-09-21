@@ -6,7 +6,7 @@ import { useParams } from "next/navigation";
 import axios from "axios";
 import {
   ArrowLeft, ArrowRight, ArrowDownLeft, ArrowUpRight, ExternalLink, AlertCircle, RefreshCw,
-  Package, User, MapPin, Clock, Hash, Layers, History as HistoryIcon,
+  User, MapPin, Clock, Hash, Layers, History as HistoryIcon,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardBody } from "@/components/ui/card";
@@ -14,7 +14,9 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
-import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
+import { API_BASE_URL, authHeader, useSession } from "@/components/providers/session-provider";
+import { ProductImage } from "@/components/products/product-image";
+import { itemHref, itemsCrumb } from "@/lib/item-links";
 import { formatDate, formatDateTime, formatMoney, formatTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -54,6 +56,7 @@ function apiMessage(e: unknown, fallback: string) {
 }
 
 export default function MovementDetailPage() {
+  const { can } = useSession();
   const params = useParams<{ id: string; movementId: string }>();
   const productId = parseInt(params.id ?? "0", 10);
   const movementId = parseInt(params.movementId ?? "0", 10);
@@ -82,7 +85,7 @@ export default function MovementDetailPage() {
     void load();
   }, [load]);
 
-  const back = `/inventory/products/${productId}?tab=movements`;
+  const back = can("products.view") ? `/inventory/products/${productId}?tab=movements` : `/inventory/products/${productId}/history`;
 
   if (loading) {
     return (
@@ -122,8 +125,8 @@ export default function MovementDetailPage() {
       <PageHeader
         breadcrumbs={[
           { label: "Inventory" },
-          { label: "Products", href: "/inventory/products" },
-          { label: m.product.name, href: `/inventory/products/${productId}` },
+          itemsCrumb(can),
+          { label: m.product.name, href: itemHref(can, productId) },
           { label: "Movements", href: back },
           { label: m.reference ?? `#${m.id}` },
         ]}
@@ -151,13 +154,8 @@ export default function MovementDetailPage() {
       <Card className="mb-6">
         <CardBody>
           <div className="flex flex-col gap-5 lg:flex-row lg:items-center">
-            <Link href={`/inventory/products/${productId}`} className="flex items-center gap-3 min-w-0 group lg:w-80">
-              <div className="size-14 rounded-xl border border-slate-100 bg-white dark:border-navy-700 dark:bg-navy-900 flex items-center justify-center overflow-hidden flex-shrink-0">
-                {m.product.imageUrl
-                  // eslint-disable-next-line @next/next/no-img-element
-                  ? <img src={m.product.imageUrl} alt={m.product.name} className="size-full object-contain p-1" />
-                  : <Package className="size-6 text-slate-300" />}
-              </div>
+            <Link href={itemHref(can, productId)} className="flex items-center gap-3 min-w-0 group lg:w-80">
+              <ProductImage url={m.product.imageUrl} name={m.product.name} size="lg" zoom={false} />
               <div className="min-w-0">
                 <div className="text-sm font-semibold text-navy-900 dark:text-white group-hover:text-brand-yellow-700 dark:group-hover:text-brand-yellow line-clamp-2">
                   {m.product.name}
@@ -265,7 +263,7 @@ export default function MovementDetailPage() {
                       l.isThis && "-mx-2 rounded-md bg-brand-yellow/10 px-2")}>
                       <div className="min-w-0">
                         <div className="truncate text-sm text-navy-900 dark:text-white">
-                          {l.isThis ? <b>{l.name}</b> : <Link href={`/inventory/products/${l.productId}`} className="hover:underline">{l.name}</Link>}
+                          {l.isThis ? <b>{l.name}</b> : <Link href={itemHref(can, l.productId)} className="hover:underline">{l.name}</Link>}
                         </div>
                         <div className="text-2xs tabular text-slate-500 dark:text-slate-400">{l.sku}</div>
                       </div>

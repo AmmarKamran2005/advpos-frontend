@@ -22,6 +22,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/toaster";
 import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
+import { ProductImage } from "@/components/products/product-image";
 import { formatMoney, formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { downloadXlsx, exportError } from "@/lib/export";
@@ -298,12 +299,7 @@ function ProductDetail() {
         ]}
         title={
           <div className="flex items-center gap-3">
-            <div className="size-12 rounded-xl bg-slate-100 dark:bg-navy-700 flex items-center justify-center overflow-hidden">
-              {product.imageUrl
-                // eslint-disable-next-line @next/next/no-img-element
-                ? <img src={product.imageUrl} alt={product.name} className="size-full object-cover" />
-                : <Package className="size-6 text-slate-400" />}
-            </div>
+            <ProductImage url={product.imageUrl} name={product.name} size="xl" />
             <div>
               <div>{product.name}</div>
               <div className="flex items-center gap-2 mt-1.5">
@@ -527,9 +523,9 @@ function ProductDetail() {
           <Card>
             <CardBody>
               {product.imageUrl ? (
-                <div className="max-w-sm">
+                <div className="max-w-2xl">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={product.imageUrl} alt={product.name} className="w-full rounded-lg border border-slate-200 dark:border-navy-700" />
+                  <img src={product.imageUrl} alt={product.name} className="w-full max-h-[70vh] object-contain bg-white rounded-lg border border-slate-200 dark:border-navy-700" />
                   <div className="text-xs text-slate-500 dark:text-slate-400 mt-2 break-all">{product.imageUrl}</div>
                 </div>
               ) : (

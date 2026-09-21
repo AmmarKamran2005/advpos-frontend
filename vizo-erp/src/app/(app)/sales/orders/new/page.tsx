@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import axios from "axios";
 import {
-  AlertCircle, AlertTriangle, FileText, ImageIcon, Loader2,
+  AlertCircle, AlertTriangle, FileText, Loader2,
   Minus, Plus, RefreshCw, Save, Search, ShoppingCart, Trash2, X,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
@@ -20,6 +20,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { ProductImage } from "@/components/products/product-image";
 import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from "@/components/ui/command";
 import { toast } from "@/components/ui/toaster";
 import { API_BASE_URL, authHeader, useSession } from "@/components/providers/session-provider";
@@ -79,6 +80,30 @@ type Lookups = {
   defaultTaxPercent: number;
 };
 
+/* THE MARGIN A SALESPERSON MAY ADD.
+
+   Two rules from the owner, 21 September:
+
+     "by default margin percent must be 0, and salesperson cannot exceed margin
+      percent above 10"
+
+   So a line STARTS at what the piece landed at (cost + duty) -- margin 0 --
+   and a rep can add up to ten percent on top and no more. The catalogue's own
+   sale price is no longer where the line starts: it was a rate somebody typed
+   on the product screen, and on the live data it averaged nearly double the
+   landed cost, which is not a starting point a rep should be handed.
+
+   The cap belongs to the SALES role. The accountant edits an order at
+   Invoiced/Edit and the Super Admin can price anything; neither is "the
+   salesperson". The API enforces the same number
+   (SalesController.MaxSalesMarginPercent), because a limit that only the
+   browser knows about is a suggestion.
+
+   It bites only where there IS a landed cost. A product with no cost on file
+   has nothing to measure a percentage against, so it starts at its catalogue
+   price and is not capped -- the API makes the same exception. */
+const MAX_SALES_MARGIN_PERCENT = 10;
+
 /** One line on the order, with everything the margin boxes need. */
 type Line = {
   productId: number;
@@ -93,6 +118,8 @@ type Line = {
   rate: number;
   marginPrice: number;
   marginPercent: number;
+  /** Set when the last thing typed was over the cap and was pulled back to it. */
+  capped?: boolean;
 };
 
 /** Every failure comes back as { message } -- show the wording the API chose. */
@@ -112,6 +139,8 @@ export default function NewOrderPage() {
   /* Billing is the back office's since 21 September, so the "invoice it now"
      switch is only drawn for the two roles that may actually do it. */
   const mayInvoice = role === "super-admin" || role === "accountant";
+  /* Only a salesperson is held to the margin cap -- see MAX_SALES_MARGIN_PERCENT. */
+  const marginCapped = role === "sales";
 
   const [lookups, setLookups] = React.useState<Lookups | null>(null);
   const [loading, setLoading] = React.useState(true);
@@ -177,9 +206,13 @@ export default function NewOrderPage() {
         copy[at] = { ...copy[at], qty: copy[at].qty + 1 };
         return copy;
       }
+      /* Margin 0, so the rate is exactly what the piece landed at. A product
+         with no cost on file has no landed cost to add nothing to, so it keeps
+         its catalogue price instead of starting at a rate of zero. */
+      const hasCost = landedCost(p.costPrice, p.dutyPrice) > 0;
       const priced = reprice(
         { cost: p.costPrice, duty: p.dutyPrice, marginPrice: 0, marginPercent: 0, sale: p.salePrice },
-        "sale");
+        hasCost ? "percent" : "sale");
       return [...prev, {
         productId: p.id, name: p.name, sku: p.sku, imageUrl: p.imageUrl,
         cost: p.costPrice, duty: p.dutyPrice,
@@ -196,10 +229,19 @@ export default function NewOrderPage() {
       if (i !== idx) return l;
       const next = { ...l, ...patch };
       if (!lead) return next;
-      const priced = reprice(
+      let priced = reprice(
         { cost: next.cost, duty: next.duty, marginPrice: next.marginPrice, marginPercent: next.marginPercent, sale: next.rate },
         lead);
-      return { ...next, rate: priced.sale, marginPrice: priced.marginPrice, marginPercent: priced.marginPercent };
+
+      /* Over the cap: whichever box was typed in, the answer is the same --
+         the most the rep may add. Checked on the rounded figure the API will
+         see, and only where there is a landed cost to measure against. */
+      let capped = false;
+      if (marginCapped && landedCost(next.cost, next.duty) > 0 && priced.marginPercent > MAX_SALES_MARGIN_PERCENT) {
+        priced = reprice({ ...priced, marginPercent: MAX_SALES_MARGIN_PERCENT }, "percent");
+        capped = true;
+      }
+      return { ...next, rate: priced.sale, marginPrice: priced.marginPrice, marginPercent: priced.marginPercent, capped };
     }));
   }
 
@@ -208,6 +250,8 @@ export default function NewOrderPage() {
     : lines.length === 0 ? "Add at least one item."
     : lines.some((l) => l.qty <= 0) ? "Every item needs a quantity."
     : lines.some((l) => l.rate < 0) ? "A rate cannot be negative."
+    : marginCapped && lines.some((l) => landedCost(l.cost, l.duty) > 0 && l.marginPercent > MAX_SALES_MARGIN_PERCENT + 0.005)
+      ? `Margin cannot be more than ${MAX_SALES_MARGIN_PERCENT}%.`
     : !methodId ? "Pick how this is being paid."
     : null;
 
@@ -379,26 +423,27 @@ export default function NewOrderPage() {
                       <Plus className="size-4" />Add product
                     </Button>
                   </PopoverTrigger>
-                  <PopoverContent className="w-[min(94vw,38rem)] p-0" align="end">
+                  <PopoverContent className="w-[min(96vw,44rem)] p-0" align="end">
                     <Command>
                       <CommandInput placeholder="Search by name or code…" />
-                      <CommandList className="max-h-[60vh]">
+                      <CommandList className="max-h-[72vh]">
                         <CommandEmpty>No product found.</CommandEmpty>
                         <CommandGroup heading={`${products.length} items`}>
                           {products.map((p) => (
                             <CommandItem key={p.id} value={`${p.name} ${p.sku}`} onSelect={() => addProduct(p)}
-                              className="gap-3 py-2">
-                              <ProductImage url={p.imageUrl} name={p.name} size="lg" />
+                              className="gap-4 py-3">
+                              <ProductImage url={p.imageUrl} name={p.name} size="xl" zoom={false} />
                               <div className="flex-1 min-w-0">
-                                <div className="text-sm font-medium text-navy-900 dark:text-white line-clamp-2">
+                                <div className="text-base font-semibold text-navy-900 dark:text-white line-clamp-3">
                                   {p.name}
                                 </div>
-                                <div className="text-2xs tabular text-slate-500 dark:text-slate-400 mt-0.5">
+                                <div className="text-xs tabular text-slate-500 dark:text-slate-400 mt-1">
                                   {p.sku} · {p.totalStock} in stock
                                 </div>
                               </div>
-                              <span className="tabular text-sm font-bold text-navy-900 dark:text-white shrink-0">
-                                {formatMoney(p.salePrice)}
+                              <span className="tabular text-base font-bold text-navy-900 dark:text-white shrink-0">
+                                {formatMoney(landedCost(p.costPrice, p.dutyPrice) > 0
+                                  ? landedCost(p.costPrice, p.dutyPrice) : p.salePrice)}
                               </span>
                             </CommandItem>
                           ))}
@@ -418,6 +463,7 @@ export default function NewOrderPage() {
                 <div className="space-y-3">
                   {lines.map((l, idx) => (
                     <LineCard key={l.productId} line={l} idx={idx}
+                      marginCapped={marginCapped}
                       onChange={setLine}
                       onRemove={() => setLines((prev) => prev.filter((_, i) => i !== idx))} />
                   ))}
@@ -547,10 +593,12 @@ export default function NewOrderPage() {
 /* ─────────────────────────────── one line ─────────────────────────────── */
 
 function LineCard({
-  line, idx, onChange, onRemove,
+  line, idx, onChange, onRemove, marginCapped,
 }: {
   line: Line;
   idx: number;
+  /** True for a salesperson: the margin boxes stop at MAX_SALES_MARGIN_PERCENT. */
+  marginCapped: boolean;
   onChange: (idx: number, patch: Partial<Line>, lead?: "price" | "percent" | "sale") => void;
   onRemove: () => void;
 }) {
@@ -606,13 +654,20 @@ function LineCard({
             onChange={(e) => onChange(idx, { marginPrice: Number(e.target.value) || 0 }, "price")} />
         </Field>
 
-        <Field label="Margin %">
+        <Field label={marginCapped && base > 0 ? `Margin % (max ${MAX_SALES_MARGIN_PERCENT})` : "Margin %"}>
           <Input type="number" inputMode="decimal" step="0.01" className="text-right tabular"
             value={line.marginPercent}
+            max={marginCapped && base > 0 ? MAX_SALES_MARGIN_PERCENT : undefined}
             disabled={base <= 0}
             onChange={(e) => onChange(idx, { marginPercent: Number(e.target.value) || 0 }, "percent")} />
         </Field>
       </div>
+
+      {line.capped && (
+        <p role="alert" className="mt-2 text-2xs font-medium text-danger">
+          The most you can add is {MAX_SALES_MARGIN_PERCENT}%. It has been set to {MAX_SALES_MARGIN_PERCENT}%.
+        </p>
+      )}
 
       <div className="flex items-center justify-between gap-2 mt-2 pt-2 border-t border-slate-100 dark:border-navy-700">
         <span className="text-2xs text-slate-500 dark:text-slate-400">
@@ -624,26 +679,6 @@ function LineCard({
         </span>
         <span className="tabular text-sm font-bold text-navy-900 dark:text-white">{formatMoney(amount)}</span>
       </div>
-    </div>
-  );
-}
-
-/** The product photo, or its initials when there is none. */
-function ProductImage({ url, name, size }: { url: string | null; name: string; size: "lg" | "xl" }) {
-  const box = size === "xl" ? "size-16 sm:size-20" : "size-12";
-  if (!url) {
-    return (
-      <div className={cn(box, "shrink-0 rounded-lg bg-slate-100 dark:bg-navy-800 flex items-center justify-center")}>
-        <ImageIcon className="size-5 text-slate-300 dark:text-slate-600" />
-      </div>
-    );
-  }
-  return (
-    <div className={cn(box, "shrink-0 rounded-lg bg-white dark:bg-navy-800 border border-slate-200 dark:border-navy-700 overflow-hidden")}>
-      {/* eslint-disable-next-line @next/next/no-img-element --
-          the images are Cloudinary URLs on a domain that is not in
-          next.config, and next/image would need every one whitelisted. */}
-      <img src={url} alt={name} loading="lazy" className="size-full object-contain p-1" />
     </div>
   );
 }

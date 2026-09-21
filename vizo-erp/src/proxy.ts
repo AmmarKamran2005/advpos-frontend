@@ -65,7 +65,7 @@ const PUBLIC_PATHS = [
  * scopes a rep to their own orders, their own invoices and the returns against
  * them; see SalesController.SalesScopeUserId.
  */
-const ROUTE_RULES: { prefix: string; roles: RoleKey[]; perm?: string }[] = [
+const ROUTE_RULES: { prefix: string; pattern?: RegExp; roles: RoleKey[]; perm?: string }[] = [
   { prefix: "/admin", roles: ["super-admin"] },
 
   { prefix: "/accounting", roles: ["super-admin", "accountant"] },
@@ -92,11 +92,40 @@ const ROUTE_RULES: { prefix: string; roles: RoleKey[]; perm?: string }[] = [
 
   { prefix: "/warehouse", roles: ["super-admin", "warehouse-keeper"] },
 
+  /* PURCHASES ARE NOT THE ORDER DESK'S -- EVER.
+
+     The owner: "order department cannot access any purchases page ... order
+     department can never see purchases". By role, with no `perm` escape hatch,
+     on purpose: the API refuses the order-dept role on every purchases endpoint
+     (PurchasesController), so ticking a permission for them in Setup would open
+     a screen whose every call answers 403. "Never" is a rule about the job. */
   {
     prefix: "/purchases",
-    roles: ["super-admin", "accountant", "order-dept"],
-    perm: "purchases.view",
+    roles: ["super-admin", "accountant"],
   },
+
+  /* THE ITEM CATALOGUE, CATEGORIES AND BRANDS -- not the order desk's either.
+
+     Matched by pattern because the item pages live at /inventory/products/...
+     alongside the two pages the order desk DOES use (/{id}/history and
+     /{id}/movements/...), which are Stock History and must stay open. Creating
+     or changing an item, a category or a brand takes products.manage; looking
+     at the list or one item takes products.view. Both listed above the general
+     /inventory rule, because the first match wins. */
+  {
+    prefix: "/inventory/products/new",
+    pattern: /^\/inventory\/products\/new\/?$/,
+    roles: ["super-admin"],
+    perm: "products.manage",
+  },
+  {
+    prefix: "/inventory/products",
+    pattern: /^\/inventory\/products(\/\d+)?\/?$/,
+    roles: ["super-admin", "accountant", "warehouse-keeper"],
+    perm: "products.view",
+  },
+  { prefix: "/inventory/categories", roles: ["super-admin"], perm: "products.manage" },
+  { prefix: "/inventory/brands", roles: ["super-admin"], perm: "products.manage" },
   {
     prefix: "/inventory",
     roles: ["super-admin", "accountant", "order-dept", "warehouse-keeper"],
@@ -114,7 +143,9 @@ const ROUTE_RULES: { prefix: string; roles: RoleKey[]; perm?: string }[] = [
     perm: "claims.view",
   },
 
-  { prefix: "/parties/suppliers", roles: ["super-admin", "accountant", "order-dept"] },
+  /* Suppliers show what has been bought from them (GET /purchases/summary), so
+     they go with Purchases: not the order desk's. */
+  { prefix: "/parties/suppliers", roles: ["super-admin", "accountant"] },
   { prefix: "/parties", roles: ALL },
 
   { prefix: "/reports", roles: ALL },
@@ -218,8 +249,8 @@ export function proxy(req: NextRequest) {
   /* A token with no readable role is a broken session, not an authorised one. */
   if (!role || !ALL.includes(role)) return signOut(req, "/login");
 
-  const rule = ROUTE_RULES.find(
-    (r) => pathname === r.prefix || pathname.startsWith(`${r.prefix}/`)
+  const rule = ROUTE_RULES.find((r) =>
+    r.pattern ? r.pattern.test(pathname) : pathname === r.prefix || pathname.startsWith(`${r.prefix}/`)
   );
 
   /* Unlisted app routes are closed by default. Adding a screen means adding a

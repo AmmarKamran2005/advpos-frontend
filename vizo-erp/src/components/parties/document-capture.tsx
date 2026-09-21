@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "@/components/ui/toaster";
 import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
+import { dHashOfFile } from "@/lib/image-hash";
 import { cn } from "@/lib/utils";
 
 /* ───────────────────────────────────────────────────────────────────────────
@@ -36,7 +37,11 @@ import { cn } from "@/lib/utils";
    The Upload button still works there.
    ─────────────────────────────────────────────────────────────────────────── */
 
-export type CaptureValue = { url: string; publicId: string } | null;
+/** `hash` is the picture's fingerprint (lib/image-hash.ts), kept so the other side of the same document can be compared with it. */
+export type CaptureValue = { url: string; publicId: string; hash?: string | null } | null;
+
+/** Decides whether a picture may be used: return the sentence to refuse it with, or null to accept. */
+export type CaptureGuard = (hash: string | null) => Promise<string | null> | string | null;
 
 export function DocumentCapture({
   label,
@@ -44,6 +49,7 @@ export function DocumentCapture({
   value,
   onChange,
   problem,
+  guard,
   folder = "advpos/images/customer-documents",
 }: {
   label: string;
@@ -52,9 +58,15 @@ export function DocumentCapture({
   onChange: (v: CaptureValue) => void;
   /** What the reader said about this picture, when it could not read it. */
   problem?: string | null;
+  /** Asked before the picture is uploaded -- see CaptureGuard. */
+  guard?: CaptureGuard;
   folder?: string;
 }) {
   const [busy, setBusy] = React.useState(false);
+  /* Why the last picture offered was turned away, shown under the tile until
+     the next attempt. It is kept here rather than in the parent because a
+     refused picture never reaches the parent at all. */
+  const [refused, setRefused] = React.useState<string | null>(null);
   const [cameraOpen, setCameraOpen] = React.useState(false);
   const fileRef = React.useRef<HTMLInputElement>(null);
 
@@ -66,13 +78,27 @@ export function DocumentCapture({
       return;
     }
     setBusy(true);
+    setRefused(null);
     try {
+      /* FINGERPRINT FIRST, UPLOAD SECOND. A picture that is going to be
+         refused as "the same as the front" is never sent, so nothing is left on
+         Cloudinary for a screen that did not keep it. */
+      const hash = await dHashOfFile(file);
+      if (guard) {
+        const why = await guard(hash);
+        if (why) {
+          setRefused(why);
+          toast.error("That is the same picture", { description: why });
+          return;
+        }
+      }
+
       const form = new FormData();
       form.append("file", file, file.name || "document.jpg");
       const res = await axios.post<{ url: string; publicId: string }>(
         `${API_BASE_URL}/upload/image`, form,
         { headers: { ...authHeader() }, params: { folder: folder.replace(/^advpos\/images\/?/, "") } });
-      onChange({ url: res.data.url, publicId: res.data.publicId });
+      onChange({ url: res.data.url, publicId: res.data.publicId, hash });
     } catch (e) {
       const message = axios.isAxiosError(e)
         ? (e.response?.data as { message?: string })?.message ?? "Please try again."
@@ -81,12 +107,12 @@ export function DocumentCapture({
     } finally {
       setBusy(false);
     }
-  }, [folder, onChange]);
+  }, [folder, onChange, guard]);
 
   return (
     <div className={cn(
       "rounded-xl border-2 p-3 transition-colors",
-      problem ? "border-danger/50 bg-danger/5"
+      problem || refused ? "border-danger/50 bg-danger/5"
         : value ? "border-success/40 bg-success/5"
         : "border-dashed border-slate-200 dark:border-navy-700"
     )}>
@@ -100,7 +126,7 @@ export function DocumentCapture({
         </div>
         {value && (
           <Button type="button" variant="ghost" size="icon-sm" aria-label={`Remove ${label}`}
-            onClick={() => onChange(null)}>
+            onClick={() => { setRefused(null); onChange(null); }}>
             <Trash2 className="size-4 text-danger" />
           </Button>
         )}
@@ -120,8 +146,8 @@ export function DocumentCapture({
         </div>
       )}
 
-      {problem && (
-        <p className="text-2xs text-danger mt-2">{problem}</p>
+      {(refused ?? problem) && (
+        <p role="alert" className="text-2xs font-medium text-danger mt-2">{refused ?? problem}</p>
       )}
 
       <div className="flex items-center gap-2 mt-2">

@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import axios from "axios";
-import { ArrowLeft, Download, Loader2, AlertCircle, RefreshCw, Package, MapPin, BookOpen, ListTree } from "lucide-react";
+import { ArrowLeft, Download, Loader2, AlertCircle, RefreshCw, MapPin, BookOpen, ListTree } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardBody } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,7 +12,9 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { toast } from "@/components/ui/toaster";
-import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
+import { API_BASE_URL, authHeader, useSession } from "@/components/providers/session-provider";
+import { ProductImage } from "@/components/products/product-image";
+import { itemHref, itemsCrumb } from "@/lib/item-links";
 import { downloadXlsx, exportError } from "@/lib/export";
 import { formatDate, formatMoney, formatTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -74,6 +76,7 @@ function apiMessage(e: unknown, fallback: string) {
 const PAGE = 30;
 
 export default function ProductHistoryPage() {
+  const { can } = useSession();
   const params = useParams<{ id: string }>();
   const productId = parseInt(params.id ?? "0", 10);
 
@@ -150,18 +153,13 @@ export default function ProductHistoryPage() {
       <PageHeader
         breadcrumbs={[
           { label: "Inventory" },
-          { label: "Products", href: "/inventory/products" },
-          { label: head.name, href: `/inventory/products/${productId}` },
+          itemsCrumb(can),
+          { label: head.name, href: itemHref(can, productId) },
           { label: "History" },
         ]}
         title={
           <div className="flex items-center gap-3 min-w-0">
-            <div className="size-11 rounded-xl border border-slate-100 bg-white dark:border-navy-700 dark:bg-navy-900 flex items-center justify-center overflow-hidden flex-shrink-0">
-              {head.imageUrl
-                // eslint-disable-next-line @next/next/no-img-element
-                ? <img src={head.imageUrl} alt={head.name} className="size-full object-contain p-1" />
-                : <Package className="size-5 text-slate-300" />}
-            </div>
+            <ProductImage url={head.imageUrl} name={head.name} size="lg" />
             <div className="min-w-0">
               <div className="truncate">History</div>
               <div className="text-xs font-normal text-slate-500 dark:text-slate-400 truncate">
@@ -173,7 +171,7 @@ export default function ProductHistoryPage() {
         subtitle={`In the catalogue since ${formatDate(head.createdAt)} · ${head.category} · ${head.brand}`}
         actions={
           <>
-            <Button variant="ghost" asChild><Link href={`/inventory/products/${productId}`}><ArrowLeft /><span className="hidden sm:inline">Product</span></Link></Button>
+            <Button variant="ghost" asChild><Link href={itemHref(can, productId)}><ArrowLeft /><span className="hidden sm:inline">{can("products.view") ? "Product" : "Stock History"}</span></Link></Button>
             <Button variant="accent" className="gap-1.5" onClick={exportAll} disabled={exporting}>
               {exporting ? <Loader2 className="size-4 animate-spin" /> : <Download />}
               <span>Export Excel</span>

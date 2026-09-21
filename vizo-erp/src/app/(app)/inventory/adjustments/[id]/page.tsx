@@ -14,7 +14,8 @@ import { DocumentActions } from "@/components/widgets/document-actions";
 import { StatusPill } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
-import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
+import { API_BASE_URL, authHeader, useSession } from "@/components/providers/session-provider";
+import { itemHref } from "@/lib/item-links";
 import { formatMoney, formatDate, formatNumber } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -48,6 +49,7 @@ function apiMessage(e: unknown, fallback: string) {
 }
 
 export default function AdjustmentDetailPage() {
+  const { can } = useSession();
   const params = useParams<{ id: string }>();
   const id = parseInt(params.id ?? "0", 10);
 
@@ -181,7 +183,7 @@ export default function AdjustmentDetailPage() {
                 {adj.lines.map((l) => (
                   <tr key={l.id}>
                     <td className="px-4 py-3">
-                      <Link href={`/inventory/products/${l.productId}`} className="text-sm font-medium text-navy-900 dark:text-white hover:text-brand-yellow">
+                      <Link href={itemHref(can, l.productId)} className="text-sm font-medium text-navy-900 dark:text-white hover:text-brand-yellow">
                         {l.name}
                       </Link>
                       <div className="text-2xs tabular text-slate-500 dark:text-slate-400 mt-0.5">{l.sku}</div>
