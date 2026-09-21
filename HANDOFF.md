@@ -81,8 +81,8 @@ What the next session needs to know about **working** here:
 
 | | |
 |---|---|
-| **Frontend** | `AmmarKamran2005/advpos-frontend` @ `main`. Last PUSHED = **`f6c7780`**. **Committed locally, NOT pushed: `6f69a5d`** (pictures, margin cap, order-desk rights, front/back check) + a docs commit |
-| **Backend** | `muhammadtalhabinsuhail/vizo-backend` @ `master`. Last PUSHED = **`dfa1bbd`**. **Committed locally, NOT pushed: `2c91609`** (API) and `1c47d2e` (docs) |
+| **Frontend** | `AmmarKamran2005/advpos-frontend` @ `main` = **`10f7c0f`** (pushed 2026-09-21; code in `6f69a5d`: pictures, margin cap, order-desk rights, front/back check) |
+| **Backend** | `muhammadtalhabinsuhail/vizo-backend` @ `master` = **`1c47d2e`** (pushed 2026-09-21; API in `2c91609`) |
 | **Database** | Neon PostgreSQL, Singapore. Migrations **15–18, 20, 21, 22, 23** applied (23 = order-desk rights + tax 0%, undo figures beside it). **19 section 1 applied; 19 section 2 (drop `OpeningCost`) NOT run** — waits for the new API to be deployed (changa.txt §A1) |
 | **Stack** | Next.js 16 / React 19 / TypeScript / Tailwind 4 (Vercel) · ASP.NET Core 8 Web API + EF Core 8 + Npgsql · JWT with permission policies · SignalR · WebPush · Cloudinary · MailKit · Gemini Flash. Full list in `README.md` |
 | **Gate** | `npx tsc --noEmit` clean · `npx eslint src` **0 errors**, 64 warnings (old unused-vars) · `next build` **86 pages** (packing removed) · backend **0 errors**, 6 old warnings (4 `AuthController`, 2 `ProductHistoryController`) |
