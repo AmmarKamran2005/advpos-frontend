@@ -81,9 +81,9 @@ What the next session needs to know about **working** here:
 
 | | |
 |---|---|
-| **Frontend** | `AmmarKamran2005/advpos-frontend` @ `main` = **`6053504`** (pushed 2026-09-22, rebased onto Talha's `4cdb2a4`) |
-| **Backend** | `muhammadtalhabinsuhail/vizo-backend` @ `master` = **`29972d1`** (pushed 2026-09-22) |
-| **Database** | Neon PostgreSQL, Singapore. Migrations **15–18, 20, 21, 22** applied. **19 section 1 applied; 19 section 2 (drop `OpeningCost`) NOT run** — waits for the new API to be deployed (changa.txt §A1) |
+| **Frontend** | `AmmarKamran2005/advpos-frontend` @ `main`. Last PUSHED = **`f6c7780`**. **Committed locally, NOT pushed: `6f69a5d`** (pictures, margin cap, order-desk rights, front/back check) + a docs commit |
+| **Backend** | `muhammadtalhabinsuhail/vizo-backend` @ `master`. Last PUSHED = **`dfa1bbd`**. **Committed locally, NOT pushed: `2c91609`** (API) and `1c47d2e` (docs) |
+| **Database** | Neon PostgreSQL, Singapore. Migrations **15–18, 20, 21, 22, 23** applied (23 = order-desk rights + tax 0%, undo figures beside it). **19 section 1 applied; 19 section 2 (drop `OpeningCost`) NOT run** — waits for the new API to be deployed (changa.txt §A1) |
 | **Stack** | Next.js 16 / React 19 / TypeScript / Tailwind 4 (Vercel) · ASP.NET Core 8 Web API + EF Core 8 + Npgsql · JWT with permission policies · SignalR · WebPush · Cloudinary · MailKit · Gemini Flash. Full list in `README.md` |
 | **Gate** | `npx tsc --noEmit` clean · `npx eslint src` **0 errors**, 64 warnings (old unused-vars) · `next build` **86 pages** (packing removed) · backend **0 errors**, 6 old warnings (4 `AuthController`, 2 `ProductHistoryController`) |
 | **Live site** | `https://advpos-frontend.vercel.app` |
@@ -91,6 +91,8 @@ What the next session needs to know about **working** here:
 ### What the owner must still do (full text in `changa.txt`)
 
 **Two urgent ones first:**
+
+- 🔴 **Set `Gemini__ApiKey` on Railway — it is the ONLY blank value in appsettings.json** — and **attach billing to the Google project**: the free key allows ~20 requests a day per model and went 429 during testing (changa.txt §D1–D2).
 
 - 🟡 **The reader key is in — but only on the owner's machine** (22 Sep). Model
   `gemini-flash-latest`, two fallbacks, proved against sample documents — see
@@ -131,6 +133,55 @@ What the next session needs to know about **working** here:
 | **D5** | 🔴 **Now blocking.** Customer pickers are rep-scoped since 21 Sep, so a rep with no accounts cannot raise an order: Imran and Ammar have **0**, Zara 1, Sara 7. Nine accounts belong to an order-desk clerk or the accountant, two to nobody | Assign reps on those parties |
 | **D6** | Old items still open: public credentials never rotated; `UpdateCategory` writes `ParentCategoryId = 0` (FK error when editing a category to top level — Talha's area); `NextNumber` is not atomic; VAPID key in `.env.example` does not match the server; warehouse panel missing on the login screen; trial balance opening balances 51,256,709 out | See [What is left](#what-is-left) |
 | **D7** | **Sale invoices never reach the ledger** — 39 invoices, 12 journal entries, and all 12 are seeded. Sales returns are consistent with that (they post nothing either). Aged receivables and the credit-limit check under-state by everything billed through the app; the customer statement is built from documents and is right | Decide the accounts and post both sides — a session of its own. convey.txt §R7.1 |
+
+---
+
+## LATEST — Big pictures, a 10% margin cap, an order desk without the catalogue, tax at 0%, a front/back check, and the AI reports repaired
+
+### What the owner asked for (paraphrased faithfully)
+
+1. Product pictures in dropdowns "and somewhere else" must be **large and prominent, everywhere a product is shown**.
+2. On the order screen the default margin % must be **0**, and a salesperson **cannot exceed 10%** — validated.
+3. Use the Gemini key; **test creating a customer from a panel** with CNIC, business card and affidavit and check the AI puts the right data in the right boxes.
+4. If the **back** CNIC slot gets the **front** photo, raise an error that the two are very much the same.
+5. Test **every AI feature** thoroughly; **say what else must be added on Railway**.
+6. **Order Department:** no Items / Categories / Brands (open or create); keeps Stock in Hand, Transfers (make + see), Stock Correction, Stock History. **No Purchases at all, ever.**
+7. **Sales tax 18% → 0%** on the many pages that show it.
+
+The message said the key was "pasted here" but **no key came with it** — the earlier key was used (see changa.txt D1).
+
+### What was built
+
+- **Pictures.** `components/products/product-image.tsx` (one component, four sizes 64→224 px, tap to enlarge, Cloudinary width asked for in the URL by `lib/images.ts`) and `product-picker.tsx` (a picture-showing replacement for the two native `<select>`s that could not show one). Applied to the 7 popover pickers, the order-edit "Add an item", the claim dialog, the product list/detail/history/movement screens. The API now sends `imageUrl` from every product-shaped endpoint (sales, purchases, inventory, claims). **Only 3 of 36 active products have a picture** — the rest show a placeholder.
+- **Margin.** `orders/new`: a line starts at landed cost (margin 0); for the **sales role only** a margin over 10% is pulled back to 10% with a red note, from any of the three boxes. `SalesController.ValidateOrderRequest` refuses it too (money ceiling with a paisa of slack; an item with no cost is not capped). Tested: 638.00 accepted, 638.02 and 700 refused, on a landed cost of 580.
+- **Order desk.** New right **`products.view`** (Super Admin, Accountant, Warehouse Keeper). Order Department lost `products.manage`, `purchases.view`, `receipts.stock`; keeps `stock.view/transfer/correct`. **The API enforces it by role** (`InventoryController` item/category/brand endpoints, all of `PurchasesController`) — not by permission, because permissions ride in an 8-hour token while the menu refreshes on every page load. `proxy.ts` gained regex-matched rules so `/inventory/products/{id}/history` (Stock History) stays open while `/inventory/products`, `/new`, `/{id}` close. `lib/item-links.ts` sends an order-desk click on a product name to its **stock history** instead of the Item screen. Suppliers went with Purchases.
+- **Tax.** No setting exists — each product carries `TaxRatePercent`. Migration 23 set all 38 (36 at 18%, **2 at 10% — included**) to 0; `?? 18` fallbacks in two purchases screens became `?? 0`. Issued documents are untouched. **Staff can still type a rate** on Sale Invoices (new), Counter Sale and order edit.
+- **Front/back.** Three layers: a **perceptual hash in the browser** (`lib/image-hash.ts`, refuses before upload, thresholds **per document** — CNIC 15, card 8, affidavit 4 — because two different typed affidavit pages are only 10 bits of 64 apart); **byte-identical files** on the API with no AI call; and the **AI reading which face each picture is**. The AI is told the pictures by **neutral names** — told `cnicFront`/`cnicBack` it believed the labels and let a swap through.
+- **AI repaired.** `GeminiClient.ExplainAsync` (all AI reports, "ask", nightly insight) made one attempt on one model; a single 429/503 silenced all of them (`aiAvailable:true, explanation:null`). One shared `PostAsync` now retries and falls back across models, and a 429 skips to the next model at once.
+- **Also fixed:** `PartiesController.Get` built `documents` and never returned it, so the **Legal documents button never appeared** and the edit screen showed empty tiles; the customer heading now shows the **display name**; a documents section completes with **any** side in; the reader defaults the category to **Retailer** unless the card says wholesale *without* retail.
+
+### Live data touched
+
+- **Migration 23** (`backend/database/23_order_dept_scope_and_zero_tax.sql`, undo figures in `23_undo_values.txt`): rights above; `"Product"."TaxRatePercent"` = 0 on 38 rows.
+- **Test data made and removed:** one draft order (ORD-26-0174, series put back to 174), one customer (VZ-C-0018, its two notifications), 46 test pictures and 2 test PDFs on Cloudinary. A push "Account opened by Sara" reached the owner and could not be recalled.
+
+### How it was verified
+
+- **API, per role, live:** order desk 403 on products, categories, brands, all purchases and every create; 200 on stock levels, movements, transfers, adjustments, lookups, per-product history. Accountant / warehouse / admin unchanged on items and purchases. Repeated with **tokens minted before the migration**.
+- **Browser, order desk:** the sidebar is Stock in Hand, Transfers, Stock Correction, Stock History (+ Dispatch, Claims, Delivery, Customers, Visits); 9 catalogue/purchases URLs → `/forbidden`; 7 stock URLs open; Stock in Hand rows link to `/history`.
+- **Browser, sales rep:** line starts 580 / 0 / 0%; 5% → 609; 10% → 638; 12% → 10% + note; rate 700 → 638; margin 100 → 58.
+- **Front/back, in the browser:** same file → refused; a second photograph of the front (rotated, darker, blurred) → refused; the real back → accepted; two different affidavit pages → both accepted. On the **edit** screen against a picture already on file → refused.
+- **AI, through the API** (owner's key): proper set → correct on every mapping; same file twice → caught in 0.1 s with no AI call; second photo of the front → `wrong-side`; **sides swapped → both flagged**; blurred card → `blurred`; heavy glare over the printing → still read correctly (it was legible). Then **all 9 report endpoints and 3 "ask" questions**, and the Dead Stock advice button in the real screen.
+- **Gate:** `tsc` clean · `eslint` 0 errors · `next build` passes · backend 0 errors.
+
+### 🔴 The consequence the owner has to act on
+
+**Gemini's free tier allows about 20 requests a day per model** (Google answered `429` mid-test). Three models are tried in turn, so roughly 60 a day before all AI goes quiet. Fix is a billing account on the Google project, not code (changa.txt D2). And **`Gemini__ApiKey` must be set on Railway** (D1) — the only blank value in `appsettings.json`.
+
+### Found and not changed (details in convey.txt)
+
+The tax box is still editable on three screens; 33 of 36 products have no picture; the purchases detail screens still link products to Item screens (unreachable to the order desk); the Accountant and Warehouse Keeper now get 403 on `/inventory/categories` and `/brands` by URL (their menus never showed them).
+
 
 ---
 
