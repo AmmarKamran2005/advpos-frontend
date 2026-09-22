@@ -49,32 +49,31 @@ type Lookups = {
 };
 
 /* ───────────────────────────────────────────────────────────────────────────
-   TWO ROLES BELONG TO A PLACE, NOT TO THE COMPANY
+   ONE ROLE BELONGS TO A PLACE, NOT TO THE COMPANY
 
-   A warehouse keeper picks stock off a particular shelf in a particular city;
-   an order-desk clerk packs at a particular desk. Everybody else — the owner,
+   An order-desk clerk packs at a particular desk. Everybody else — the owner,
    the accountant, a sales rep — works across the whole business.
 
-   So for those two the question is not "which locations may this person see"
-   but "WHICH WAREHOUSE IS THIS", and it has exactly one answer. A checkbox
-   grid asks the wrong question and lets through the answers that break things:
-   none, or three, or the Claim Stock shelf. The keeper's queue then showed
-   every order in the company, Lahore's included, and somebody in Karachi could
-   mark stock four hundred miles away as sent.
+   The warehouse-keeper role this section once also covered is gone: the owner
+   removed it, since the order desk already does the physical stock work in
+   this chain. "Warehouse" is still a LOCATION -- stock still sits there and a
+   transfer can still move it -- it is simply nobody's job title any more.
+
+   For order-dept the question is not "which locations may this person see" but
+   "WHICH DESK IS THIS", and it has exactly one answer. A checkbox grid asks the
+   wrong question and lets through the answers that break things: none, or
+   three, or the Claim Stock shelf. The clerk's queue then showed every order in
+   the company, Lahore's included, and somebody in Karachi could mark an order
+   four hundred miles away as sent.
 
    The API enforces the same rule — AdminUsersController.ValidatePlace — because
    a form is a convenience and not a guarantee. This is here so the person
    filling it in is never offered the wrong thing in the first place.
 
-   The list of warehouses is whatever the owner has created at
+   The list of order departments is whatever the owner has created at
    Administration → Locations. Nothing here knows any location's id.
    ─────────────────────────────────────────────────────────────────────────── */
 const PLACE_BOUND: Record<string, { kind: string; noun: string; hint: string }> = {
-  "warehouse-keeper": {
-    kind: "warehouse",
-    noun: "warehouse",
-    hint: "This keeper only sees orders picked from this warehouse.",
-  },
   "order-dept": {
     kind: "department",
     noun: "order department",

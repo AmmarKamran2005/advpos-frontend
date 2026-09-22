@@ -436,7 +436,6 @@ export const permissionCatalog: PermissionDef[] = [
   { key: "orders.view",       label: "See customer orders",        group: "Sales" },
   { key: "orders.create",     label: "Take a customer order",      group: "Sales" },
   { key: "orders.approve",    label: "Approve & pack orders",      group: "Sales" },
-  { key: "orders.warehouse",  label: "Prepare and send order stock", group: "Sales" },
   { key: "invoices.view",     label: "See sale invoices",          group: "Sales" },
   { key: "invoices.create",   label: "Make a sale invoice",        group: "Sales" },
   { key: "returns.sales",     label: "Handle sales returns",       group: "Sales" },
@@ -489,22 +488,6 @@ export const permissionGroups = Array.from(
 /** Which capabilities each role holds. Editable from Setup → Roles. */
 export const rolePermissions: Record<RoleKey, string[]> = {
   "super-admin": permissionCatalog.map((p) => p.key),
-
-  /* Deliberately narrow. The keeper's job is one step of the order chain --
-     pick the stock, send it to the order department -- and everything here
-     serves that. No prices, no customers, no invoices: none of it helps
-     somebody standing at a shelf, and all of it is somebody else's business.
-     The Super Admin can widen it from Setup > Roles. */
-  "warehouse-keeper": [
-    "orders.view",
-    "orders.warehouse",
-    /* Reads the bill against what is being picked. Viewing only -- there is
-       no invoices.create here, and there will not be. */
-    "invoices.view",
-    "stock.view",
-    "stock.transfer",
-    "delivery.view",
-  ],
 
   accountant: [
     "orders.view",

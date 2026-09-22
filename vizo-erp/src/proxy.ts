@@ -23,8 +23,7 @@ type RoleKey =
   | "super-admin"
   | "accountant"
   | "order-dept"
-  | "sales"
-  | "warehouse-keeper";
+  | "sales";
 
 const TOKEN_COOKIE = "advpos_token";
 const ROLE_COOKIE = "advpos_role";
@@ -34,7 +33,6 @@ const ALL: RoleKey[] = [
   "accountant",
   "order-dept",
   "sales",
-  "warehouse-keeper",
 ];
 
 /** Reachable without signing in. */
@@ -90,8 +88,6 @@ const ROUTE_RULES: { prefix: string; pattern?: RegExp; roles: RoleKey[]; perm?: 
   },
   { prefix: "/sales", roles: ALL },
 
-  { prefix: "/warehouse", roles: ["super-admin", "warehouse-keeper"] },
-
   /* PURCHASES ARE NOT THE ORDER DESK'S -- EVER.
 
      The owner: "order department cannot access any purchases page ... order
@@ -121,14 +117,14 @@ const ROUTE_RULES: { prefix: string; pattern?: RegExp; roles: RoleKey[]; perm?: 
   {
     prefix: "/inventory/products",
     pattern: /^\/inventory\/products(\/\d+)?\/?$/,
-    roles: ["super-admin", "accountant", "warehouse-keeper"],
+    roles: ["super-admin", "accountant"],
     perm: "products.view",
   },
   { prefix: "/inventory/categories", roles: ["super-admin"], perm: "products.manage" },
   { prefix: "/inventory/brands", roles: ["super-admin"], perm: "products.manage" },
   {
     prefix: "/inventory",
-    roles: ["super-admin", "accountant", "order-dept", "warehouse-keeper"],
+    roles: ["super-admin", "accountant", "order-dept"],
     perm: "stock.view",
   },
   { prefix: "/dispatch", roles: ["super-admin", "order-dept"] },

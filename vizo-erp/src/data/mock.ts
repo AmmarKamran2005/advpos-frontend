@@ -46,16 +46,6 @@ export type QuickCreateItem = {
  * them so the whole app can be reviewed through each person's eyes.
  */
 export const demoUsers: Record<RoleKey, CurrentUser> = {
-  "warehouse-keeper": {
-    id: 9,
-    fullName: "Bilal Shaikh",
-    email: "warehouse@advpos.pk",
-    role: "warehouse-keeper",
-    roleLabel: "Warehouse Keeper",
-    initials: "BS",
-    avatarUrl: null,
-    locationId: 4,
-  },
   "super-admin": {
     id: 1,
     fullName: "Umer Memon",

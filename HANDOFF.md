@@ -81,9 +81,9 @@ What the next session needs to know about **working** here:
 
 | | |
 |---|---|
-| **Frontend** | `AmmarKamran2005/advpos-frontend` @ `main` = **`10f7c0f`** (pushed 2026-09-21; code in `6f69a5d`: pictures, margin cap, order-desk rights, front/back check) |
-| **Backend** | `muhammadtalhabinsuhail/vizo-backend` @ `master` = **`1c47d2e`** (pushed 2026-09-21; API in `2c91609`) |
-| **Database** | Neon PostgreSQL, Singapore. Migrations **15–18, 20, 21, 22, 23** applied (23 = order-desk rights + tax 0%, undo figures beside it). **19 section 1 applied; 19 section 2 (drop `OpeningCost`) NOT run** — waits for the new API to be deployed (changa.txt §A1) |
+| **Frontend** | `AmmarKamran2005/advpos-frontend` @ `main`. Last PUSHED = **`5ede733`**. **Committed locally, NOT pushed:** warehouse role + purchase returns removed |
+| **Backend** | `muhammadtalhabinsuhail/vizo-backend` @ `master`. Last PUSHED = **`27ecb0c`**. **Committed locally, NOT pushed:** warehouse role + purchase returns removed |
+| **Database** | Neon PostgreSQL, Singapore. Migrations **15–18, 20, 21, 22, 23, 24** applied (23 = order-desk rights + tax 0%; 24 = warehouse role deleted). **19 section 1 applied; 19 section 2 (drop `OpeningCost`) NOT run** — waits for the new API to be deployed (changa.txt §A1) |
 | **Stack** | Next.js 16 / React 19 / TypeScript / Tailwind 4 (Vercel) · ASP.NET Core 8 Web API + EF Core 8 + Npgsql · JWT with permission policies · SignalR · WebPush · Cloudinary · MailKit · Gemini Flash. Full list in `README.md` |
 | **Gate** | `npx tsc --noEmit` clean · `npx eslint src` **0 errors**, 64 warnings (old unused-vars) · `next build` **86 pages** (packing removed) · backend **0 errors**, 6 old warnings (4 `AuthController`, 2 `ProductHistoryController`) |
 | **Live site** | `https://advpos-frontend.vercel.app` |
@@ -133,6 +133,33 @@ What the next session needs to know about **working** here:
 | **D5** | 🔴 **Now blocking.** Customer pickers are rep-scoped since 21 Sep, so a rep with no accounts cannot raise an order: Imran and Ammar have **0**, Zara 1, Sara 7. Nine accounts belong to an order-desk clerk or the accountant, two to nobody | Assign reps on those parties |
 | **D6** | Old items still open: public credentials never rotated; `UpdateCategory` writes `ParentCategoryId = 0` (FK error when editing a category to top level — Talha's area); `NextNumber` is not atomic; VAPID key in `.env.example` does not match the server; warehouse panel missing on the login screen; trial balance opening balances 51,256,709 out | See [What is left](#what-is-left) |
 | **D7** | **Sale invoices never reach the ledger** — 39 invoices, 12 journal entries, and all 12 are seeded. Sales returns are consistent with that (they post nothing either). Aged receivables and the credit-limit check under-state by everything billed through the app; the customer statement is built from documents and is right | Decide the accounts and post both sides — a session of its own. convey.txt §R7.1 |
+
+---
+
+## LATEST — The warehouse role and its panel are deleted; purchase returns are removed
+
+### What the owner asked for (paraphrased faithfully)
+
+1. "Completely delete role of Warehouse and all pages of warehouse panel, there is no need of warehouse role, **however warehouse would be used as a location for transfers and stock will keep at warehouse so that data will remain in system** but warehouse separately panel is not required."
+2. "Completely remove purchase return scenario in the system however sales return will remain exists in the system."
+
+### What was built
+
+- **The role is gone, the place stays.** "Warehouse Keeper" is deleted from `Role`; the login screen's fifth panel, `/warehouse`, `components/portals/warehouse/*`, `GET /sales/warehouse/queue`, the `orders.warehouse` permission, `MyPlaceId()` and every `warehouse-keeper` string in `[Authorize]` attributes, `Program.cs` policies and `OrderWorkflow`'s notification lists are removed. **Locations `Karachi Warehouse` and `Lahore Warehouse`, `LocationKind` "warehouse", and every stock row, transfer and movement against them are untouched** — that is the "data will remain in system" half, and it needed no code change at all since the role and the location were always two different things.
+- **One real account held the role**: `muhammadtalhabinsuhail@gmail.com` (Talha's own test account for the role, not a real warehouse worker). Moved to **Order Department** (the role that already does the chain's physical stock work) at **Karachi Order Department** — reversible in two clicks at Setup > Users if that lands wrong.
+- **Purchase returns**: `POST/GET /purchases/returns`, `GET /purchases/returns/{id}` and the three frontend pages (`list`, `[id]`, `new`) and the sidebar link are deleted. **The nine existing purchase returns (earliest 28 April 2026, each with a ledger entry) are deliberately untouched** — `PurchaseReturn`/`PurchaseReturnItem`, `AppDbContext`'s mapping, `ProductHistoryController`'s use of them in a product's stock ledger, and `DocumentsController`'s ability to print or share an existing one's PDF all still work. Only making a *new* one, and the dedicated browsing screen, are gone. Sales Returns — a different controller, a different rule — is untouched.
+- **Migration 24** (`24_remove_warehouse_role.sql`, dry-run and applied on Neon): moves Talha off the role, deletes the `RolePermission` grants for the role and for `orders.warehouse`, deletes the permission, deletes the role.
+- **Two mock-data files needed a mechanical fix** to keep compiling once `RoleKey` dropped `"warehouse-keeper"`: `data/mock.ts`'s `demoUsers` and `data/settings.ts`'s `rolePermissions`/`permissionCatalog`. Neither is read by a live screen (checked); the fix is deleting the one entry each, nothing else.
+
+### How it was verified
+
+- **API**, with fresh tokens: Talha (now order-dept) reaches Stock in Hand/Transfers/Stock Correction/Stock History (200), is refused on Items and every Purchases endpoint (403), and `GET /sales/warehouse/queue` is `404`. A **warehouse-keeper token minted before the migration** is refused everywhere that role used to reach — the role name itself is gone from every check, not merely hidden from a menu. `POST /purchases/returns` is `404` for the Super Admin too. Sales-returns lookups still `200`.
+- **Browser**: login screen shows four panels, not five. Setup > Roles has no Warehouse Keeper card; Order Department shows 4 users, 19 permissions (22 minus the three migration 23 already removed). Sidebars for the order desk and the Super Admin show no Warehouse item and no Purchase Returns link. `/warehouse` → Forbidden; `/purchases/returns` and `/purchases/returns/new` → 404.
+- **Gate**: backend 0 errors; frontend `tsc` clean, `eslint` 0 errors (3 warnings, all pre-existing).
+
+### Found and not changed (details in convey.txt)
+
+`02_seed.sql`/`15_order_workflow.sql` still show the role being created — historical record, never re-applied. `AppDbContext.cs` (Talha's file) was not opened for either change.
 
 ---
 

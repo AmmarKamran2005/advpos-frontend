@@ -11,7 +11,6 @@ import {
   PackageCheck,
   PackageX,
   Settings2,
-  Boxes,
 } from "lucide-react";
 
 export type NavBadge = {
@@ -78,18 +77,6 @@ export const navigation: NavNode[] = [
 
 
 
-  {
-    /* The warehouse keeper's whole job. Gated on orders.warehouse, so it
-       appears for them and for anybody the Super Admin gives that right to,
-       and for nobody else. */
-    type: "item",
-    label: "Warehouse",
-    icon: Boxes,
-    href: "/warehouse",
-    match: "warehouse",
-    perms: ["orders.warehouse"],
-  },
-
     { type: "section", label: "Stock" },
   {
     type: "group",
@@ -138,7 +125,6 @@ export const navigation: NavNode[] = [
       { label: "Orders to Supplier", href: "/purchases/orders",   match: "purchases.orders",   perms: ["purchases.view"] },
       { label: "Stock Received",     href: "/purchases/grns",     match: "purchases.grns",     perms: ["receipts.stock", "purchases.view"] },
       { label: "Purchase Invoices",  href: "/purchases/invoices", match: "purchases.invoices", perms: ["purchases.view"] },
-      { label: "Purchase Returns",   href: "/purchases/returns",  match: "purchases.returns",  perms: ["purchases.view"] },
     ],
   },
   /* PACKING IS GONE. It was the pre-chain screen: its own queue, its own

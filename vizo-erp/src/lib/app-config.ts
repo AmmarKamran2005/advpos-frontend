@@ -20,16 +20,18 @@
 /**
  * The staff roles. Mirrors "Role".RoleKey in the database.
  *
- * warehouse-keeper is role id 9, added with the order workflow: the person who
- * picks the stock off the shelf once the owner has confirmed an order and sends
- * it to the order department. See backend/database/15_order_workflow.sql.
+ * warehouse-keeper (role id 9) was removed from the system: the owner's
+ * instruction was that there is no need for a separate warehouse role or
+ * panel, since the order desk already does the physical stock work in this
+ * chain (see OrderWorkflow.cs). "Warehouse" survives as a LOCATION -- stock
+ * still sits there and a transfer can still move it -- just not as a job
+ * title anybody signs in as. See backend/database/24_remove_warehouse_role.sql.
  */
 export type RoleKey =
   | "super-admin"
   | "accountant"
   | "order-dept"
-  | "sales"
-  | "warehouse-keeper";
+  | "sales";
 
 /* ────────────────────────── Delivery channels ────────────────────────── */
 
