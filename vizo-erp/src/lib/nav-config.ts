@@ -127,13 +127,22 @@ export const navigation: NavNode[] = [
       { label: "Purchase Invoices",  href: "/purchases/invoices", match: "purchases.invoices", perms: ["purchases.view"] },
     ],
   },
-  /* PACKING IS GONE. It was the pre-chain screen: its own queue, its own
-     PACKED status and the only place in the whole application where stock ever
-     came off a shelf for a sale. Stock now leaves at Dispatched, from the place
-     the order screen asks for, and two screens taking the same goods off the
-     same shelf is how a count goes wrong. Migration 21 deleted the statuses it
-     ran on; the API endpoints answer with a sentence saying where the work
-     moved to. */
+  /* PACKING IS BACK, as a different screen entirely. The pre-chain queue this
+     used to be -- its own PACKED status, the only place stock ever came off a
+     shelf -- was retired 22 September (migration 21); stock leaves at
+     Dispatched now, from the place the order screen asks for. What reopened
+     23 September at the same address is the Order Department's own home page:
+     three dropdowns down to one order, its lines with the Super Admin's own
+     price and an editable quantity, then the courier step Dispatch already
+     had. Same two roles as Dispatch, because it ends in the same action. */
+  {
+    type: "item",
+    label: "Packing",
+    icon: Package,
+    href: "/packing",
+    match: "packing",
+    perms: ["delivery.manage"],
+  },
   {
     type: "item",
     label: "Dispatch",
@@ -156,6 +165,18 @@ export const navigation: NavNode[] = [
     icon: Truck,
     href: "/delivery",
     match: "delivery",
+    perms: ["delivery.view"],
+  },
+  {
+    /* The same screen as Delivery, pre-filtered to what already arrived --
+       "a Delivered page ... which the Order Department can also view."
+       Reusing /delivery's own status filter rather than a second page that
+       would drift from the first one's columns and rules. */
+    type: "item",
+    label: "Delivered",
+    icon: PackageCheck,
+    href: "/delivery?status=DELIVERED",
+    match: "delivery.delivered",
     perms: ["delivery.view"],
   },
 

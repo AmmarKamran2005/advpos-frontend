@@ -4,12 +4,12 @@ import * as React from "react";
 import Link from "next/link";
 import axios from "axios";
 import {
-  Inbox, PackageCheck, Send, PackageX, ArrowRight, AlertCircle,
-  Truck, TriangleAlert, ShieldAlert, Boxes,
+  Inbox, PackageCheck, Send, ArrowRight, AlertCircle,
+  Truck, TriangleAlert, ShieldAlert,
 } from "lucide-react";
 import { Card, CardBody } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge, StatusPill } from "@/components/ui/badge";
+import { StatusPill } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Counter, CounterSkeletons } from "@/components/portals/dashboard-counter";
@@ -144,7 +144,7 @@ export function OrderDeptDashboard() {
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {loading || !data ? (
-          <CounterSkeletons count={4} />
+          <CounterSkeletons count={3} />
         ) : (
           <>
             <Counter
@@ -170,14 +170,6 @@ export function OrderDeptDashboard() {
               tone="danger"
               hint={`${data.dispatch.awaitingDispatch} still to send`}
               href="/delivery"
-            />
-            <Counter
-              label="Claims open"
-              value={data.claims.openCount}
-              icon={PackageX}
-              tone="warning"
-              hint={formatCompact(data.claims.openValue)}
-              href="/claims"
             />
           </>
         )}
@@ -331,56 +323,6 @@ export function OrderDeptDashboard() {
           </Card>
         </div>
       </div>
-
-      {/* Claims stuck with suppliers */}
-      <Card>
-        <CardBody>
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <h2 className="text-base font-semibold text-navy-900 dark:text-white">Claims still open</h2>
-              {data && (
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  {data.claims.openCount} open · {formatMoney(data.claims.openValue)} tied up
-                </p>
-              )}
-            </div>
-            <Button variant="ghost" size="sm" asChild>
-              <Link href="/claims">All claims <ArrowRight /></Link>
-            </Button>
-          </div>
-          {loading ? (
-            <div className="space-y-2">
-              {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-12" />)}
-            </div>
-          ) : !data || data.claims.items.length === 0 ? (
-            <EmptyState icon={Boxes} title="No open claims" description="Nothing is sitting with a supplier." />
-          ) : (
-            <div className="divide-y divide-slate-100 dark:divide-navy-700">
-              {data.claims.items.map((c) => (
-                <Link
-                  key={c.id}
-                  href={`/claims/${c.id}`}
-                  className="flex items-center gap-3 py-2.5 hover:bg-slate-50 dark:hover:bg-navy-700/50 -mx-2 px-2 rounded-lg"
-                >
-                  <div className="min-w-0 flex-1">
-                    <div className="text-sm font-medium text-navy-900 dark:text-white truncate">
-                      {c.product}
-                    </div>
-                    <div className="text-2xs text-slate-500 dark:text-slate-400 mt-0.5">
-                      <span className="tabular">{c.claimNo}</span> · {c.customer} · since {formatDate(c.receivedOn)}
-                      {c.remindersSent > 0 && ` · ${c.remindersSent} reminder${c.remindersSent === 1 ? "" : "s"} sent`}
-                    </div>
-                  </div>
-                  <Badge variant="muted">{c.stage}</Badge>
-                  <div className="tabular text-sm font-semibold text-navy-900 dark:text-white shrink-0">
-                    {formatMoney(c.value)}
-                  </div>
-                </Link>
-              ))}
-            </div>
-          )}
-        </CardBody>
-      </Card>
 
       {data && (
         <p className="text-2xs text-slate-400 dark:text-slate-500 text-right">

@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useSearchParams } from "next/navigation";
 import {
   Send, Truck, Banknote, PackageCheck, Search, ExternalLink, Copy, Info,
 } from "lucide-react";
@@ -122,14 +123,40 @@ const STATUS_FILTERS: { value: DeliveryStatus | "all"; label: string }[] = [
   { value: "RETURNED_TO_SENDER", label: "Returned" },
 ];
 
+/** The valid values of ?status=, so a stray query string cannot set the filter to nonsense. */
+const STATUS_KEYS = new Set<string>([
+  "NOT_DISPATCHED", "BOOKED", "AWAITING", "IN_TRANSIT",
+  "OUT_FOR_DELIVERY", "DELIVERED", "FAILED", "RETURNED_TO_SENDER",
+]);
+
+/**
+ * useSearchParams() bails out of prerendering unless it is under a
+ * Suspense boundary -- same reason app/login/page.tsx wraps itself the same way.
+ */
 export default function DeliveryPage() {
+  return (
+    <React.Suspense fallback={<div className="p-6"><Skeleton className="h-64" /></div>}>
+      <DeliveryScreen />
+    </React.Suspense>
+  );
+}
+
+function DeliveryScreen() {
+  const searchParams = useSearchParams();
+
   const [deliveries, setDeliveries] = React.useState<Delivery[]>([]);
   const [summary, setSummary] = React.useState({ inFlight: 0, overdue: 0, pendingCodTotal: 0 });
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [couriers, setCouriers] = React.useState<Courier[]>([]);
   const [query, setQuery] = React.useState("");
-  const [status, setStatus] = React.useState<DeliveryStatus | "all">("all");
+  /* Pre-filtered when the link itself says so -- the sidebar's "Delivered"
+     item is /delivery?status=DELIVERED, reusing this whole screen rather than
+     building a second one that could drift from it. */
+  const [status, setStatus] = React.useState<DeliveryStatus | "all">(() => {
+    const fromUrl = searchParams.get("status");
+    return fromUrl && STATUS_KEYS.has(fromUrl) ? (fromUrl as DeliveryStatus) : "all";
+  });
   const [courierId, setCourierId] = React.useState<number | "all">("all");
 
   const load = React.useCallback(async () => {

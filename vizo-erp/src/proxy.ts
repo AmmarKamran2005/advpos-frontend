@@ -127,15 +127,22 @@ const ROUTE_RULES: { prefix: string; pattern?: RegExp; roles: RoleKey[]; perm?: 
     roles: ["super-admin", "accountant", "order-dept"],
     perm: "stock.view",
   },
+  /* Packing is the order desk's own front door -- see Role.HomePath and the
+     redirects above. */
+  { prefix: "/packing", roles: ["super-admin", "order-dept"] },
   { prefix: "/dispatch", roles: ["super-admin", "order-dept"] },
   {
     prefix: "/delivery",
     roles: ["super-admin", "order-dept", "accountant"],
     perm: "delivery.view",
   },
+  /* NOT THE ORDER DESK'S, since 23 September -- "remove Claims from [the
+     Order Department panel]. There is no need for a Claims page in the Order
+     Department panel." ClaimsController and migration 25 say the same thing
+     on the other two layers. */
   {
     prefix: "/claims",
-    roles: ["super-admin", "order-dept", "accountant"],
+    roles: ["super-admin", "accountant"],
     perm: "claims.view",
   },
 
@@ -213,10 +220,16 @@ export function proxy(req: NextRequest) {
   const role = req.cookies.get(ROLE_COOKIE)?.value as RoleKey | undefined;
   const signedIn = Boolean(token) && !isExpired(token!);
 
-  /* Already signed in and looking at the login screen? Go to work. */
+  /* Already signed in and looking at the login screen? Go to work.
+
+     Order Department lands on Packing, not the Dashboard -- the owner's rule,
+     23 September, and the reason the login page itself reads Role.HomePath
+     from the API rather than a constant here. Edge middleware has no database
+     to ask, so the one role with a different home is named directly; every
+     other role still goes to /dashboard. */
   if (pathname === "/login" && signedIn) {
     const url = req.nextUrl.clone();
-    url.pathname = "/dashboard";
+    url.pathname = role === "order-dept" ? "/packing" : "/dashboard";
     url.search = "";
     return NextResponse.redirect(url);
   }
@@ -233,10 +246,11 @@ export function proxy(req: NextRequest) {
   }
 
   /* "/" is a server redirect to /login in page.tsx; send signed-in people
-     straight to the dashboard instead of bouncing them through the form. */
+     straight to their own home instead of bouncing them through the form.
+     Same order-dept exception as the "/login" case just above. */
   if (pathname === "/") {
     const url = req.nextUrl.clone();
-    url.pathname = signedIn ? "/dashboard" : "/login";
+    url.pathname = signedIn ? (role === "order-dept" ? "/packing" : "/dashboard") : "/login";
     return NextResponse.redirect(url);
   }
 
