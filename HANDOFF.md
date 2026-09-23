@@ -81,9 +81,9 @@ What the next session needs to know about **working** here:
 
 | | |
 |---|---|
-| **Frontend** | `AmmarKamran2005/advpos-frontend` @ `main`. Last PUSHED = **`5ede733`**. **Committed locally, NOT pushed:** warehouse role + purchase returns removed |
-| **Backend** | `muhammadtalhabinsuhail/vizo-backend` @ `master`. Last PUSHED = **`27ecb0c`**. **Committed locally, NOT pushed:** warehouse role + purchase returns removed |
-| **Database** | Neon PostgreSQL, Singapore. Migrations **15–18, 20, 21, 22, 23, 24** applied (23 = order-desk rights + tax 0%; 24 = warehouse role deleted). **19 section 1 applied; 19 section 2 (drop `OpeningCost`) NOT run** — waits for the new API to be deployed (changa.txt §A1) |
+| **Frontend** | `AmmarKamran2005/advpos-frontend` @ `main`. Last PUSHED = **`ef0e542`**. **Committed locally, NOT pushed:** the Order Department's Packing screen, Claims removed for that role |
+| **Backend** | `muhammadtalhabinsuhail/vizo-backend` @ `master`. Last PUSHED = **`24e83d3`**. **Committed locally, NOT pushed:** the Packing screen, partial dispatch, the invoice's dispatch-record page, Claims removed for the order desk |
+| **Database** | Neon PostgreSQL, Singapore. Migrations **15–18, 20–25** applied (23 = order-desk rights + tax 0%; 24 = warehouse role deleted; 25 = order-dept `HomePath` → `/packing`, Claims permissions removed, `SalesOrderItem.DispatchedQty` added). **19 section 1 applied; 19 section 2 (drop `OpeningCost`) NOT run** — waits for the new API to be deployed (changa.txt §A1) |
 | **Stack** | Next.js 16 / React 19 / TypeScript / Tailwind 4 (Vercel) · ASP.NET Core 8 Web API + EF Core 8 + Npgsql · JWT with permission policies · SignalR · WebPush · Cloudinary · MailKit · Gemini Flash. Full list in `README.md` |
 | **Gate** | `npx tsc --noEmit` clean · `npx eslint src` **0 errors**, 64 warnings (old unused-vars) · `next build` **86 pages** (packing removed) · backend **0 errors**, 6 old warnings (4 `AuthController`, 2 `ProductHistoryController`) |
 | **Live site** | `https://advpos-frontend.vercel.app` |
@@ -133,6 +133,45 @@ What the next session needs to know about **working** here:
 | **D5** | 🔴 **Now blocking.** Customer pickers are rep-scoped since 21 Sep, so a rep with no accounts cannot raise an order: Imran and Ammar have **0**, Zara 1, Sara 7. Nine accounts belong to an order-desk clerk or the accountant, two to nobody | Assign reps on those parties |
 | **D6** | Old items still open: public credentials never rotated; `UpdateCategory` writes `ParentCategoryId = 0` (FK error when editing a category to top level — Talha's area); `NextNumber` is not atomic; VAPID key in `.env.example` does not match the server; warehouse panel missing on the login screen; trial balance opening balances 51,256,709 out | See [What is left](#what-is-left) |
 | **D7** | **Sale invoices never reach the ledger** — 39 invoices, 12 journal entries, and all 12 are seeded. Sales returns are consistent with that (they post nothing either). Aged receivables and the credit-limit check under-state by everything billed through the app; the customer statement is built from documents and is right | Decide the accounts and post both sides — a session of its own. convey.txt §R7.1 |
+
+---
+
+## LATEST — The Order Department's own panel: a Packing screen, and no Claims
+
+### What the owner asked for (paraphrased faithfully)
+
+Strictly the Order Department panel; no other role changes.
+
+1. Remove Claims from it entirely.
+2. Signing in as Order Department opens **Packing**, not the Dashboard.
+3. Packing has three cascading dropdowns — **Salesperson** (names, from the sales role), **Customer** (that rep's, or picked first to set the rep, when unambiguous), **Order** (large, pictures, full names, never bare IDs) — filled in from any direction, each auto-populating the others.
+4. An order's lines show a picture, the quantity ordered, and **the Super Admin's own selling price** (never a rep's margin). Quantity is the one editable field, and it **may only go down**, never above what was ordered.
+5. A reduction: notifies the salesperson, the accountant and the Super Admin; appends a **"Dispatching" page** to the invoice's own PDF (original pages untouched) showing requested vs. dispatched; replaces the invoice's PDF and **removes the orphaned old one from Cloudinary**.
+6. A **Dispatch** button starts a two-step flow: adjust quantities → **Next** (commits the dispatch) → pick a **logistics provider** → **Dispatch** (books the courier) → a tracking page.
+7. A **Delivered** page, also reachable by Order Department.
+8. Fully responsive, mobile first.
+
+### What was built
+
+- **`Role.HomePath`** for order-dept → `/packing` (one data row; the login page and `proxy.ts`'s `/` and `/login` redirects already read it / now name it — no other code needed).
+- **Claims removed** on all three layers: migration 25 takes `claims.view/receive/settle` off the order-dept role; `ClaimsController` gains `[Authorize(Roles = "super-admin,accountant")]` alongside its existing policy; `proxy.ts`'s `/claims` rule drops `order-dept`. The order-dept dashboard's Claims counter and card are removed.
+- **`PackingController`** (new, replacing the long-dead pre-chain queue of the same name): `GET /packing/lookups` (sales reps and customers who currently have a packable order — `INVOICED` or `AT_ORDER_DEPT`), `GET /packing/orders` (filtered, with thumbnails), `GET /packing/orders/{id}` (full detail, `Product.SalePrice` as the price, never the order line's own `Rate`).
+- **`OrderWorkflow`**: a new direct `Invoiced → Dispatched` move for order-dept/accountant, since the Packing flow has no separate "take up the order" step.
+- **`SalesController.SetOrderStatus`** extended: `StatusRequest.Lines` (`{ProductId, Qty}[]`) lets a dispatch send less than ordered per line — validated to never exceed what was ordered, shortage-checked against the *adjusted* quantity (a deliberate reduction is never reported as a stock shortage), `SalesOrderItem.DispatchedQty` (new column) recorded, a `DISPATCH_SHORTAGE` notification sent when anything was reduced, and the invoice's PDF **always** rebuilt with an appended dispatch-record page via `TryRebuildBillWithDispatch` → extended `BuildBill` (now takes an optional manifest + `destroyOld`).
+- **`InvoicePdf`**: `DispatchLine`/`DispatchManifest`/`DispatchedOn` added to `Data`; `DrawDispatchPage` appends one page in the same palette. **`PdfStore.DestroyAsync`** added — the one deliberate exception to this project's "never delete an old document" rule (reasoned through in `PdfStore.cs`: nobody could have been sent the pre-dispatch link on its own).
+- **`app/(app)/packing/page.tsx`** (new): the three dropdowns, the large order picker (pictures, full names, thumbnails), the line editor (base price, clamped quantity), and the two-step dispatch wizard (qty commit → the existing `/dispatch` channel/courier form, reused as its own step rather than imported, since the data shapes differ).
+- **`/delivery`** now reads `?status=` on load (wrapped in `Suspense`, matching the login page's own pattern); **`Delivered`** nav item is the same page pre-filtered to `DELIVERED` — one screen, not two that could drift apart.
+
+### How it was verified
+
+- **A real order with a genuine margin** (base Rs. 980, charged Rs. 3,680) proved the Packing screen shows *your* price, not the rep's.
+- **A disposable test order** (3 units) proved the whole chain end-to-end: over-ordering refused by the API; dispatching 2 of 3 deducted exactly 2 (not 3) from the shelf, recorded `DispatchedQty`, notified the salesperson/accountant/Super Admin, rebuilt the invoice to 2 pages with the dispatch record on the second, destroyed the old PDF from Cloudinary (confirmed with a 404) while the new one kept working, and booked the courier through the existing endpoint. Everything the test created — order, invoice, delivery, stock movement, all 46 notifications, the new PDF, the three document-series numbers — was removed afterwards; the shelf is back at its exact original count.
+- **Browser, as a real order-dept account**: signing in and visiting `/` both land on `/packing`; the sidebar has no Claims link and does have Packing + Delivered; the three dropdowns cascade correctly, including the *"leave it open, don't guess"* case for a shop with ready orders from two different reps; the quantity box refuses more than was ordered; no horizontal scroll at 375px.
+- **Gate**: backend 0 errors; frontend `tsc` clean, `eslint` 0 errors.
+
+### Found and not changed (details in convey.txt)
+
+`OrderWorkflow.NextFor` no longer offers a single one-click button for `Invoiced` on the order detail page (two legal next moves now) — the dropdown still has both, and Packing is the intended path. The "dedicated tracking page" is `/delivery`, reused rather than duplicated.
 
 ---
 
