@@ -1,6 +1,6 @@
 # AdvPOS (VIZO) — Handoff
 
-**Updated 2026-09-22.** Newest first. Read **§0** and **§1** before anything
+**Updated 2026-09-26.** Newest first. Read **§0** and **§1** before anything
 else; they are enough to carry on in a new chat. Everything below them is the
 dated history, then [What is left](#what-is-left) and
 [Standing facts](#standing-facts) at the bottom.
@@ -70,7 +70,9 @@ What the next session needs to know about **working** here:
    hand goes in `changa.txt`.** Both in `backend/database/`.
 8. **Style:** long explanatory comments saying *why*, matching the surrounding
    code. Commit messages explain the fault, not just the change, and end with
-   `Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>`.
+   `Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>` (the model in use
+   changes session to session — check the active system reminder rather than
+   trusting this line).
 9. **The owner** (Ammar Kamran, `kamran.ammar2005@gmail.com`) writes in English
    and Roman Urdu. Requests arrive as one long message with many linked items —
    read the whole thing before starting; items depend on each other.
@@ -130,9 +132,9 @@ What the next session needs to know about **working** here:
 | **D8** | **The reader is proved, the camera is not.** With the key in (22 Sep) sample documents read correctly through the real endpoint — name without the father's name, address off the card, city matched, a blurred card refused. But no REAL CNIC has been photographed with a REAL phone: the test browser has no camera | Put one real shop through the screen. If a field reads wrongly, `PartyDocumentsController.Prompt` is the one place to change |
 | **D3** | **Six more exports silently stop at 50 rows** (list action caps `pageSize`, export asks for 5000): orders (46 rows today), invoices, walk-in, parties, journal entries (44), vouchers, expenses. Fixed for products only | One-line change per list action; say the word |
 | **D4** | Ahmed Riaz (order-dept) points at **Karachi Warehouse**; should be a department | Fix at `/admin/users` (form now only offers departments) |
-| **D5** | 🔴 **Now blocking.** Customer pickers are rep-scoped since 21 Sep, so a rep with no accounts cannot raise an order: Imran and Ammar have **0**, Zara 1, Sara 7. Nine accounts belong to an order-desk clerk or the accountant, two to nobody | Assign reps on those parties |
-| **D6** | Old items still open: public credentials never rotated; `UpdateCategory` writes `ParentCategoryId = 0` (FK error when editing a category to top level — Talha's area); `NextNumber` is not atomic; VAPID key in `.env.example` does not match the server; warehouse panel missing on the login screen; trial balance opening balances 51,256,709 out | See [What is left](#what-is-left) |
-| **D7** | **Sale invoices never reach the ledger** — 39 invoices, 12 journal entries, and all 12 are seeded. Sales returns are consistent with that (they post nothing either). Aged receivables and the credit-limit check under-state by everything billed through the app; the customer statement is built from documents and is right | Decide the accounts and post both sides — a session of its own. convey.txt §R7.1 |
+| **D5** | 🔴 **Still blocking as of 26 Sep** (checked live): Imran Iqbal and Ammar Kamran still have **0** assigned customers and cannot raise an order; `sales@advpos.pk` has 1, Sara 7. Nothing has changed here since 21 Sep | Assign reps on those parties |
+| **D6** | Old items still open: public credentials never rotated; `UpdateCategory` writes `ParentCategoryId = 0` (FK error when editing a category to top level — Talha's area); `NextNumber` is not atomic; VAPID key in `.env.example` does not match the server; trial balance opening balances 51,256,709 out | See [What is left](#what-is-left) |
+| **D7** | **Sale invoices never reach the ledger** — checked live 26 Sep: **27 of 39** invoices still carry no `EntryId`. Sales returns are consistent with that (they post nothing either). Aged receivables and the credit-limit check under-state by everything billed through the app; the customer statement is built from documents and is right | Decide the accounts and post both sides — a session of its own. convey.txt §R7.1 |
 
 ---
 
