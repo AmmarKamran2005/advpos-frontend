@@ -90,7 +90,12 @@ export default function PartyDetailPage() {
   const params = useParams<{ id: string }>();
   const partyId = parseInt(params.id ?? "0", 10);
 
-  const { can } = useSession();
+  const { can, role } = useSession();
+  /* The order desk opens customers and reads their details -- and sees no
+     money on them (the owner, 26 September): no balance, limit, ledger or
+     statement. The API zeroes those figures for the role too. */
+  const noMoney = role === "order-dept";
+  const backOffice = role === "super-admin" || role === "accountant";
 
   const [party, setParty] = React.useState<Party | null>(null);
   const [statement, setStatement] = React.useState<Statement | null>(null);
@@ -114,7 +119,10 @@ export default function PartyDetailPage() {
       /* The tabs are secondary: if one of them fails the header should still
          render, so they are settled separately from the party itself. */
       const [st, ord, inv, vis] = await Promise.allSettled([
-        axios.get<Statement>(`${API_BASE_URL}/parties/${partyId}/statement`, { headers: authHeader() }),
+        /* Not asked for at all by the order desk -- the API refuses it. */
+        noMoney
+          ? Promise.reject(new Error("no statement for the order desk"))
+          : axios.get<Statement>(`${API_BASE_URL}/parties/${partyId}/statement`, { headers: authHeader() }),
         axios.get<{ items: OrderRow[] } | OrderRow[]>(`${API_BASE_URL}/sales/orders`, { params: { customerId: partyId, pageSize: 100 }, headers: authHeader() }),
         axios.get<{ items: InvoiceRow[] } | InvoiceRow[]>(`${API_BASE_URL}/sales/invoices`, { params: { customerId: partyId, pageSize: 100 }, headers: authHeader() }),
         axios.get<VisitRow[] | { items: VisitRow[] }>(`${API_BASE_URL}/parties/visits`, { headers: authHeader() }),
@@ -140,7 +148,7 @@ export default function PartyDetailPage() {
     } finally {
       setLoading(false);
     }
-  }, [partyId]);
+  }, [partyId, noMoney]);
 
   /* Bind whatever photographs this customer has into one PDF again. Used when
      a picture was added from the edit screen after the account was opened --
@@ -298,9 +306,15 @@ export default function PartyDetailPage() {
         actions={
           <>
             <Button variant="ghost" className="gap-1.5" onClick={() => void load()}><RefreshCw className="size-4" />Refresh</Button>
-            <Button variant="secondary" className="gap-1.5" asChild>
-              <Link href={`/parties/${party.id}/statement`}><FileText />Statement</Link>
-            </Button>
+            {backOffice && party.type !== "SUPPLIER" ? (
+              <Button variant="secondary" className="gap-1.5" asChild>
+                <Link href={`/ledgers/customers/${party.id}`}><FileText />Ledger</Link>
+              </Button>
+            ) : !noMoney && (
+              <Button variant="secondary" className="gap-1.5" asChild>
+                <Link href={`/parties/${party.id}/statement`}><FileText />Statement</Link>
+              </Button>
+            )}
 
             {/* THE CUSTOMER'S OWN PAPERS, as one file.
 
@@ -342,6 +356,7 @@ export default function PartyDetailPage() {
       />
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        {!noMoney && <>
         <Card className="p-4">
           <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Balance</div>
           <div className={cn("text-2xl tabular font-bold mt-1", overLimit ? "text-danger" : "text-navy-900 dark:text-white")}>
@@ -356,6 +371,7 @@ export default function PartyDetailPage() {
             <div className={cn("h-full", overLimit ? "bg-danger" : "bg-success")} style={{ width: `${usedPercent}%` }} />
           </div>
         </Card>
+        </>}
         <Card className="p-4">
           <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Orders</div>
           <div className="text-2xl tabular font-bold text-navy-900 dark:text-white mt-1">{party.orderCount}</div>
@@ -369,11 +385,11 @@ export default function PartyDetailPage() {
       <Tabs defaultValue="overview" className="w-full">
         <TabsList className="overflow-x-auto scrollbar-thin flex-nowrap">
           <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="ledger">Ledger ({statement?.lines.length ?? 0})</TabsTrigger>
+          {!noMoney && <TabsTrigger value="ledger">Ledger ({statement?.lines.length ?? 0})</TabsTrigger>}
           <TabsTrigger value="orders">Orders ({orders.length})</TabsTrigger>
           <TabsTrigger value="invoices">Invoices ({invoices.length})</TabsTrigger>
           {party.type !== "SUPPLIER" && <TabsTrigger value="visits">Visits ({visits.length})</TabsTrigger>}
-          {party.type !== "SUPPLIER" && <TabsTrigger value="credit">Credit</TabsTrigger>}
+          {party.type !== "SUPPLIER" && !noMoney && <TabsTrigger value="credit">Credit</TabsTrigger>}
         </TabsList>
 
         <TabsContent value="overview">
@@ -405,7 +421,7 @@ export default function PartyDetailPage() {
                     <Row key={t.key} icon={Receipt} label={t.label} value={party[t.key] ?? "—"} />
                   ))}
                   <Row icon={FileText} label="Opened" value={formatDate(party.createdAt)} />
-                  <Row icon={FileText} label="Opening balance" value={formatMoney(party.openingBalance)} />
+                  {!noMoney && <Row icon={FileText} label="Opening balance" value={formatMoney(party.openingBalance)} />}
                 </dl>
                 {party.notes && (
                   <p className="mt-4 pt-4 border-t border-slate-100 dark:border-navy-700 text-xs text-slate-600 dark:text-slate-300">

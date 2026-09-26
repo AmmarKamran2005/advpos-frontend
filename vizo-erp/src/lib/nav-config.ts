@@ -8,7 +8,6 @@ import {
   Wallet,
   BarChart3,
   Send,
-  PackageCheck,
   PackageX,
   Settings2,
 } from "lucide-react";
@@ -167,18 +166,10 @@ export const navigation: NavNode[] = [
     match: "delivery",
     perms: ["delivery.view"],
   },
-  {
-    /* The same screen as Delivery, pre-filtered to what already arrived --
-       "a Delivered page ... which the Order Department can also view."
-       Reusing /delivery's own status filter rather than a second page that
-       would drift from the first one's columns and rules. */
-    type: "item",
-    label: "Delivered",
-    icon: PackageCheck,
-    href: "/delivery?status=DELIVERED",
-    match: "delivery.delivered",
-    perms: ["delivery.view"],
-  },
+  /* "Delivered" is no longer its own item (the owner, 26 September). It was
+     the same /delivery screen pre-filtered to DELIVERED, and /delivery keeps
+     its status filter and its ?status= link, so delivered orders are still
+     one tap away -- without a second menu entry for one screen. */
 
   { type: "section", label: "People" },
   {
@@ -205,6 +196,11 @@ export const navigation: NavNode[] = [
       { label: "Confirm Collections", href: "/accounting/collections",  match: "accounting.collections", perms: ["money.manage"] },
       { label: "Vouchers",         href: "/accounting/vouchers",        match: "accounting.vouchers", perms: ["money.view"] },
       { label: "Expenses",         href: "/accounting/expenses",        match: "accounting.expenses", perms: ["expenses.manage"] },
+      /* Every customer's and every staff member's account, from the books
+         (26 September). Super Admin and Accountant: proxy.ts and the API
+         both say so by role; ledger.view keeps them off anybody else's menu. */
+      { label: "Customer Ledgers", href: "/ledgers/customers",          match: "accounting.customer-ledgers", perms: ["ledger.view"] },
+      { label: "Staff Ledgers",    href: "/ledgers/staff",              match: "accounting.staff-ledgers",    perms: ["ledger.view"] },
       { label: "Account List",     href: "/accounting/coa",             match: "accounting.coa",      perms: ["ledger.view"] },
       { label: "Ledgers",          href: "/accounting/ledgers",         match: "accounting.ledgers",  perms: ["ledger.view"] },
       { label: "Manual Entries",   href: "/accounting/journal-entries", match: "accounting.je",       perms: ["ledger.manage"] },

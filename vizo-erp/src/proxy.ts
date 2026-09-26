@@ -67,6 +67,10 @@ const ROUTE_RULES: { prefix: string; pattern?: RegExp; roles: RoleKey[]; perm?: 
   { prefix: "/admin", roles: ["super-admin"] },
 
   { prefix: "/accounting", roles: ["super-admin", "accountant"] },
+  /* Customer and Staff Ledgers -- money, by role, no permission escape hatch:
+     the API refuses every other role on /ledgers (CustomerLedgerController,
+     StaffLedgerController), and the order desk must see no money at all. */
+  { prefix: "/ledgers", roles: ["super-admin", "accountant"] },
 
   { prefix: "/sales/credit-holds", roles: ["super-admin", "accountant"] },
   { prefix: "/sales/direct", roles: ["super-admin", "order-dept"] },
