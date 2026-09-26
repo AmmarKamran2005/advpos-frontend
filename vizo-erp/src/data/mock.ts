@@ -163,7 +163,6 @@ export const quickCreate: QuickCreateItem[] = [
   { label: "Customer Order",   icon: "shopping-cart", href: "/sales/orders/new",        shortcut: "O", perm: "orders.create" },
   { label: "Sale Invoice",     icon: "file-text",     href: "/sales/invoices/new",      shortcut: "I", perm: "invoices.create" },
   { label: "Order to Supplier",icon: "truck",         href: "/purchases/orders/new",    shortcut: "P", perm: "purchases.manage" },
-  { label: "Stock Received",   icon: "package",       href: "/purchases/grns/new",      shortcut: "G", perm: "receipts.stock" },
   { label: "Money Received",   icon: "banknote",      href: "/accounting/vouchers/new", shortcut: "V", perm: "money.manage" },
   { label: "Customer",         icon: "user-plus",     href: "/parties/new",             shortcut: "C", perm: "customers.manage" },
   { label: "Item",             icon: "box",           href: "/inventory/products/new",  shortcut: "R", perm: "products.manage" },

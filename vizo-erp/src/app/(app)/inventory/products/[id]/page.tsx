@@ -26,7 +26,7 @@ import { ProductImage } from "@/components/products/product-image";
 import { formatMoney, formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { downloadXlsx, exportError } from "@/lib/export";
-import { PricingFields, pricingDraftFrom, pricingProblem, type PricingDraft } from "@/components/inventory/pricing-fields";
+import { PricingFields, pricingDraftFrom, pricingPayload, pricingProblem, type PricingDraft } from "@/components/inventory/pricing-fields";
 import { BarcodeFields, cleanBarcodes } from "@/components/inventory/barcode-fields";
 import { ProductMovements } from "@/components/inventory/product-movements";
 import {
@@ -50,12 +50,22 @@ type Product = {
   packing: number;
   minQty: number;
   maxQty: number;
-  costPrice: number;
-  dutyPrice: number;
-  marginPrice: number;
-  /** Margin as a percentage of landed cost (cost + duty). */
-  marginPercent: number;
+  /* The five price parts are sent to the Super Admin only (26 Sep): for
+     every other role they arrive as null and only the sale price is shown. */
+  costPrice: number | null;
+  dutyPrice: number | null;
+  fsPrice: number | null;
+  /** Margin 1. */
+  marginPrice: number | null;
+  margin2Price: number | null;
   salePrice: number;
+  /** True once a purchase order has bought the item: purchase orders set its price now. */
+  pricingLocked: boolean;
+  /** What is left of each purchase, and at what price (Super Admin only). */
+  lots: {
+    id: number; batchNo: string; date: string; poId: number | null;
+    qtyReceived: number; unitSalePrice: number; onHand: number;
+  }[] | null;
   taxRatePercent: number;
   hideStock: boolean;
   isActive: boolean;
@@ -182,7 +192,7 @@ function ProductDetail() {
       toast.error("The product needs a name.");
       return;
     }
-    const priceIssue = pricingProblem(draft.pricing);
+    const priceIssue = product.costPrice !== null && !product.pricingLocked ? pricingProblem(draft.pricing) : null;
     if (priceIssue) {
       toast.error("Check the prices", { description: priceIssue });
       return;
@@ -200,9 +210,7 @@ function ProductDetail() {
           packing: Number(draft.packing) || 0,
           minQty: Number(draft.minQty) || 0,
           maxQty: Number(draft.maxQty) || 0,
-          costPrice: Number(draft.pricing.cost) || 0,
-          dutyPrice: Number(draft.pricing.duty) || 0,
-          salePrice: Number(draft.pricing.sale) || 0,
+          ...pricingPayload(draft.pricing),
           taxRatePercent: Number(draft.taxRatePercent) || 0,
           hideStock: draft.hideStock,
           isActive: draft.isActive,
@@ -273,17 +281,20 @@ function ProductDetail() {
 
   /* ── derived ─────────────────────────────────────────────────────── */
 
-  /* On LANDED cost -- cost plus duty -- the same base the pricing form uses,
-     so the figure here is the figure somebody typed. */
-  const landed = product.costPrice + product.dutyPrice;
-  const margin = product.marginPercent;
+  /* Cost figures exist only for the Super Admin; the API sends null to
+     everyone else, and then nothing below shows or derives a cost. */
+  const seesCost = product.costPrice !== null;
+  const landed = (product.costPrice ?? 0) + (product.dutyPrice ?? 0);
+  const margins = (product.marginPrice ?? 0) + (product.margin2Price ?? 0);
 
   const stockColumns: Column<StockRow & { id: number }>[] = [
     { key: "locationName", header: "Location", cell: (r) => <span className="text-sm font-medium text-navy-900 dark:text-white">{r.locationName}</span> },
     { key: "locationCode", header: "Code", cell: (r) => <span className="tabular text-xs text-slate-500 dark:text-slate-400">{r.locationCode}</span> },
     { key: "qty", header: "On Hand", align: "right", cell: (r) => <span className="tabular text-sm font-semibold text-navy-900 dark:text-white">{r.qty}</span> },
-    { key: "cost", header: "Landed Cost", align: "right", cell: () => <span className="tabular text-sm text-slate-600 dark:text-slate-300">{formatMoney(landed)}</span> },
-    { key: "value", header: "Value", align: "right", cell: (r) => <span className="tabular text-sm font-bold text-navy-900 dark:text-white">{formatMoney(r.qty * landed)}</span> },
+    ...(seesCost ? [
+      { key: "cost", header: "Landed Cost", align: "right", cell: () => <span className="tabular text-sm text-slate-600 dark:text-slate-300">{formatMoney(landed)}</span> },
+      { key: "value", header: "Value", align: "right", cell: (r) => <span className="tabular text-sm font-bold text-navy-900 dark:text-white">{formatMoney(r.qty * landed)}</span> },
+    ] as Column<StockRow & { id: number }>[] : []),
   ];
 
   /* DataTable needs an `id` on every row; stockSpread keys on locationId. */
@@ -353,27 +364,31 @@ function ProductDetail() {
           <div className="text-2xl tabular font-bold text-navy-900 dark:text-white mt-1">{formatMoney(product.salePrice)}</div>
           <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">+{product.taxRatePercent}% tax</div>
         </Card>
-        <Card className="p-4">
-          <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Landed Cost</div>
-          <div className="text-2xl tabular font-bold text-navy-900 dark:text-white mt-1">{formatMoney(landed)}</div>
-          <div className="text-xs text-slate-500 dark:text-slate-400 mt-1 tabular">
-            {formatMoney(product.costPrice)} + {formatMoney(product.dutyPrice)} duty
-          </div>
-        </Card>
-        <Card className="p-4">
-          <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Margin</div>
-          <div className={cn("text-2xl tabular font-bold mt-1", margin <= 0 ? "text-danger" : margin < 15 ? "text-warning" : "text-success")}>
-            {margin.toFixed(1)}%
-          </div>
-          <div className="text-xs text-slate-500 dark:text-slate-400 mt-1 inline-flex items-center gap-1">
-            <TrendingUp className="size-3" /> {formatMoney(product.marginPrice)} per unit
-          </div>
-        </Card>
-        <Card className="p-4">
-          <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Stock Value</div>
-          <div className="text-2xl tabular font-bold text-navy-900 dark:text-white mt-1">{formatMoney(product.totalStock * landed)}</div>
-          <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">at landed cost</div>
-        </Card>
+        {seesCost && (
+          <>
+            <Card className="p-4">
+              <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Landed Cost</div>
+              <div className="text-2xl tabular font-bold text-navy-900 dark:text-white mt-1">{formatMoney(landed)}</div>
+              <div className="text-xs text-slate-500 dark:text-slate-400 mt-1 tabular">
+                {formatMoney(product.costPrice ?? 0)} + {formatMoney(product.dutyPrice ?? 0)} duty
+              </div>
+            </Card>
+            <Card className="p-4">
+              <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Margins</div>
+              <div className={cn("text-2xl tabular font-bold mt-1", margins <= 0 ? "text-danger" : "text-success")}>
+                {formatMoney(margins)}
+              </div>
+              <div className="text-xs text-slate-500 dark:text-slate-400 mt-1 inline-flex items-center gap-1">
+                <TrendingUp className="size-3" /> + {formatMoney(product.fsPrice ?? 0)} Fi Sabilillah
+              </div>
+            </Card>
+            <Card className="p-4">
+              <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Stock Value</div>
+              <div className="text-2xl tabular font-bold text-navy-900 dark:text-white mt-1">{formatMoney(product.totalStock * landed)}</div>
+              <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">at landed cost</div>
+            </Card>
+          </>
+        )}
       </div>
 
       {/* ── EDIT FORM ─────────────────────────────────────────────── */}
@@ -412,10 +427,12 @@ function ProductDetail() {
               <Fld label="Image URL"><Input value={draft.imageUrl} onChange={(e) => setField("imageUrl", e.target.value)} placeholder="https://…" /></Fld>
             </div>
 
-            <div className="mt-4 pt-4 border-t border-slate-100 dark:border-navy-700">
-              <Label className="mb-3 inline-block">Pricing</Label>
-              <PricingFields value={draft.pricing} onChange={(pr) => setField("pricing", pr)} />
-            </div>
+            {seesCost && (
+              <div className="mt-4 pt-4 border-t border-slate-100 dark:border-navy-700">
+                <Label className="mb-3 inline-block">{product.pricingLocked ? "Pricing" : "Opening Pricing"}</Label>
+                <PricingFields value={draft.pricing} onChange={(pr) => setField("pricing", pr)} locked={product.pricingLocked} />
+              </div>
+            )}
 
             <div className="flex flex-wrap items-center gap-6 mt-4 pt-4 border-t border-slate-100 dark:border-navy-700">
               <label className="flex items-center gap-2.5 text-sm text-navy-900 dark:text-white">
@@ -478,17 +495,39 @@ function ProductDetail() {
                   price-list table behind them, so they are not shown; the real
                   figures on the product row are. */}
               <div className="space-y-3 max-w-xl">
-                <PriceRow label="Cost price" value={formatMoney(product.costPrice)} />
-                <PriceRow label="Duty" value={formatMoney(product.dutyPrice)} />
-                <PriceRow label="Landed cost" value={formatMoney(landed)} strong />
-                <PriceRow label={`Margin (${margin.toFixed(1)}% of landed cost)`} value={formatMoney(product.marginPrice)} />
+                {seesCost && (
+                  <>
+                    <PriceRow label="Cost price" value={formatMoney(product.costPrice ?? 0)} />
+                    <PriceRow label="Duty" value={formatMoney(product.dutyPrice ?? 0)} />
+                    <PriceRow label="Fi Sabilillah" value={formatMoney(product.fsPrice ?? 0)} />
+                    <PriceRow label="Margin 1" value={formatMoney(product.marginPrice ?? 0)} />
+                    <PriceRow label="Margin 2" value={formatMoney(product.margin2Price ?? 0)} />
+                  </>
+                )}
                 <PriceRow label="Sale price (excl. tax)" value={formatMoney(product.salePrice)} strong />
                 <PriceRow label={`Tax at ${product.taxRatePercent}%`} value={formatMoney(product.salePrice * (product.taxRatePercent / 100))} />
                 <PriceRow label="Sale price (incl. tax)" value={formatMoney(product.salePrice * (1 + product.taxRatePercent / 100))} strong />
               </div>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-4">
-                Per-customer and tiered price lists are not in the database yet, so no tiers are shown here.
-              </p>
+              {/* What is left of every purchase of this item, at the price it
+                  was bought to sell at -- the lots a new purchase order's
+                  price popup averages over. */}
+              {seesCost && product.lots && product.lots.length > 0 && (
+                <div className="mt-6">
+                  <h4 className="text-sm font-semibold text-navy-900 dark:text-white mb-2">Stock by purchase</h4>
+                  <div className="divide-y divide-slate-100 rounded-lg border border-slate-200 dark:divide-navy-700 dark:border-navy-700">
+                    {product.lots.map((l) => (
+                      <div key={l.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2 text-sm">
+                        <span className="font-medium text-navy-900 dark:text-white min-w-28">
+                          {l.poId ? <Link href={`/purchases/orders/${l.poId}`} className="hover:underline">{l.batchNo}</Link> : "Opening stock"}
+                        </span>
+                        <span className="text-xs text-slate-500">{formatDate(l.date)}</span>
+                        <span className="tabular ml-auto">{formatMoney(l.unitSalePrice)}</span>
+                        <span className="tabular text-xs text-slate-500 w-28 text-right">{l.onHand} of {l.qtyReceived} left</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </CardBody>
           </Card>
         </TabsContent>

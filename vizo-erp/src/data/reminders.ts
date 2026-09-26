@@ -199,7 +199,9 @@ function payableDueReminders(): Reminder[] {
           : daysRemaining === 0
             ? "Due today"
             : `Due in ${daysRemaining} ${daysRemaining === 1 ? "day" : "days"}`,
-        href: `/purchases/invoices/${pi.id}`,
+        /* The bill screens are the Super Admin's alone since 26 Sep; the
+           accountant, who is also shown this reminder, pays from Suppliers. */
+        href: "/parties/suppliers",
         ageDays: overdue ? daysPastDue : 0,
         owners: ["accountant", "super-admin"],
         ref: pi.invoiceNo,

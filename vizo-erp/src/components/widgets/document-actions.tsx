@@ -33,6 +33,8 @@ import { openDocument, openDocumentWhenReady, viewableUrl } from "@/lib/document
  */
 export type DocumentKind =
   | "purchase-order"
+  /* Every journal voucher one purchase order posted, on one sheet (26 Sep). */
+  | "purchase-vouchers"
   | "purchase-invoice"
   | "goods-receipt"
   | "purchase-return"

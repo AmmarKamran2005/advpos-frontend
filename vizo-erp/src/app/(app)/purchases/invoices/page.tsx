@@ -1,8 +1,7 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
-import { Plus, FileText, Clock, AlertCircle } from "lucide-react";
+import { FileText, Clock, AlertCircle } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -103,12 +102,9 @@ export default function PurchaseInvoicesPage() {
       <PageHeader
         breadcrumbs={[{ label: "Purchases" }, { label: "Purchase Invoices" }]}
         title="Purchase Invoices"
-        subtitle="Supplier bills and payments"
-        actions={
-          <Button variant="accent" size="md" className="gap-1.5" asChild>
-            <Link href="/purchases/invoices/new"><Plus /><span>New Invoice</span></Link>
-          </Button>
-        }
+        /* No "New Invoice" since 26 Sep: every bill is raised by the purchase
+           order it belongs to, the moment that order is saved. */
+        subtitle="Supplier bills — each raised by its purchase order"
       />
 
       {error && (

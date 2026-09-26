@@ -57,7 +57,7 @@ const REPORTS: Entry[] = [
   { category: "Sales", name: "Sales by Salesperson", href: null, icon: Users, description: "Performance per sales rep" },
   { category: "Sales", name: "Sales by Product", href: null, icon: ShoppingCart, description: "Top selling products" },
 
-  { category: "Purchases", name: "Supplier Payables", href: "/purchases/invoices", icon: Truck, description: "Open purchase invoices and what is due" },
+  { category: "Purchases", name: "Supplier Payables", href: "/parties/suppliers", icon: Truck, description: "Open purchase invoices and what is due" },
   { category: "Purchases", name: "Purchase Summary", href: null, icon: Truck, description: "Purchases by supplier and period" },
 
   { category: "Inventory", name: "Inventory Valuation", href: "/inventory/stock-levels", icon: Package, description: "Current stock value per location" },

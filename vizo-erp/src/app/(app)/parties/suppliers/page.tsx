@@ -48,11 +48,13 @@ type Party = {
 
 type PartyPage = { total: number; page: number; pageSize: number; items: Party[] };
 
-/* GET /purchases/summary */
+/* GET /purchases/summary (SupplierPayablesController). "Open POs" and
+   "Pending GRNs" went on 26 Sep with the purchase-order statuses: an order is
+   received the moment it is saved, so nothing is ever open or pending. What
+   the accountant paying suppliers needs is how many bills are open or late. */
 type PurchasesSummary = {
-  openPos: number;
-  openPoValue: number;
-  pendingGrns: number;
+  openBills: number;
+  overdueBills: number;
   payableTotal: number;
 };
 
@@ -252,15 +254,15 @@ export default function SuppliersPage() {
         </Card>
         <Card className="p-4">
           <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">
-            Open POs
+            Open Bills
           </div>
-          <div className="text-2xl tabular font-bold text-info mt-1">{summary?.openPos ?? "—"}</div>
+          <div className="text-2xl tabular font-bold text-info mt-1">{summary?.openBills ?? "—"}</div>
         </Card>
         <Card className="p-4">
           <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">
-            Pending GRNs
+            Overdue Bills
           </div>
-          <div className="text-2xl tabular font-bold text-navy-900 dark:text-white mt-1">{summary?.pendingGrns ?? "—"}</div>
+          <div className="text-2xl tabular font-bold text-danger mt-1">{summary?.overdueBills ?? "—"}</div>
         </Card>
       </div>
 

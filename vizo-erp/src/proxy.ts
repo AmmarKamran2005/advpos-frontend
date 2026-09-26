@@ -95,9 +95,13 @@ const ROUTE_RULES: { prefix: string; pattern?: RegExp; roles: RoleKey[]; perm?: 
      on purpose: the API refuses the order-dept role on every purchases endpoint
      (PurchasesController), so ticking a permission for them in Setup would open
      a screen whose every call answers 403. "Never" is a rule about the job. */
+  /* ...AND, SINCE 26 SEP, NOT THE ACCOUNTANT'S. The owner: "koi bhi
+     purchases ki koi bhi cheez, koi bhi item kitne mein khareeda hai ...
+     kisi bhi role ko nahi dikhni chahiye". The Super Admin alone; the
+     accountant keeps what suppliers are owed on the Suppliers screen. */
   {
     prefix: "/purchases",
-    roles: ["super-admin", "accountant"],
+    roles: ["super-admin"],
   },
 
   /* THE ITEM CATALOGUE, CATEGORIES AND BRANDS -- not the order desk's either.

@@ -122,9 +122,12 @@ export const navigation: NavNode[] = [
     icon: Truck,
     match: "purchases",
     children: [
+      /* Super Admin only since 26 Sep (only that role holds purchases.view,
+         and the API and proxy.ts refuse everyone else by role). No "Stock
+         Received": a purchase order is received the moment it is saved. */
       { label: "Orders to Supplier", href: "/purchases/orders",   match: "purchases.orders",   perms: ["purchases.view"] },
-      { label: "Stock Received",     href: "/purchases/grns",     match: "purchases.grns",     perms: ["receipts.stock", "purchases.view"] },
       { label: "Purchase Invoices",  href: "/purchases/invoices", match: "purchases.invoices", perms: ["purchases.view"] },
+      { label: "Logistics Companies", href: "/purchases/logistics", match: "purchases.logistics", perms: ["purchases.view"] },
     ],
   },
   /* PACKING IS BACK, as a different screen entirely. The pre-chain queue this

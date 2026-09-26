@@ -37,10 +37,12 @@ type Product = {
   packing: number;
   minQty: number;
   maxQty: number;
-  costPrice: number;
-  dutyPrice: number;
-  marginPrice: number;
-  marginPercent: number;
+  /* Cost and its parts reach the Super Admin only (26 Sep); null for everyone else. */
+  costPrice: number | null;
+  dutyPrice: number | null;
+  fsPrice: number | null;
+  marginPrice: number | null;
+  margin2Price: number | null;
   salePrice: number;
   taxRatePercent: number;
   hideStock: boolean;
@@ -52,7 +54,7 @@ type Product = {
   status: "active" | "low" | "out" | "inactive";
 };
 
-type Stats = { total: number; active: number; low: number; out: number; inactive: number; stockValue: number };
+type Stats = { total: number; active: number; low: number; out: number; inactive: number; stockValue: number | null };
 type ProductPage = { total: number; page: number; pageSize: number; stats: Stats; items: Product[] };
 
 function apiMessage(e: unknown, fallback: string) {
@@ -175,9 +177,11 @@ export default function ProductsPage() {
       cell: (p) => (
         <div className="text-right">
           <div className="tabular text-sm font-semibold text-navy-900 dark:text-white">{formatMoney(p.salePrice)}</div>
-          <div className="text-2xs text-slate-500 dark:text-slate-400">
-            Landed {formatMoney(p.costPrice + p.dutyPrice)} · {p.marginPercent.toFixed(1)}%
-          </div>
+          {p.costPrice !== null && (
+            <div className="text-2xs text-slate-500 dark:text-slate-400">
+              Landed {formatMoney(p.costPrice + (p.dutyPrice ?? 0))}
+            </div>
+          )}
         </div>
       ),
     },
@@ -215,7 +219,11 @@ export default function ProductsPage() {
       <PageHeader
         breadcrumbs={[{ label: "Inventory" }, { label: "Products" }]}
         title="Products"
-        subtitle={stats ? `${stats.total} products · stock worth ${formatCompact(stats.stockValue)} at landed cost` : "VIZO mobile accessories"}
+        subtitle={stats
+          ? stats.stockValue !== null
+            ? `${stats.total} products · stock worth ${formatCompact(stats.stockValue)} at landed cost`
+            : `${stats.total} products`
+          : "VIZO mobile accessories"}
         actions={
           <>
             <Button variant="secondary" size="md" className="gap-1.5" onClick={exportXlsx} disabled={exporting}>
@@ -324,7 +332,8 @@ export default function ProductsPage() {
 
 function ProductCard({ p }: { p: Product }) {
   const pill = STATUS_PILL[p.status];
-  const landed = p.costPrice + p.dutyPrice;
+  const landed = p.costPrice === null ? null : p.costPrice + (p.dutyPrice ?? 0);
+  const margins = (p.marginPrice ?? 0) + (p.margin2Price ?? 0);
 
   return (
     <Link
@@ -368,15 +377,18 @@ function ProductCard({ p }: { p: Product }) {
           <div className="mt-3 flex items-end justify-between gap-2">
             <div>
               <div className="tabular text-lg font-bold text-navy-900 dark:text-white">{formatMoney(p.salePrice)}</div>
-              <div className="text-2xs text-slate-500 dark:text-slate-400 tabular">
-                Landed {formatMoney(landed)}
+              {landed !== null && (
+                <div className="text-2xs text-slate-500 dark:text-slate-400 tabular">
+                  Landed {formatMoney(landed)}
+                </div>
+              )}
+            </div>
+            {landed !== null && (
+              <div className={cn("text-right tabular text-xs font-semibold", margins <= 0 ? "text-danger" : "text-success")}>
+                {formatMoney(margins)}
+                <div className="text-2xs font-normal text-slate-500 dark:text-slate-400">margins</div>
               </div>
-            </div>
-            <div className={cn("text-right tabular text-xs font-semibold",
-              p.marginPercent <= 0 ? "text-danger" : p.marginPercent < 15 ? "text-warning" : "text-success")}>
-              {p.marginPercent.toFixed(1)}%
-              <div className="text-2xs font-normal text-slate-500 dark:text-slate-400">margin</div>
-            </div>
+            )}
           </div>
 
           <div className="mt-3 grid grid-cols-3 gap-2 border-t border-slate-100 pt-3 text-center dark:border-navy-700">
