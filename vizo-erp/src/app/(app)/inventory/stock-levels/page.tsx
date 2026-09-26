@@ -31,7 +31,8 @@ type StockRow = {
   packing: number;
   minQty: number;
   maxQty: number;
-  costPrice: number;
+  /** Super Admin only (26 Sep); null for everyone else. */
+  costPrice: number | null;
   locationId: number;
   locationCode: string;
   locationName: string;
@@ -49,6 +50,8 @@ type CityStock = { cityId: number; city: string; units: number; value: number; l
 
 type StockResponse = {
   totalValue: number;
+  /** "cost" for the Super Admin; "sale" (selling price) for everyone else. */
+  valuedAt?: "cost" | "sale";
   totalUnits: number;
   byCity: CityStock[];
   items: StockRow[];
@@ -67,7 +70,7 @@ type PivotRow = {
   sku: string;
   name: string;
   minQty: number;
-  costPrice: number;
+  costPrice: number | null;
   totalStock: number;
   value: number;
   status: "out" | "low" | "over" | "ok";
@@ -102,6 +105,7 @@ export default function StockLevelsPage() {
   const [locations, setLocations] = React.useState<LocationRef[]>([]);
   const [byCity, setByCity] = React.useState<CityStock[]>([]);
   const [totals, setTotals] = React.useState({ totalValue: 0, totalUnits: 0 });
+  const [valuedAt, setValuedAt] = React.useState<"cost" | "sale">("cost");
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [search, setSearch] = React.useState("");
@@ -123,6 +127,7 @@ export default function StockLevelsPage() {
       ]);
       setRows(stock.data.items);
       setTotals({ totalValue: stock.data.totalValue, totalUnits: stock.data.totalUnits });
+      setValuedAt(stock.data.valuedAt ?? "cost");
       setByCity(stock.data.byCity ?? []);
       setLocations(lookups.data.locations);
       setError(null);
@@ -304,7 +309,7 @@ export default function StockLevelsPage() {
           loading={loading}
           value={totals.totalUnits.toLocaleString()}
         />
-        <Stat label="Stock value" loading={loading} value={formatCompact(totals.totalValue)} />
+        <Stat label={valuedAt === "sale" ? "Stock value (at sale price)" : "Stock value (at cost)"} loading={loading} value={formatCompact(totals.totalValue)} />
         <Stat label="Low / Out" loading={loading} value={`${lowCount} / ${outCount}`} tone={outCount > 0 ? "text-danger" : "text-warning"} />
       </div>
 

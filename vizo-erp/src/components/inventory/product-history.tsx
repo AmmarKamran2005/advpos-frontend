@@ -37,11 +37,11 @@ export type HistoryEvent = {
 
 export type HistorySummary = {
   onHand: number;
-  stockValue: number;
+  stockValue?: number;
   byLocation: { location: string; city: string; qty: number }[];
-  purchasedUnits: number;
-  purchasedValue: number;
-  damagedOnArrival: number;
+  purchasedUnits?: number;
+  purchasedValue?: number;
+  damagedOnArrival?: number;
   lastPurchasedOn: string | null;
   orderedUnits: number;
   soldUnits: number;
@@ -49,13 +49,13 @@ export type HistorySummary = {
   customerCount: number;
   netSales: number;
   billedWithTax: number;
-  costOfSales: number;
-  grossProfit: number;
+  costOfSales?: number;
+  grossProfit?: number;
   averageSellingPrice: number;
   firstSoldOn: string | null;
   lastSoldOn: string | null;
   returnedByCustomers: number;
-  returnedToSuppliers: number;
+  returnedToSuppliers?: number;
   transfers: number;
   unitsTransferred: number;
   netCorrection: number;
@@ -203,14 +203,20 @@ function Line({ icon: Icon, children }: { icon?: typeof User; children: React.Re
 
 /** The headline figures of a product's life, as tiles. */
 export function HistorySummaryTiles({ s }: { s: HistorySummary }) {
-  const margin = s.netSales > 0 ? (s.grossProfit / s.netSales) * 100 : 0;
+  /* Cost, profit and everything about purchases reach the Super Admin only
+     (26 Sep); for anyone else the API leaves those fields out, and the tiles
+     built on them are not shown rather than shown as zero. */
+  const gross = s.grossProfit;
+  const margin = gross !== undefined && s.netSales > 0 ? (gross / s.netSales) * 100 : 0;
   const tiles: { label: string; value: string; hint?: string; tone?: string }[] = [
-    { label: "On hand", value: s.onHand.toLocaleString(), hint: `worth ${formatMoney(s.stockValue)}` },
-    { label: "Received", value: s.purchasedUnits.toLocaleString(), hint: s.damagedOnArrival ? `${s.damagedOnArrival} damaged on arrival` : formatMoney(s.purchasedValue) },
+    { label: "On hand", value: s.onHand.toLocaleString(), hint: s.stockValue !== undefined ? `worth ${formatMoney(s.stockValue)}` : undefined },
+    ...(s.purchasedUnits !== undefined ? [{ label: "Received", value: s.purchasedUnits.toLocaleString(), hint: s.damagedOnArrival ? `${s.damagedOnArrival} damaged on arrival` : formatMoney(s.purchasedValue ?? 0) }] : []),
     { label: "Sold", value: s.soldUnits.toLocaleString(), hint: `${s.invoiceCount} invoices · ${s.customerCount} customers` },
     { label: "Net sales", value: formatMoney(s.netSales), hint: `avg ${formatMoney(s.averageSellingPrice)} each` },
-    { label: "Gross profit", value: formatMoney(s.grossProfit), hint: `${margin.toFixed(1)}% of sales`, tone: s.grossProfit < 0 ? "text-danger" : "text-success" },
-    { label: "Returned", value: `${s.returnedByCustomers} in · ${s.returnedToSuppliers} out`, hint: "by customers · to suppliers" },
+    ...(gross !== undefined ? [{ label: "Gross profit", value: formatMoney(gross), hint: `${margin.toFixed(1)}% of sales`, tone: gross < 0 ? "text-danger" : "text-success" }] : []),
+    s.returnedToSuppliers !== undefined
+      ? { label: "Returned", value: `${s.returnedByCustomers} in · ${s.returnedToSuppliers} out`, hint: "by customers · to suppliers" }
+      : { label: "Returned", value: `${s.returnedByCustomers}`, hint: "by customers" },
     { label: "Transfers", value: s.transfers.toLocaleString(), hint: `${s.unitsTransferred} units moved` },
     { label: "Corrections", value: (s.netCorrection > 0 ? "+" : "") + s.netCorrection, hint: `${s.claims} warranty claim${s.claims === 1 ? "" : "s"}` },
   ];
