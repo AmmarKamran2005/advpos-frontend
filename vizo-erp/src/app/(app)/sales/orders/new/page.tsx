@@ -144,6 +144,13 @@ const shownAs = (c: { name: string; displayName: string | null }) => c.displayNa
 export default function NewOrderPage() {
   const router = useRouter();
   const { role } = useSession();
+
+  /* The order desk has its own order screen (/packing/new-order): it picks the
+     salesperson the order belongs to, and shows no cost, limit or balance.
+     This one is the rep's and the back office's. */
+  React.useEffect(() => {
+    if (role === "order-dept") router.replace("/packing/new-order");
+  }, [role, router]);
   /* Billing is the back office's since 21 September, so the "invoice it now"
      switch is only drawn for the two roles that may actually do it. */
   const mayInvoice = role === "super-admin" || role === "accountant";

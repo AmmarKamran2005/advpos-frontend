@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import axios from "axios";
 import {
   Package, Search, ChevronRight, ArrowLeft, Loader2, AlertCircle, AlertTriangle,
-  Send, Store, Truck, PackageCheck, Check, Hash, Calendar,
+  Send, Store, Truck, PackageCheck, Check, Hash, Calendar, Plus,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardBody } from "@/components/ui/card";
@@ -24,6 +24,7 @@ import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, Command
 import { toast } from "@/components/ui/toaster";
 import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
 import { ProductImage } from "@/components/products/product-image";
+import { RecentOrders } from "@/components/packing/recent-orders";
 import { formatMoney, formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -327,11 +328,22 @@ export default function PackingPage() {
         title="Packing"
         subtitle={readyCount === null ? "Loading…" : `${readyCount} order${readyCount === 1 ? "" : "s"} waiting to be packed.`}
         actions={
-          <Button variant="ghost" size="md" className="gap-1.5" asChild>
-            <Link href="/delivery"><Truck /> Track dispatches</Link>
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="md" className="gap-1.5" asChild>
+              <Link href="/delivery"><Truck /> <span className="hidden sm:inline">Track dispatches</span><span className="sm:hidden">Track</span></Link>
+            </Button>
+            {/* The order desk takes orders too, for any customer, on behalf
+                of the salesperson each belongs to (26 September). */}
+            <Button variant="accent" size="md" className="gap-1.5" asChild>
+              <Link href="/packing/new-order"><Plus /> New order</Link>
+            </Button>
+          </div>
         }
       />
+
+      {/* Everything created in the last seven days, whatever its status --
+          no money on it (components/packing/recent-orders.tsx). */}
+      <RecentOrders />
 
       {error ? (
         <Card><CardBody className="text-center py-10">
