@@ -51,7 +51,8 @@ type CityStock = { cityId: number; city: string; units: number; value: number; l
 type StockResponse = {
   totalValue: number;
   /** "cost" for the Super Admin; "sale" (selling price) for everyone else. */
-  valuedAt?: "cost" | "sale";
+  /** "none" for the order desk, which is shown no money at all. */
+  valuedAt?: "cost" | "sale" | "none";
   totalUnits: number;
   byCity: CityStock[];
   items: StockRow[];
@@ -105,7 +106,7 @@ export default function StockLevelsPage() {
   const [locations, setLocations] = React.useState<LocationRef[]>([]);
   const [byCity, setByCity] = React.useState<CityStock[]>([]);
   const [totals, setTotals] = React.useState({ totalValue: 0, totalUnits: 0 });
-  const [valuedAt, setValuedAt] = React.useState<"cost" | "sale">("cost");
+  const [valuedAt, setValuedAt] = React.useState<"cost" | "sale" | "none">("cost");
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [search, setSearch] = React.useState("");
@@ -252,13 +253,14 @@ export default function StockLevelsPage() {
       align: "right",
       cell: (r) => <span className="tabular text-xs text-slate-500 dark:text-slate-400">{r.minQty}</span>,
     },
-    {
+    /* No value column for the order desk: it is shown no money (valuedAt "none"). */
+    ...(valuedAt === "none" ? [] : [{
       key: "value",
       header: "Value",
-      align: "right",
+      align: "right" as const,
       sortable: true,
-      cell: (r) => <span className="tabular text-sm text-slate-600 dark:text-slate-300">{formatMoney(r.value)}</span>,
-    },
+      cell: (r: (typeof pivot)[number]) => <span className="tabular text-sm text-slate-600 dark:text-slate-300">{formatMoney(r.value)}</span>,
+    }]),
   ];
 
   return (
@@ -309,7 +311,9 @@ export default function StockLevelsPage() {
           loading={loading}
           value={totals.totalUnits.toLocaleString()}
         />
-        <Stat label={valuedAt === "sale" ? "Stock value (at sale price)" : "Stock value (at cost)"} loading={loading} value={formatCompact(totals.totalValue)} />
+        {valuedAt !== "none" && (
+          <Stat label={valuedAt === "sale" ? "Stock value (at sale price)" : "Stock value (at cost)"} loading={loading} value={formatCompact(totals.totalValue)} />
+        )}
         <Stat label="Low / Out" loading={loading} value={`${lowCount} / ${outCount}`} tone={outCount > 0 ? "text-danger" : "text-warning"} />
       </div>
 
@@ -332,7 +336,7 @@ export default function StockLevelsPage() {
             >
               <span className="font-semibold">{c.city}</span>
               <span className="tabular opacity-70"> &middot; {c.units.toLocaleString()} units</span>
-              <span className="tabular opacity-70"> &middot; {formatCompact(c.value)}</span>
+              {valuedAt !== "none" && <span className="tabular opacity-70"> &middot; {formatCompact(c.value)}</span>}
             </button>
           ))}
         </div>
