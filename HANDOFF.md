@@ -1,6 +1,6 @@
 # AdvPOS (VIZO) — Handoff
 
-**Updated 2026-09-26.** Newest first. Read **§0** and **§1** before anything
+**Updated 2026-09-27** (the 26 Sep parallel sessions A/B/C — see LATEST). Newest first. Read **§0** and **§1** before anything
 else; they are enough to carry on in a new chat. Everything below them is the
 dated history, then [What is left](#what-is-left) and
 [Standing facts](#standing-facts) at the bottom.
@@ -83,14 +83,18 @@ What the next session needs to know about **working** here:
 
 | | |
 |---|---|
-| **Frontend** | `AmmarKamran2005/advpos-frontend` @ `main`. Last PUSHED = **`ef0e542`**. **Committed locally, NOT pushed:** the Order Department's Packing screen, Claims removed for that role |
-| **Backend** | `muhammadtalhabinsuhail/vizo-backend` @ `master`. Last PUSHED = **`24e83d3`**. **Committed locally, NOT pushed:** the Packing screen, partial dispatch, the invoice's dispatch-record page, Claims removed for the order desk |
-| **Database** | Neon PostgreSQL, Singapore. Migrations **15–18, 20–25** applied (23 = order-desk rights + tax 0%; 24 = warehouse role deleted; 25 = order-dept `HomePath` → `/packing`, Claims permissions removed, `SalesOrderItem.DispatchedQty` added). **19 section 1 applied; 19 section 2 (drop `OpeningCost`) NOT run** — waits for the new API to be deployed (changa.txt §A1) |
+| **Frontend** | `AmmarKamran2005/advpos-frontend` @ `main` = `11203c9` + a docs commit (all 23 Sep work pushed). **26 Sep work is on branches** `feat/a-purchases`, `feat/b-ledgers`, `feat/c-expenses` and merged in **`integration/2026-09-26`** — NOT on `main`: merging it deploys, and the database must be migrated first (changa.txt §G) |
+| **Backend** | `muhammadtalhabinsuhail/vizo-backend` @ `master` = `fb2e7c1` (all 23 Sep work pushed). **26 Sep work** on the same three branches + **`integration/2026-09-26`**, NOT on `master` (same reason) |
+| **Database** | Neon PostgreSQL, Singapore. Migrations **15–18, 20–25** applied (23 = order-desk rights + tax 0%; 24 = warehouse role deleted; 25 = order-dept `HomePath` → `/packing`, Claims permissions removed, `SalesOrderItem.DispatchedQty` added). **19 section 1 applied; 19 section 2 (drop `OpeningCost`) NOT run** — waits for the new API to be deployed (changa.txt §A1). **26 Sep: 26, 30–33, 35 written and tested on local copies only — NOT run on live** (order in changa.txt §G) |
 | **Stack** | Next.js 16 / React 19 / TypeScript / Tailwind 4 (Vercel) · ASP.NET Core 8 Web API + EF Core 8 + Npgsql · JWT with permission policies · SignalR · WebPush · Cloudinary · MailKit · Gemini Flash. Full list in `README.md` |
-| **Gate** | `npx tsc --noEmit` clean · `npx eslint src` **0 errors**, 64 warnings (old unused-vars) · `next build` **86 pages** (packing removed) · backend **0 errors**, 6 old warnings (4 `AuthController`, 2 `ProductHistoryController`) |
+| **Gate** (`integration/2026-09-26`) | `npx tsc --noEmit` clean · `npx eslint src` **0 errors**, 49 warnings (old) · `next build` passes · backend **0 errors**, 6 old warnings |
 | **Live site** | `https://advpos-frontend.vercel.app` |
 
 ### What the owner must still do (full text in `changa.txt`)
+
+**First — 26 Sep:** the purchases / ledgers / day-expenses work is on
+`integration/2026-09-26` and waits for you: snapshot, run migrations, deploy,
+post the history — **changa.txt §G, in that order.**
 
 **Two urgent ones first:**
 
@@ -138,7 +142,114 @@ What the next session needs to know about **working** here:
 
 ---
 
-## LATEST — The Order Department's own panel: a Packing screen, and no Claims
+## LATEST — 26 Sep: purchase pricing, customer & staff ledgers, day expense sheets (three parallel sessions)
+
+The owner sent three linked requests at once and went to sleep ("no more
+questions — your recommendations are OK"). They were built **in parallel** in
+three git worktrees, each against its **own local copy of live** (Postgres 18
+on this machine, restored from a `pg_dump` taken 26 Sep — nothing ran on Neon),
+then merged into one branch and tested together.
+
+| Session | Branch (both repos) | Notes file | What |
+|---|---|---|---|
+| **A** | `feat/a-purchases` | `NOTES-a.md` | Purchase order = received + billed + posted at once; five price parts; stock lots; the price popup; logistics companies; purchases & cost for the Super Admin only |
+| **B** | `feat/b-ledgers` | `NOTES-b.md` | Order desk panel (week's orders, own order form, no money anywhere); sales posted to the books (D7 closed) with a backfill button; customer ledgers (SOA like the old system); staff ledgers; categories; Faysal Bank; Excel import |
+| **C** | `feat/c-expenses` | `NOTES-c.md` | One expense sheet per day and location, typed like a spreadsheet, approved and posted as one entry, printed as one invoice |
+| **merged** | `integration/2026-09-26` | this section | A + B + C, conflicts resolved, all migrations applied to a fresh copy, cross-checked |
+
+**Read the three NOTES files** — each has an "OWNER MUST SEE" at the top, the
+full list of files, the decisions taken and the test evidence.
+
+### The owner's requests (paraphrased faithfully)
+
+1. **Products** — pricing card titled **"Opening Pricing"**: Cost, Duty,
+   **Fi Sabilillah (FS)**, **Margin 1**, **Margin 2**; the sale price is their
+   sum; Margin % removed.
+2. **Purchase orders** — no Claim Stock as receiving place; PO date defaults to
+   today, editable; **no Expected Delivery, no status, no GRN** — saving puts
+   the stock in the location and raises the purchase invoice. Each line opens
+   with the five boxes from the product, saved on the line as entered, with the
+   selling price shown. **Duty is paid to a logistics company**, which is an
+   account the admin can add/edit/delete right beside the duty box. Every price
+   part gets its own JV (plus an overall one), with the admin's reason for the
+   amount printed on it. **3NF.**
+3. **Average price** — never automatic: a popup shows every earlier purchase of
+   the item with its price and what is left of it; the admin ticks which to
+   average with the new one and sets the final selling price. Every unit must be
+   traceable to its purchase order wherever it sits.
+4. **Order desk** — Packing opens with the last 7 days' orders (rep, customer,
+   click → items); "Delivered" menu item removed; the desk can create customers
+   and orders; stock and transfers stay; **no money, accounts or purchases**.
+5. **Accountant** — no Purchases section; **nobody but the Super Admin sees
+   what an item cost**.
+6. **Customer ledgers** — every customer has an account built from the system's
+   own records from day one (like the old FoxPro statements in
+   `vizo-erp/refrence to ledger and etc/`, gitignored — real data); manual `+`
+   rows; category required, managed inline; printable. **Staff ledgers** the same.
+7. **Expenses** — one invoice per day, entered like a spreadsheet, with Print.
+
+### Decisions taken (owner said "recommended for all")
+
+Weighted average by what is left (claim locations not counted), Margin 1
+absorbs rounding · FIFO lots, OPENING lot for today's stock · the 9 never-received
+POs kept as history · PO date may be in the past · accountant keeps supplier
+balances/payments and sees purchase JVs in the ledger · the desk picks the
+salesperson on its orders (0–10 % margin) · staff ledger posts to the books
+(Salary Expense / 2140 Staff Payables) · customer categories = the existing
+list, staff categories new · expense sheet per date **per location**, approved
+by the accountant in one click · Faysal Bank added (1113).
+
+### Accounts added
+
+1113 Faysal Bank · 2140 Staff Payables · 2150 Logistics Companies (group; each
+company 2151…) · 2160 Fi Sabilillah Reserve · 2161 Margin 1 Reserve · 2162
+Margin 2 Reserve.
+
+### Migrations (all local only — NOT run on live)
+
+`26_purchase_pricing_and_batches.sql` (section 1 additive; **section 2 drops
+PO status/expected/approved after deploy**) · `30_ledger_accounts.sql` ·
+`31_staff_ledgers.sql` (**must run before the new API**) ·
+`32_ledger_entry_items.sql` · `33_order_desk_no_money.sql` ·
+`35_expense_sheets.sql` (run before AND after the deploy). Order: changa.txt §G.
+
+### How it was verified together (`integration/2026-09-26` on `advpos_int`)
+
+Fresh live copy + 26 + 30–33 + 35. Backend 0 errors; `tsc` clean; `eslint` 0
+errors; `next build` passes. Smoke test (20 checks, all pass): B's backfill
+posted 32 old documents and the books still balance (6,047,431.60 both
+sides), a second run posted nothing; a purchase order of 20 × (500+50+25+75+10)
+moved the books by exactly 13,200 in five balanced vouchers and lots = shelves;
+expense sheets open for the accountant, 403 for the desk; accountant 403 on
+purchase orders but 200 on supplier payables; desk 200 on its week list, 403 on
+ledgers and payables; Stock in Hand valued at cost (Super Admin), sale price
+(accountant), nothing (desk); purchasing hidden from product history except
+for the Super Admin.
+
+### Merge notes
+
+One conflict (`InventoryController`, Stock in Hand / corrections / lookups):
+A hid cost from everyone but the Super Admin, B zeroed money for the desk —
+both kept (desk: `valuedAt: "none"`, no value column). B's `OrderDeskNoMoney`
+filter and A's `OkForRole` redaction both sit on `ProductHistoryController` and
+compose (A removes cost fields for non-admins, B zeroes the rest for the desk).
+
+### Working in parallel here — how it was set up (reuse it)
+
+- `D:\Main\wt\<name>\` = frontend worktree, `D:\Main\wt\<name>\backend\` =
+  backend worktree, same branch name. The outer repo tracks two files under
+  `backend/database`, so the folder is emptied before `git worktree add`.
+- Each gets a gitignored `appsettings.Development.json` pointing at its local DB
+  (`advpos_a/b/c/int`, `Host=127.0.0.1`, trust auth) and its own ports
+  (API 7181–7184, Next 3001–3004), Cloudinary test folders, nightly insights off.
+- **Cookies ignore ports**: each session browses on its own loopback host
+  (127.0.0.1 / .2 / .3 / .4) — Next 16 then needs `allowedDevOrigins`, added
+  locally and hidden with `git update-index --skip-worktree` (never commit it).
+- The dump is at `D:\Main\advpos-testdb\live-2026-09-26.dump`.
+
+---
+
+## 2026-09-23 (c) — The Order Department's own panel: a Packing screen, and no Claims
 
 ### What the owner asked for (paraphrased faithfully)
 
@@ -177,7 +288,7 @@ Strictly the Order Department panel; no other role changes.
 
 ---
 
-## LATEST — The warehouse role and its panel are deleted; purchase returns are removed
+## 2026-09-23 (b) — The warehouse role and its panel are deleted; purchase returns are removed
 
 ### What the owner asked for (paraphrased faithfully)
 
@@ -204,7 +315,7 @@ Strictly the Order Department panel; no other role changes.
 
 ---
 
-## LATEST — Big pictures, a 10% margin cap, an order desk without the catalogue, tax at 0%, a front/back check, and the AI reports repaired
+## 2026-09-23 (a) — Big pictures, a 10% margin cap, an order desk without the catalogue, tax at 0%, a front/back check, and the AI reports repaired
 
 ### What the owner asked for (paraphrased faithfully)
 
