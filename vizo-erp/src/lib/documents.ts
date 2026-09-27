@@ -212,3 +212,29 @@ export async function downloadPdf(path: string, filename: string): Promise<boole
     return false;
   }
 }
+
+/**
+ * Saves any file an authenticated API route returns -- a backup .zip, say --
+ * to the device. Same reason as downloadPdf for fetching rather than
+ * navigating (a link carries no bearer token, HANDOFF trap 14). The name comes
+ * from the API's Content-Disposition when it sends one, else `fallbackName`.
+ *
+ * Throws on failure so the caller can show the API's own message; read it
+ * with exportError() from lib/export.ts, since a failed blob request carries
+ * its JSON body as a Blob.
+ */
+export async function downloadFile(path: string, fallbackName: string): Promise<void> {
+  const res = await axios.get<Blob>(`${API_BASE_URL}${path}`, { headers: authHeader(), responseType: "blob" });
+  const disposition = String(res.headers["content-disposition"] ?? "");
+  const match = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(disposition);
+  const name = match ? decodeURIComponent(match[1]) : fallbackName;
+
+  const url = URL.createObjectURL(res.data);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}

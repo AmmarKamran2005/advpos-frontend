@@ -79,15 +79,21 @@ function ShellBody({
   setMobileOpen: (open: boolean) => void;
   children: React.ReactNode;
 }) {
-  const { user, status } = useSession();
+  const { user, status, mustChangePassword } = useSession();
 
-  if (!user) {
+  /* A temporary password is being replaced first (SessionProvider has already
+     sent the router to /setup) -- do not paint the app behind it. */
+  if (!user || mustChangePassword) {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-navy-900 flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
           <div className="size-8 border-2 border-slate-300 dark:border-navy-700 border-t-brand-yellow rounded-full animate-spin" />
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            {status === "unauthenticated" ? "Taking you to sign in…" : "Loading your workspace…"}
+            {status === "unauthenticated"
+              ? "Taking you to sign in…"
+              : mustChangePassword
+              ? "Taking you to choose your password…"
+              : "Loading your workspace…"}
           </p>
         </div>
       </div>

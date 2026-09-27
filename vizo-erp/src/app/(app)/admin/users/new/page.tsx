@@ -7,6 +7,7 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import axios from "axios";
 import { Save, ArrowLeft, Loader2, KeyRound, Info, AlertCircle } from "lucide-react";
+import { TemporaryPasswordDialog, type TemporaryPasswordResult } from "@/components/widgets/temporary-password-dialog";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardBody } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -124,6 +125,8 @@ function UserForm() {
   const [lookups, setLookups] = React.useState<Lookups | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
+  /* The server's one-time answer after a create: the generated password. */
+  const [created, setCreated] = React.useState<(TemporaryPasswordResult & { id: number }) | null>(null);
 
   const form = useForm<FormValues>({
     resolver: vizoResolver(Schema),
@@ -185,17 +188,36 @@ function UserForm() {
       roleId: d.roleId,
       locationIds: d.locationIds,
       isActive: d.isActive,
-      sendInvite: d.sendInvite,
-      password: "Vizo@1234",
+      /* No password is sent. It used to be "Vizo@1234" for every new person;
+         the API now generates a random temporary one and returns it once. */
+      sendInvite: isEdit ? false : d.sendInvite,
     };
 
     try {
-      const res = isEdit
-        ? await axios.put<{ message?: string }>(`${API_BASE_URL}/admin/users/${editingId}`, body, { headers: authHeader() })
-        : await axios.post<{ message?: string; id?: number }>(`${API_BASE_URL}/admin/users`, body, { headers: authHeader() });
+      if (isEdit) {
+        const res = await axios.put<{ message?: string }>(`${API_BASE_URL}/admin/users/${editingId}`, body, { headers: authHeader() });
+        toast.success(res.data?.message ?? "User updated.");
+        router.push("/admin/users");
+        return;
+      }
 
-      toast.success(res.data?.message ?? (isEdit ? "User updated." : "User created."));
-      router.push("/admin/users");
+      const res = await axios.post<{
+        id: number; message?: string; email: string | null; temporaryPassword: string;
+        inviteRequested: boolean; emailed: boolean; emailError: string | null;
+      }>(`${API_BASE_URL}/admin/users`, body, { headers: authHeader() });
+
+      toast.success(res.data.message ?? "User created.");
+      /* Stay on this page until the admin has seen the password -- navigating
+         away first would throw away the only copy anybody can read. */
+      setCreated({
+        id: res.data.id,
+        name: d.fullName,
+        email: res.data.email,
+        password: res.data.temporaryPassword,
+        emailRequested: res.data.inviteRequested,
+        emailed: res.data.emailed,
+        emailError: res.data.emailError,
+      });
     } catch (err) {
       toast.error(apiMessage(err, isEdit ? "Could not save the user." : "Could not create the user."));
     }
@@ -491,37 +513,55 @@ function UserForm() {
                 </CardBody>
               </Card>
 
-              <Card>
-                <CardBody>
-                  <FormField control={form.control} name="sendInvite" render={({ field }) => (
-                    <FormItem className="flex items-start gap-3">
-                      <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} className="mt-0.5" /></FormControl>
-                      <div>
-                        <Label className="inline-flex items-center gap-1.5"><KeyRound className="size-3.5" />Send invite email</Label>
-                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">User receives a link to set their password</p>
-                      </div>
-                    </FormItem>
-                  )} />
-                </CardBody>
-              </Card>
+              {/* Only on create: an edit never touches the password. */}
+              {!isEdit && (
+                <>
+                  <Card>
+                    <CardBody>
+                      <FormField control={form.control} name="sendInvite" render={({ field }) => (
+                        <FormItem className="flex items-start gap-3">
+                          <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} className="mt-0.5" /></FormControl>
+                          <div>
+                            <Label className="inline-flex items-center gap-1.5"><KeyRound className="size-3.5" />Email the password too</Label>
+                            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                              Sends the new person their sign-in address and temporary password.
+                            </p>
+                          </div>
+                        </FormItem>
+                      )} />
+                    </CardBody>
+                  </Card>
 
-              <Card className="bg-info/5 border-info/20">
-                <CardBody>
-                  <div className="flex items-start gap-2">
-                    <Info className="size-4 text-info flex-shrink-0 mt-0.5" />
-                    <div>
-                      <h3 className="text-sm font-semibold text-info-dark dark:text-info-light">Temporary password</h3>
-                      <p className="text-xs text-info-dark/80 dark:text-info-light/80 mt-1">
-                        If invite is disabled, the user will be assigned a random temporary password and forced to change it on first login.
-                      </p>
-                    </div>
-                  </div>
-                </CardBody>
-              </Card>
+                  <Card className="bg-info/5 border-info/20">
+                    <CardBody>
+                      <div className="flex items-start gap-2">
+                        <Info className="size-4 text-info flex-shrink-0 mt-0.5" />
+                        <div>
+                          <h3 className="text-sm font-semibold text-info-dark dark:text-info-light">Temporary password</h3>
+                          <p className="text-xs text-info-dark/80 dark:text-info-light/80 mt-1">
+                            The server makes a random password for this account and shows it to you once, after you
+                            press Create. The person must choose their own the first time they sign in.
+                          </p>
+                        </div>
+                      </div>
+                    </CardBody>
+                  </Card>
+                </>
+              )}
             </div>
           </div>
         </form>
       </Form>
+
+      <TemporaryPasswordDialog
+        title="User created"
+        result={created}
+        onClose={() => {
+          const id = created?.id;
+          setCreated(null);
+          router.push(id ? `/admin/users/${id}` : "/admin/users");
+        }}
+      />
     </>
   );
 }
