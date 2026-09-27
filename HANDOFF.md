@@ -156,7 +156,10 @@ then merged into one branch and tested together.
 | **B** | `feat/b-ledgers` | `NOTES-b.md` | Order desk panel (week's orders, own order form, no money anywhere); sales posted to the books (D7 closed) with a backfill button; customer ledgers (SOA like the old system); staff ledgers; categories; Faysal Bank; Excel import |
 | **C** | `feat/c-expenses` | `NOTES-c.md` | One expense sheet per day and location, typed like a spreadsheet, approved and posted as one entry, printed as one invoice |
 | **merged** | `integration/2026-09-26` | this section | A + B + C, conflicts resolved, all migrations applied to a fresh copy, cross-checked |
-| **D** (27 Sep) | `feat/d-collections` → merged in | `NOTES-d.md` | Confirm Collections made live (collect on any invoiced order → receipt posted to the customer and his invoice; confirm a rep's collection for what arrived; bounce); animated sign-in page; migration 36 (COL series) |
+| **D** (27 Sep) | `feat/d-collections` → merged in | `NOTES-d.md` | Confirm Collections made live (collect on any invoiced order → receipt posted to the customer and his invoice; confirm a rep's collection for what arrived; bounce); animated sign-in page; migration 36 (COL series); Account List made real (add/edit/delete/switch off); Trial Balance screen removed; **Print now prints** (bills, invoices, returns, expense sheets — `printPdf`/`downloadPdf` in `lib/documents.ts`; the old `window.open(..., "noopener")` always returned null) |
+| **E1** (27 Sep) | `feat/e1-auth` → merged in | `NOTES-e1.md` | Sign-in and admin with nothing fake: forgot/reset password by email, temporary passwords + forced change (`/setup`), real backups (download), migrations 37–38 |
+| **E2** (27 Sep) | `feat/e2-ops` → merged in | `NOTES-e2.md` | Delivery (book from Delivery too, confirm arrival, settle COD), visits, reports from the DB; the desk no longer types COD (server sets it); migration 39 |
+| **E3** (27 Sep) | `feat/e3-shell` → merged in | `NOTES-e3.md` | App shell and lookups from the DB: company name in sidebar/login, Quick Create "N then letter", notifications, dispatch channel suggested by the API, bank statement import + Bank Reconciliation in the Money menu; migration 41 |
 
 **Read the three NOTES files** — each has an "OWNER MUST SEE" at the top, the
 full list of files, the decisions taken and the test evidence.
@@ -212,7 +215,11 @@ Margin 2 Reserve.
 PO status/expected/approved after deploy**) · `30_ledger_accounts.sql` ·
 `31_staff_ledgers.sql` (**must run before the new API**) ·
 `32_ledger_entry_items.sql` · `33_order_desk_no_money.sql` ·
-`35_expense_sheets.sql` (run before AND after the deploy) · `36_collection_series.sql` (27 Sep). Order: changa.txt §G.
+`35_expense_sheets.sql` (run before AND after the deploy) · `36_collection_series.sql` (27 Sep) ·
+`37_must_change_password.sql` + `38_backup_files.sql` (**before the new API**) ·
+`39_visits_and_delivery_confirmation.sql` (**before the new API**) ·
+`41_bank_statement_import.sql`. Order: changa.txt §G (G2, and G12 for the owner's
+27 Sep items).
 
 ### How it was verified together (`integration/2026-09-26` on `advpos_int`)
 
@@ -227,7 +234,23 @@ ledgers and payables; Stock in Hand valued at cost (Super Admin), sale price
 (accountant), nothing (desk); purchasing hidden from product history except
 for the Super Admin.
 
+**27 Sep, all rounds together** (A+B+C+D+E1+E2+E3 on a fresh `advpos_int` from
+`LIVE-BACKUP-before-deploy-2026-09-26_1849.dump` + 26 §1/§2, 30–33, 35–39, 41):
+backend 0 errors; `tsc` clean; `eslint` 0 errors; `next build` passes (89 pages).
+Smoke test 27/27: the 20 above plus collections (accountant 200, desk 403),
+Account List lookups, the dispatch queue carrying both E2's `collectsCash` and
+E3's `suggestedChannelId`, the desk's dispatch queue with every total and COD
+at 0, the company name read from the DB, and the books still balanced.
+
 ### Merge notes
+
+27 Sep: `DispatchController` (E2 zeroes money for the desk and has the server
+set the COD; E3 suggests the channel from the data) — both kept. On the web the
+booking form lives in E2's shared `components/delivery/dispatch-sheet.tsx`, and
+E3's `suggestedChannelId` became its first choice (Karachi → local → cargo stays
+the fallback for the Delivery screen's own list). Login footer: E1's current
+year + E3's company name, no dead `#` links.
+
 
 One conflict (`InventoryController`, Stock in Hand / corrections / lookups):
 A hid cost from everyone but the Super Admin, B zeroed money for the desk —
