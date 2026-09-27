@@ -142,6 +142,14 @@ post the history — **changa.txt §G, in that order.**
 
 ---
 
+> **27 Sep, 13:50 — DEPLOYED.** Everything below is on `master`/`main`, and every
+> migration listed (26 §1+§2, 30–33, 35, 36–39, 41) has been run on live Neon.
+> The backup from just before is `D:\Main\advpos-testdb\LIVE-BACKUP-before-migrations-2026-09-27_1346.dump`.
+> The owner's remaining steps are `changa.txt` §G5–G12. Railway now reads its secrets
+> (DB, JWT key, Cloudinary, email) from its own variables: Talha emptied them in
+> `appsettings.json` on master, and the JWT key changed, so tokens minted with the
+> old key get 401 on live.
+
 ## LATEST — 26 Sep: purchase pricing, customer & staff ledgers, day expense sheets (three parallel sessions)
 
 The owner sent three linked requests at once and went to sleep ("no more
