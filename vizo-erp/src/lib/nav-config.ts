@@ -207,7 +207,7 @@ export const navigation: NavNode[] = [
       { label: "Account List",     href: "/accounting/coa",             match: "accounting.coa",      perms: ["ledger.view"] },
       { label: "Ledgers",          href: "/accounting/ledgers",         match: "accounting.ledgers",  perms: ["ledger.view"] },
       { label: "Manual Entries",   href: "/accounting/journal-entries", match: "accounting.je",       perms: ["ledger.manage"] },
-      { label: "Trial Balance",    href: "/accounting/trial-balance",   match: "accounting.tb",       perms: ["statements.view"] },
+      /* Trial Balance removed from the menu on the owner's word (27 Sep). */
       { label: "Income Statement", href: "/accounting/profit-loss",     match: "accounting.pl",       perms: ["statements.view"] },
       { label: "Balance Sheet",    href: "/accounting/balance-sheet",   match: "accounting.bs",       perms: ["statements.view"] },
       { label: "Year End",         href: "/accounting/period-close",    match: "accounting.pc",       perms: ["statements.view"] },
