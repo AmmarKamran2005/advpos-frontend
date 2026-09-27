@@ -106,3 +106,60 @@ numbers fall back to a timestamp (HANDOFF trap 9).
   - No sideways scroll at 375 px on the page or in the modal.
 - **Login:** it renders with 25 animations running, the logo loads, and its layout is unchanged.
 - **Gate:** backend build 0 errors; `tsc` clean; `eslint` 0 errors, with no new warnings.
+
+## Later the same day — the whole Money section from the database; Trial Balance removed
+
+The owner: "does all account section is dynamic now, if not done it. no dummy data, all from
+DB. remove trial balance tab".
+
+**Audit, screen by screen:**
+- Confirm Collections, Vouchers, Expenses, Customer Ledgers, Staff Ledgers, Ledgers, Manual
+  Entries, Income Statement, Balance Sheet, Cash Flow, Year End and Bank Reconciliation all read
+  and write through the API.
+- None of them has a hard-coded figure or a toast-only button. Reconciliation's extra toasts are
+  messages after real calls.
+- **The Account List was the one fake:**
+  - New account and Edit only showed a success toast.
+  - Delete only showed "Account deactivated".
+  - The form offered ASSET/LIABILITY/EQUITY types that match nothing in the database.
+  - The API could only read the chart.
+
+**Built:**
+- `Controllers/ChartOfAccountsController.cs`, super-admin and accountant with `ledger.manage`:
+  - `GET accounts/lookups` returns the real account types, the group headings, and the codes
+    the system posts to.
+  - `POST accounts` and `PUT accounts/{id}` add and edit an account.
+  - `DELETE accounts/{id}` deletes an account nothing has touched. One with history is switched
+    off instead.
+  - The rules:
+    - A code is digits, unique, and starts with its parent's digit.
+    - A type must belong to its parent's group.
+    - An account cannot be moved under itself or one of its own children.
+    - An account with postings keeps its code and type, and cannot become a group.
+    - A group that has children must stay a group.
+    - The 23 accounts the system posts to by code can be renamed, but never re-coded,
+      switched off or removed.
+  - Every table that points at an account is checked before a delete, because each of those
+    links deletes its rows along with the account (HANDOFF trap 24).
+- `/accounting/coa`, rebuilt:
+  - The form is real, and its choices come from the database.
+  - Each group row has "add under this".
+  - Accounts can be edited, removed or switched off, and switched back on.
+  - A "Show switched-off accounts" toggle.
+  - Lock marks on the system accounts.
+  - The group totals are now signed sums (they used to add absolute values), shown compact
+    with the exact figure on hover.
+  - Each account name links to its ledger.
+- Trial Balance is removed from the menu, the Reports list and the ledger page's links. Its
+  page is deleted. The API endpoint stays, because Year End and the archived statement PDFs
+  use it.
+
+**Verified (`advpos_d`, accountant):**
+- Adding 1114 Bank Alfalah worked, through the API and through the form in the browser.
+- Refused as expected: a duplicate code, an expense type under an asset group, a wrong first
+  digit, re-coding 1130, and deleting 1101.
+- Deleting unused 5103 removed it. Deleting 5102 Rent Expense, which has postings, switched it
+  off instead, and it switched back on.
+- Turning a used account into a group was refused.
+- The order desk gets 403.
+- No sideways scroll at 375 px.

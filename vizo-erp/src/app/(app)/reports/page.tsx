@@ -65,7 +65,6 @@ const REPORTS: Entry[] = [
   { category: "Inventory", name: "Dead Stock", href: "/reports/dead-stock", icon: Archive, description: "Nothing sold in the window", featured: true },
   { category: "Inventory", name: "Stock Movements Log", href: "/inventory/movements", icon: FileText, description: "Every in and out, with running balance" },
 
-  { category: "Financial", name: "Trial Balance", href: "/accounting/trial-balance", icon: BarChart3, description: "Sum of debits and credits" },
   { category: "Financial", name: "Profit & Loss", href: "/accounting/profit-loss", icon: TrendingUp, description: "Revenue minus expenses" },
   { category: "Financial", name: "Balance Sheet", href: "/accounting/balance-sheet", icon: BarChart3, description: "Financial position snapshot" },
   { category: "Financial", name: "Cash Flow", href: "/accounting/cash-flow", icon: Receipt, description: "Cash in and out per account" },
