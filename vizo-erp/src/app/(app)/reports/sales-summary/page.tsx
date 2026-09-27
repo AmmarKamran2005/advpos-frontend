@@ -42,6 +42,9 @@ type LocationPoint = {
 type SummaryResponse = {
   from: string;
   to: string;
+  /* Cost and margin are the Super Admin's alone (26 Sep); for anybody else the
+     API sends them as 0 with showsCost false, and this page leaves them out. */
+  showsCost?: boolean;
   invoiceCount: number;
   unitsSold: number;
   subtotal: number;
@@ -143,13 +146,17 @@ export default function SalesSummaryPage() {
         <Stat label="Total Revenue" loading={loading} value={formatCompact(data.revenue)} />
         <Stat label="Invoices" loading={loading} value={String(data.invoiceCount)} />
         <Stat label="Avg Invoice" loading={loading} value={formatMoney(data.averageInvoice)} />
-        <Stat
-          label="Margin"
-          loading={loading}
-          value={formatCompact(data.margin)}
-          sub={`${data.marginPercent}%`}
-          tone={data.margin >= 0 ? "text-success" : "text-danger"}
-        />
+        {data.showsCost ? (
+          <Stat
+            label="Margin"
+            loading={loading}
+            value={formatCompact(data.margin)}
+            sub={`${data.marginPercent}%`}
+            tone={data.margin >= 0 ? "text-success" : "text-danger"}
+          />
+        ) : (
+          <Stat label="Units Sold" loading={loading} value={data.unitsSold.toLocaleString()} />
+        )}
       </div>
 
       <Card className="mb-6">
@@ -184,7 +191,7 @@ export default function SalesSummaryPage() {
                     <th className="text-left text-2xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 py-2">Location</th>
                     <th className="text-right text-2xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 py-2">Invoices</th>
                     <th className="text-right text-2xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 py-2">Revenue</th>
-                    <th className="text-right text-2xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 py-2">Margin</th>
+                    {data.showsCost && <th className="text-right text-2xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 py-2">Margin</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-navy-700">
@@ -193,7 +200,7 @@ export default function SalesSummaryPage() {
                       <td className="py-2.5 text-sm font-medium text-navy-900 dark:text-white">{l.location}</td>
                       <td className="py-2.5 text-right tabular text-sm text-slate-600 dark:text-slate-300">{l.invoices}</td>
                       <td className="py-2.5 text-right tabular text-sm font-semibold text-navy-900 dark:text-white">{formatMoney(l.revenue)}</td>
-                      <td className="py-2.5 text-right tabular text-sm font-semibold text-success">{formatMoney(l.margin)}</td>
+                      {data.showsCost && <td className="py-2.5 text-right tabular text-sm font-semibold text-success">{formatMoney(l.margin)}</td>}
                     </tr>
                   ))}
                 </tbody>

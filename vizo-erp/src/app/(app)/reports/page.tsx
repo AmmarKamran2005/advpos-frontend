@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
+import { API_BASE_URL, authHeader, useSession } from "@/components/providers/session-provider";
 import { formatCompact } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { AiInsight } from "@/components/widgets/ai-insight";
@@ -25,6 +25,8 @@ type ReportsIndex = {
   monthInvoices: number;
   receivable: number;
   stockValue: number;
+  /* "cost" for the Super Admin, "sale" for everybody else (27 Sep). */
+  stockValuedAt?: "cost" | "sale";
   stockUnits: number;
   activeCustomers: number;
   activeProducts: number;
@@ -37,28 +39,32 @@ const EMPTY: ReportsIndex = {
   activeCustomers: 0, activeProducts: 0, openClaims: 0, deliveriesInFlight: 0,
 };
 
-/* `href: null` means there is no report behind it yet.
-   Six of these used to point at /reports/sales-summary, so clicking
-   "Purchase Summary" or "Supplier Ledger" quietly showed the sales report
-   instead. A card that says "not built" is honest; one that shows the wrong
-   numbers is not. */
+/* Every card leads to a real report. Four used to be `href: null` with a
+   "Not built" badge -- Sales by Salesperson, Sales by Product, Purchase
+   Summary, Supplier Ledger -- and were built on 27 Sep (round E).
+
+   `roles`: who the card is shown to, matching proxy.ts and the API. A card the
+   caller cannot open is left off rather than shown and refused -- Purchase
+   Summary is the Super Admin's alone (purchase prices, 26 Sep). */
+type Role = "super-admin" | "accountant" | "order-dept" | "sales";
 type Entry = {
   category: string;
   name: string;
-  href: string | null;
+  href: string;
   icon: typeof TrendingUp;
   description: string;
   featured?: boolean;
+  roles?: Role[];
 };
 
 const REPORTS: Entry[] = [
   { category: "Sales", name: "Sales Summary", href: "/reports/sales-summary", icon: TrendingUp, description: "Revenue, invoices, margin, daily trend" },
   { category: "Sales", name: "Top Customers", href: "/reports/top-customers", icon: Star, description: "Best customers by revenue and margin", featured: true },
-  { category: "Sales", name: "Sales by Salesperson", href: null, icon: Users, description: "Performance per sales rep" },
-  { category: "Sales", name: "Sales by Product", href: null, icon: ShoppingCart, description: "Top selling products" },
+  { category: "Sales", name: "Sales by Salesperson", href: "/reports/sales-by-rep", icon: Users, description: "Orders, sales, collections and what each rep's customers owe" },
+  { category: "Sales", name: "Sales by Product", href: "/reports/sales-by-product", icon: ShoppingCart, description: "Units, sales, average price and returns per item and category" },
 
-  { category: "Purchases", name: "Supplier Payables", href: "/parties/suppliers", icon: Truck, description: "Open purchase invoices and what is due" },
-  { category: "Purchases", name: "Purchase Summary", href: null, icon: Truck, description: "Purchases by supplier and period" },
+  { category: "Purchases", name: "Supplier Payables", href: "/parties/suppliers", icon: Truck, description: "Open purchase invoices and what is due", roles: ["super-admin", "accountant"] },
+  { category: "Purchases", name: "Purchase Summary", href: "/reports/purchase-summary", icon: Truck, description: "POs by supplier and item, with duty, FS and margins", roles: ["super-admin"] },
 
   { category: "Inventory", name: "Inventory Valuation", href: "/inventory/stock-levels", icon: Package, description: "Current stock value per location" },
   { category: "Inventory", name: "Slow Moving", href: "/reports/slow-moving", icon: AlertTriangle, description: "Months of cover on the shelf", featured: true },
@@ -73,7 +79,7 @@ const REPORTS: Entry[] = [
   { category: "Receivable", name: "Customer Statement", href: "/parties/customers", icon: FileText, description: "Pick a customer to open their ledger" },
 
   { category: "Payable", name: "AP Aging", href: "/reports/aging/supplier", icon: CreditCard, description: "Supplier payables by age bucket" },
-  { category: "Payable", name: "Supplier Ledger", href: null, icon: FileText, description: "Per-supplier transaction history" },
+  { category: "Payable", name: "Supplier Ledger", href: "/reports/supplier-ledger", icon: FileText, description: "Bills, payments and running balance per supplier", roles: ["super-admin", "accountant"] },
 ];
 
 function apiMessage(e: unknown, fallback: string) {
@@ -84,6 +90,7 @@ function apiMessage(e: unknown, fallback: string) {
 }
 
 export default function ReportsPage() {
+  const { role } = useSession();
   const [search, setSearch] = React.useState("");
   const [stats, setStats] = React.useState<ReportsIndex>(EMPTY);
   const [loading, setLoading] = React.useState(true);
@@ -107,11 +114,11 @@ export default function ReportsPage() {
     void load();
   }, [load]);
 
-  const filtered = REPORTS.filter((r) =>
+  const filtered = REPORTS.filter((r) => (!r.roles || r.roles.includes(role as Role)) && (
     !search ||
     r.name.toLowerCase().includes(search.toLowerCase()) ||
     r.description.toLowerCase().includes(search.toLowerCase())
-  );
+  ));
   const categories = Array.from(new Set(filtered.map((r) => r.category)));
 
   return (
@@ -135,7 +142,7 @@ export default function ReportsPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <Stat label="Revenue this month" loading={loading} value={formatCompact(stats.monthRevenue)} sub={`${stats.monthInvoices} invoices`} />
         <Stat label="Receivable" loading={loading} value={formatCompact(stats.receivable)} tone="text-warning" />
-        <Stat label="Stock value" loading={loading} value={formatCompact(stats.stockValue)} sub={`${stats.stockUnits.toLocaleString()} units`} />
+        <Stat label={stats.stockValuedAt === "sale" ? "Stock at sale price" : "Stock value"} loading={loading} value={formatCompact(stats.stockValue)} sub={`${stats.stockUnits.toLocaleString()} units`} />
         <Stat label="Open claims" loading={loading} value={String(stats.openClaims)} sub={`${stats.deliveriesInFlight} deliveries out`} tone="text-info" />
       </div>
 
@@ -161,41 +168,21 @@ export default function ReportsPage() {
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {filtered.filter((r) => r.category === cat).map((r) => {
               const Icon = r.icon;
-              const body = (
-                <div
-                  className={cn(
-                    "flex items-start gap-3 p-4 rounded-lg border transition-colors h-full",
-                    r.href
-                      ? "bg-white dark:bg-navy-800 border-slate-200 dark:border-navy-700 hover:border-brand-yellow/50"
-                      : "bg-slate-50 dark:bg-navy-800/40 border-dashed border-slate-200 dark:border-navy-700"
-                  )}
-                >
-                  <div className={cn(
-                    "size-9 rounded-lg grid place-items-center shrink-0",
-                    r.href ? "bg-brand-yellow/10 text-brand-yellow-700 dark:text-brand-yellow" : "bg-slate-200/60 dark:bg-navy-700 text-slate-400"
-                  )}>
-                    <Icon className="size-4" />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className={cn(
-                        "text-sm font-medium",
-                        r.href ? "text-navy-900 dark:text-white" : "text-slate-500 dark:text-slate-400"
-                      )}>
-                        {r.name}
-                      </span>
-                      {r.featured && r.href && <Badge variant="accent">Popular</Badge>}
-                      {!r.href && <Badge variant="muted">Not built</Badge>}
+              return (
+                <Link key={r.name} href={r.href} className="block">
+                  <div className="flex items-start gap-3 p-4 rounded-lg border transition-colors h-full bg-white dark:bg-navy-800 border-slate-200 dark:border-navy-700 hover:border-brand-yellow/50">
+                    <div className="size-9 rounded-lg grid place-items-center shrink-0 bg-brand-yellow/10 text-brand-yellow-700 dark:text-brand-yellow">
+                      <Icon className="size-4" />
                     </div>
-                    <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{r.description}</div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-navy-900 dark:text-white">{r.name}</span>
+                        {r.featured && <Badge variant="accent">Popular</Badge>}
+                      </div>
+                      <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{r.description}</div>
+                    </div>
                   </div>
-                </div>
-              );
-
-              return r.href ? (
-                <Link key={r.name} href={r.href} className="block">{body}</Link>
-              ) : (
-                <div key={r.name} title="No report behind this yet">{body}</div>
+                </Link>
               );
             })}
           </div>

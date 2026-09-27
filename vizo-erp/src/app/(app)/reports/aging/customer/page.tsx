@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import axios from "axios";
-import { MessageSquare, AlertCircle } from "lucide-react";
+import { MessageSquare, AlertCircle, BellRing } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { AiInsight } from "@/components/widgets/ai-insight";
 import { ReportToolbar } from "@/components/widgets/report-toolbar";
@@ -14,6 +14,9 @@ import { API_BASE_URL, authHeader } from "@/components/providers/session-provide
 import { formatMoney, formatCompact } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { toast } from "@/components/ui/toaster";
+import { SendRemindersDialog } from "@/components/widgets/send-reminders-dialog";
+import { overdueMessage, whatsappUrl } from "@/lib/whatsapp";
+import { todayISO } from "@/lib/dates";
 
 /* GET /reports/aging/customer?asOf=YYYY-MM-DD
 
@@ -36,6 +39,12 @@ type AgingRow = {
   d90plus: number;
   outstanding: number;
   overLimit: boolean;
+  /* Since 27 Sep (round E): who to message, whose customer he is, and the
+     part that is actually past due with how late the oldest of it is. */
+  phone: string | null;
+  salesPerson: string | null;
+  overdue: number;
+  daysOverdue: number;
 };
 
 type AgingResponse = {
@@ -65,7 +74,11 @@ function apiMessage(e: unknown, fallback: string) {
 }
 
 export default function CustomerAgingPage() {
-  const [asOf, setAsOf] = React.useState(() => new Date().toISOString().slice(0, 10));
+  /* The LOCAL date -- toISOString() is UTC, which is yesterday before 5 am
+     in Pakistan (HANDOFF trap 19). */
+  const [asOf, setAsOf] = React.useState(() => todayISO());
+  const [reminding, setReminding] = React.useState(false);
+  const [lang, setLang] = React.useState<"en" | "ur">("en");
   const [locationId, setLocationId] = React.useState<number | null>(null);
   const [data, setData] = React.useState<AgingResponse>(EMPTY);
   const [loading, setLoading] = React.useState(true);
@@ -94,9 +107,28 @@ export default function CustomerAgingPage() {
     void load();
   }, [load]);
 
-  const overdueCount = data.items.filter(
-    (r) => r.d31_60 + r.d61_90 + r.d90plus > 0
-  ).length;
+  /* Past its DUE date at all -- the same test the API uses when it sends. */
+  const overdueCount = data.items.filter((r) => r.overdue > 0).length;
+
+  /* The WhatsApp handoff, per customer. wa.me only opens the chat with the
+     text in it; nothing leaves until somebody presses Send. The opening is
+     recorded in the activity log, so "what was sent" covers these too. The
+     tab is opened INSIDE the click (a popup opened after an await is blocked
+     -- HANDOFF trap 15) and the log call goes out after. */
+  function whatsApp(r: AgingRow) {
+    const url = r.phone ? whatsappUrl(r.phone, overdueMessage({
+      customerName: r.customerName, overdue: r.overdue, outstanding: r.outstanding,
+      daysOverdue: r.daysOverdue, salesPerson: r.salesPerson, language: lang,
+    })) : null;
+    if (!url) {
+      toast.error("No WhatsApp number", { description: `${r.customerName} has no usable phone number on file.` });
+      return;
+    }
+    window.open(url, "_blank", "noopener,noreferrer");
+    void axios.post(`${API_BASE_URL}/reports/aging/customer/reminders/whatsapp`,
+      { customerId: r.customerId, asOf, language: lang }, { headers: authHeader() })
+      .catch(() => { /* the chat opened; a missed log line is not worth an error */ });
+  }
 
   return (
     <>
@@ -110,15 +142,13 @@ export default function CustomerAgingPage() {
               variant="secondary"
               size="md"
               className="gap-1.5"
-              disabled={overdueCount === 0}
-              onClick={() =>
-                toast.info("Reminders are not wired up yet", {
-                  description: `${overdueCount} customer(s) are past due. Sending needs an SMS provider, which this system does not have yet.`,
-                })
-              }
+              disabled={data.items.length === 0}
+              onClick={() => setReminding(true)}
+              title={`${overdueCount} customer(s) past due`}
             >
-              <MessageSquare />
+              <BellRing />
               <span className="hidden sm:inline">Send Reminders</span>
+              {overdueCount > 0 && <span className="tabular text-2xs font-bold text-danger">{overdueCount}</span>}
             </Button>
             <ReportToolbar
               mode="asOf"
@@ -175,6 +205,13 @@ export default function CustomerAgingPage() {
                   <th className="text-right text-2xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 px-3 py-2.5">61-90</th>
                   <th className="text-right text-2xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 px-3 py-2.5">90+</th>
                   <th className="text-right text-2xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 px-4 py-2.5">Total</th>
+                  <th className="text-right text-2xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 px-3 py-2.5">
+                    <button type="button" className="inline-flex items-center gap-1 hover:text-brand-yellow normal-case"
+                      onClick={() => setLang((l) => (l === "en" ? "ur" : "en"))}
+                      title="Language of the WhatsApp message">
+                      WhatsApp · {lang === "en" ? "English" : "اردو"}
+                    </button>
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-navy-700">
@@ -188,7 +225,8 @@ export default function CustomerAgingPage() {
                             {r.customerName}
                           </div>
                           <div className="text-2xs text-slate-500 dark:text-slate-400">
-                            NET {r.creditDays} · {r.invoiceCount} open
+                            {r.salesPerson ? `${r.salesPerson} · ` : ""}NET {r.creditDays} · {r.invoiceCount} open
+                            {r.overdue > 0 && <span className="text-danger"> · {r.daysOverdue}d late</span>}
                             {r.overLimit && (
                               <span className="text-danger font-semibold"> · over limit</span>
                             )}
@@ -204,6 +242,13 @@ export default function CustomerAgingPage() {
                     <td className="px-4 py-2.5 text-right tabular text-sm font-bold text-navy-900 dark:text-white">
                       {formatMoney(r.outstanding)}
                     </td>
+                    <td className="px-3 py-2.5 text-right">
+                      <Button size="sm" variant="ghost" className="gap-1 text-success" disabled={!r.phone}
+                        title={r.phone ? `Open WhatsApp to ${r.phone}` : "No phone number on file"}
+                        onClick={() => whatsApp(r)}>
+                        <MessageSquare className="size-3.5" /> Remind
+                      </Button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -216,12 +261,25 @@ export default function CustomerAgingPage() {
                   <td className="px-3 py-3 text-right tabular text-sm font-bold">{formatMoney(data.d61_90)}</td>
                   <td className="px-3 py-3 text-right tabular text-sm font-bold text-brand-yellow">{formatMoney(data.d90plus)}</td>
                   <td className="px-4 py-3 text-right tabular text-base font-bold text-brand-yellow">{formatMoney(data.totalOutstanding)}</td>
+                  <td />
                 </tr>
               </tfoot>
             </table>
           </div>
         )}
       </Card>
+
+      {reminding && (
+        <SendRemindersDialog
+          open
+          onOpenChange={setReminding}
+          asOf={asOf}
+          candidates={data.items.map((r) => ({
+            customerId: r.customerId, customerName: r.customerName, overdue: r.overdue,
+            outstanding: r.outstanding, daysOverdue: r.daysOverdue, salesPerson: r.salesPerson,
+          }))}
+        />
+      )}
 
       {/* Feature #6. Ordered by who is likely to pay rather than who is
           oldest, and it drafts the WhatsApp message for the first name. */}

@@ -159,6 +159,15 @@ const ROUTE_RULES: { prefix: string; pattern?: RegExp; roles: RoleKey[]; perm?: 
   { prefix: "/parties/suppliers", roles: ["super-admin", "accountant"] },
   { prefix: "/parties", roles: ALL },
 
+  /* The reports built on 27 Sep (round E). By role, no permission escape
+     hatch -- the API refuses everybody else on each of them: Purchase Summary
+     is purchase prices (the Super Admin's alone, 26 Sep), the Supplier Ledger
+     is what suppliers are billed and paid (Super Admin and accountant), and the
+     two sales reports are money the order desk does not see. */
+  { prefix: "/reports/purchase-summary", roles: ["super-admin"] },
+  { prefix: "/reports/supplier-ledger", roles: ["super-admin", "accountant"] },
+  { prefix: "/reports/sales-by-rep", roles: ["super-admin", "accountant", "sales"] },
+  { prefix: "/reports/sales-by-product", roles: ["super-admin", "accountant", "sales"] },
   { prefix: "/reports", roles: ALL },
   { prefix: "/dashboard", roles: ALL },
   { prefix: "/profile", roles: ALL },

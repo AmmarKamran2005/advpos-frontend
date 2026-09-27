@@ -23,6 +23,7 @@ import { formatMoney, formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { PARTY_TAX, partyOrigin } from "@/lib/party-tax";
 import { openDocument, asAttachment } from "@/lib/documents";
+import { LogVisitSheet, VisitMapLink } from "@/components/parties/log-visit-sheet";
 
 /* GET /parties/{id}. The whole page ran off getParty() in src/data/parties
    before, so a customer created on /parties/new opened a "not found" screen. */
@@ -68,9 +69,14 @@ type Statement = {
 
 type OrderRow = { id: number; orderNo: string; orderDate: string; statusName: string; total: number };
 type InvoiceRow = { id: number; invoiceNo: string; invoiceDate: string; statusName: string; total: number };
+/* GET /visits?customerId= (VisitsController) -- this customer's visits only,
+   and only if the caller may see them (a rep: his own customers). It used to
+   read every visit in the system and filter them here. */
 type VisitRow = {
   id: number; customerId: number; visitedAt: string;
   salesPerson: string | null; outcomeName: string | null; note: string | null;
+  nextFollowUp: string | null; followUpDue: boolean;
+  latitude: number | null; longitude: number | null; gpsAccuracyM: number | null;
 };
 
 const TYPE_LABEL: Record<Party["type"], { label: string; variant: "info" | "warning" | "accent" }> = {
@@ -102,6 +108,8 @@ export default function PartyDetailPage() {
   const [orders, setOrders] = React.useState<OrderRow[]>([]);
   const [invoices, setInvoices] = React.useState<InvoiceRow[]>([]);
   const [visits, setVisits] = React.useState<VisitRow[]>([]);
+  const [mayLogVisit, setMayLogVisit] = React.useState(false);
+  const [loggingVisit, setLoggingVisit] = React.useState(false);
   const [loading, setLoading] = React.useState(true);
   const [notFound, setNotFound] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -125,7 +133,7 @@ export default function PartyDetailPage() {
           : axios.get<Statement>(`${API_BASE_URL}/parties/${partyId}/statement`, { headers: authHeader() }),
         axios.get<{ items: OrderRow[] } | OrderRow[]>(`${API_BASE_URL}/sales/orders`, { params: { customerId: partyId, pageSize: 100 }, headers: authHeader() }),
         axios.get<{ items: InvoiceRow[] } | InvoiceRow[]>(`${API_BASE_URL}/sales/invoices`, { params: { customerId: partyId, pageSize: 100 }, headers: authHeader() }),
-        axios.get<VisitRow[] | { items: VisitRow[] }>(`${API_BASE_URL}/parties/visits`, { headers: authHeader() }),
+        axios.get<{ items: VisitRow[]; mayLog: boolean }>(`${API_BASE_URL}/visits`, { params: { customerId: partyId, pageSize: 100 }, headers: authHeader() }),
       ]);
 
       if (st.status === "fulfilled") setStatement(st.value.data);
@@ -138,9 +146,8 @@ export default function PartyDetailPage() {
         setInvoices(Array.isArray(d) ? d : d.items);
       }
       if (vis.status === "fulfilled") {
-        const d = vis.value.data;
-        const rows = Array.isArray(d) ? d : d.items;
-        setVisits(rows.filter((v) => v.customerId === partyId));
+        setVisits(vis.value.data.items);
+        setMayLogVisit(vis.value.data.mayLog);
       }
     } catch (e) {
       if (axios.isAxiosError(e) && e.response?.status === 404) setNotFound(true);
@@ -471,6 +478,13 @@ export default function PartyDetailPage() {
           <TabsContent value="visits">
             <Card>
               <CardBody>
+                {mayLogVisit && (
+                  <div className="flex justify-end mb-3">
+                    <Button variant="accent" size="sm" className="gap-1.5 w-full sm:w-auto" onClick={() => setLoggingVisit(true)}>
+                      <MapPin className="size-4" /> Log visit
+                    </Button>
+                  </div>
+                )}
                 {visits.length === 0 ? (
                   <EmptyState icon={MapPin} title="No visits recorded" description="No sales visit has been logged against this customer." />
                 ) : (
@@ -484,6 +498,18 @@ export default function PartyDetailPage() {
                             {v.outcomeName && <> · <span className="font-medium">{v.outcomeName}</span></>}
                           </div>
                           {v.note && <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{v.note}</div>}
+                          {(v.nextFollowUp || v.latitude != null) && (
+                            <div className="flex flex-wrap items-center gap-3 mt-1">
+                              {v.nextFollowUp && (
+                                <span className={cn("text-2xs", v.followUpDue ? "text-warning font-medium" : "text-slate-500 dark:text-slate-400")}>
+                                  back {formatDate(v.nextFollowUp)}
+                                </span>
+                              )}
+                              {v.latitude != null && v.longitude != null && (
+                                <VisitMapLink lat={v.latitude} lng={v.longitude} accuracy={v.gpsAccuracyM} />
+                              )}
+                            </div>
+                          )}
                         </div>
                         <div className="text-2xs text-slate-500 dark:text-slate-400 shrink-0">{formatDate(v.visitedAt)}</div>
                       </div>
@@ -493,6 +519,16 @@ export default function PartyDetailPage() {
               </CardBody>
             </Card>
           </TabsContent>
+        )}
+
+        {loggingVisit && party && (
+          <LogVisitSheet
+            open
+            onOpenChange={setLoggingVisit}
+            customerId={party.id}
+            customerName={party.displayName || party.legalName}
+            onLogged={() => { setLoggingVisit(false); void load(); }}
+          />
         )}
 
         {party.type !== "SUPPLIER" && (
