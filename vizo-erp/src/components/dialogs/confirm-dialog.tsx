@@ -81,7 +81,10 @@ export function ConfirmDialog({
             </div>
             <div className="flex-1 pt-0.5">
               <DialogTitle>{title}</DialogTitle>
-              {description && <DialogDescription className="mt-1">{description}</DialogDescription>}
+              {/* A <div>, not Radix's default <p>: several callers pass a paragraph and
+                  a warning box, and a <p> or <div> inside a <p> is invalid HTML that
+                  React reports as a hydration error. */}
+              {description && <DialogDescription asChild className="mt-1"><div>{description}</div></DialogDescription>}
             </div>
           </div>
         </DialogHeader>

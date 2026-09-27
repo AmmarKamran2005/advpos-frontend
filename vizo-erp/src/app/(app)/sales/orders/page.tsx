@@ -17,7 +17,6 @@ import axios from "axios";
 import { AlertCircle } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
-import { getChannel, type ChannelKey } from "@/lib/app-config";
 import { printPdf } from "@/lib/documents";
 
 /* GET /sales/orders -> { total, page, pageSize, items }.
@@ -99,7 +98,13 @@ type Order = {
   notes: string | null;
   invoiceId: number | null;
   invoiceNo: string | null;
-  channel: ChannelKey | null;
+  /* All three from the order's latest Delivery and its DeliveryChannel row.
+     They used to be looked up in four channels hard-coded in lib/app-config.ts;
+     a channel renamed or added in the database never showed here. */
+  channel: string | null;
+  channelName: string | null;
+  /** Role key of whoever confirms this channel's deliveries ("sales" = the rep, by hand). */
+  channelConfirmedBy: string | null;
   carrier: string | null;
   trackingNo: string | null;
   deliveryState: DeliveryState | null;
@@ -313,7 +318,6 @@ export default function OrdersPage() {
 }
 
 function OrderCard({ order, onDone }: { order: Order; onDone: () => void | Promise<void> }) {
-  const channel = order.channel ? getChannel(order.channel) : null;
   const balance = order.total - order.paidAmount;
   const paidPct = order.total > 0 ? Math.round((order.paidAmount / order.total) * 100) : 0;
 
@@ -344,9 +348,9 @@ function OrderCard({ order, onDone }: { order: Order; onDone: () => void | Promi
                 {statusLabel(order.deliveryState)}
               </StatusPill>
             )}
-            {channel && order.deliveryState && order.deliveryState !== "NOT_DISPATCHED" && (
+            {order.channel && order.deliveryState && order.deliveryState !== "NOT_DISPATCHED" && (
               <span className="text-2xs text-slate-500 dark:text-slate-400">
-                {order.carrier}
+                {[order.channelName, order.carrier].filter(Boolean).join(" · ")}
                 {order.trackingNo !== "—" && <span className="tabular"> · {order.trackingNo}</span>}
               </span>
             )}
@@ -462,7 +466,10 @@ function QuickAction({ order, onDone }: { order: Order; onDone: () => void | Pro
     order.deliveryState !== null &&
     ["BOOKED", "AWAITING", "IN_TRANSIT", "OUT_FOR_DELIVERY"].includes(order.deliveryState);
 
-  if (order.channel === "local" && inFlight) {
+  /* The channel the salesman confirms himself -- the hand delivery. Read off
+     the channel's ConfirmedByRole in the database rather than its key, which is
+     the same rule DeliveryController enforces on the way in. */
+  if (order.channelConfirmedBy === "sales" && inFlight) {
     return (
       <Button variant="accent" size="sm" className="gap-1 flex-shrink-0"
         disabled={busy} onClick={() => void move("DELIVERED", "Marked delivered")}>

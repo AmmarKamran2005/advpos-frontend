@@ -82,7 +82,7 @@ export default function GrnDetailPage() {
   if (loading) {
     return (
       <>
-        <PageHeader breadcrumbs={[{ label: "Purchases" }, { label: "GRNs", href: "/purchases/grns" }]} title="Loading…" />
+        <PageHeader breadcrumbs={[{ label: "Purchases" }, { label: "Purchase Orders", href: "/purchases/orders" }]} title="Loading…" />
         <Skeleton className="h-64" />
       </>
     );
@@ -91,14 +91,14 @@ export default function GrnDetailPage() {
   if (notFound) {
     return (
       <EmptyState icon={AlertCircle} title="Goods receipt not found" description={`No goods receipt with id ${id}.`}
-        action={<Button variant="accent" asChild><Link href="/purchases/grns">Back to GRNs</Link></Button>} />
+        action={<Button variant="accent" asChild><Link href="/purchases/orders">Back to Purchase Orders</Link></Button>} />
     );
   }
 
   if (error || !grn) {
     return (
       <>
-        <PageHeader breadcrumbs={[{ label: "Purchases" }, { label: "GRNs", href: "/purchases/grns" }]} title="Goods Receipt" />
+        <PageHeader breadcrumbs={[{ label: "Purchases" }, { label: "Purchase Orders", href: "/purchases/orders" }]} title="Goods Receipt" />
         <Card><CardBody className="flex items-center gap-3">
           <AlertCircle className="size-5 text-danger shrink-0" />
           <div className="flex-1">
@@ -120,7 +120,7 @@ export default function GrnDetailPage() {
   return (
     <>
       <PageHeader
-        breadcrumbs={[{ label: "Purchases" }, { label: "GRNs", href: "/purchases/grns" }, { label: grn.grnNo }]}
+        breadcrumbs={[{ label: "Purchases" }, { label: "Purchase Orders", href: "/purchases/orders" }, { label: grn.grnNo }]}
         title={
           <div className="flex items-center gap-3 flex-wrap">
             <span>{grn.grnNo}</span>

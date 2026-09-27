@@ -19,7 +19,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Pager } from "@/components/ui/pager";
 import { toast } from "@/components/ui/toaster";
 import { formatMoney, formatDate, formatCompact } from "@/lib/format";
-import { statusLabel } from "@/lib/labels";
 import { cn } from "@/lib/utils";
 import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
 
@@ -99,29 +98,17 @@ const STATUS_VARIANT: Record<string, "success" | "muted" | "warning" | "danger" 
   RECONCILED: "info",
 };
 
-const TYPES: { key: string; label: string }[] = [
-  { key: "", label: "All" },
-  { key: "CR", label: "Cash Receipt" },
-  { key: "CP", label: "Cash Payment" },
-  { key: "BR", label: "Bank Receipt" },
-  { key: "BP", label: "Bank Payment" },
-  { key: "WR", label: "Wallet Receipt" },
-  { key: "WP", label: "Wallet Payment" },
-  { key: "JV", label: "Journal" },
-];
+/* GET /accounting/lookups -> the "VoucherType" and "PostingStatus" rows. The
+   type tabs and the status filter used to be two lists typed out here (CR, CP,
+   BR, BP, WR, WP, JV; DRAFT, POSTED...), so a type added in the database never
+   got a tab. Only these two parts of the lookup are read.
 
-/* The shared statusLabel() speaks shopkeeper -- POSTED reads "Confirmed",
-   REVERSED reads "Undone". That is right on the sales screens and wrong on an
-   accounting one, where the ledger's own word is the word the accountant is
-   looking for. Rows use the statusName the API sends; this is only for the
-   filter chip, which has the key and nothing else. */
-const STATUS_TEXT: Record<string, string> = {
-  DRAFT: "Draft",
-  POSTED: "Posted",
-  REVERSED: "Reversed",
-  REJECTED: "Rejected",
-  CANCELLED: "Cancelled",
-  RECONCILED: "Reconciled",
+   The icons and colours above stay keyed by code: they are presentation, and an
+   unknown code falls back to the journal's. The ledger's own word is used for
+   each status (POSTED reads "Posted", not the sales screens' "Confirmed"). */
+type VoucherLookups = {
+  voucherTypes: { id: number; code: string; name: string; isReceipt: boolean }[];
+  postingStatuses: { id: number; key: string; name: string }[];
 };
 
 const PAGE_SIZE = 25;
@@ -144,6 +131,21 @@ export default function VouchersPage() {
   const [from, setFrom] = React.useState("");
   const [to, setTo] = React.useState("");
   const [page, setPage] = React.useState(1);
+  const [lookups, setLookups] = React.useState<VoucherLookups | null>(null);
+
+  React.useEffect(() => {
+    /* Once, beside the list and never in front of it: until it answers the
+       tabs show "All" alone and the list is already usable. */
+    axios.get<VoucherLookups>(`${API_BASE_URL}/accounting/lookups`, { headers: authHeader() })
+      .then((res) => setLookups(res.data))
+      .catch(() => { /* the list still works; only the type tabs are missing */ });
+  }, []);
+
+  const types = React.useMemo(
+    () => [{ key: "", label: "All" }, ...(lookups?.voucherTypes ?? []).map((t) => ({ key: t.code, label: t.name }))],
+    [lookups]
+  );
+  const statusName = (key: string) => lookups?.postingStatuses.find((s) => s.key === key)?.name ?? key;
 
   React.useEffect(() => {
     const t = setTimeout(() => {
@@ -186,7 +188,7 @@ export default function VouchersPage() {
   }, [load]);
 
   const chips = [
-    status && { key: "status", label: "Status", value: STATUS_TEXT[status] ?? status },
+    status && { key: "status", label: "Status", value: statusName(status) },
     from && { key: "from", label: "From", value: from },
     to && { key: "to", label: "To", value: to },
     query && { key: "q", label: "Search", value: query },
@@ -344,7 +346,7 @@ export default function VouchersPage() {
       {/* Type tabs -- each one is a filter the server applies, not a slice of
           what the browser happens to be holding. */}
       <div className="flex items-center gap-1 mb-4 border-b border-slate-200 dark:border-navy-700 overflow-x-auto scrollbar-thin">
-        {TYPES.map((t) => (
+        {types.map((t) => (
           <button
             key={t.key || "ALL"}
             onClick={() => { setTypeFilter(t.key); setPage(1); }}
@@ -372,11 +374,9 @@ export default function VouchersPage() {
           <div className="flex items-center gap-2">
             <SelectNative aria-label="Status" value={status} onChange={(ev) => { setStatus(ev.target.value); setPage(1); }} className="w-40">
               <option value="">All statuses</option>
-              <option value="DRAFT">Draft</option>
-              <option value="POSTED">Posted</option>
-              <option value="RECONCILED">Reconciled</option>
-              <option value="CANCELLED">Cancelled</option>
-              <option value="REVERSED">Reversed</option>
+              {(lookups?.postingStatuses ?? []).map((s) => (
+                <option key={s.key} value={s.key}>{s.name}</option>
+              ))}
             </SelectNative>
             <Input type="date" aria-label="From date" value={from} onChange={(ev) => { setFrom(ev.target.value); setPage(1); }} className="w-40" />
             <Input type="date" aria-label="To date" value={to} onChange={(ev) => { setTo(ev.target.value); setPage(1); }} className="w-40" />

@@ -27,7 +27,6 @@ import {
 } from "lucide-react";
 import { appHref } from "@/lib/app-url";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Avatar } from "@/components/ui/avatar";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import {
@@ -39,7 +38,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuShortcut,
 } from "@/components/ui/dropdown";
-import { quickCreate } from "@/data/mock";
+import { quickCreateFor, quickCreateHint, openCommandPalette } from "@/lib/shortcuts";
+import { formatDateTime } from "@/lib/format";
 import axios from "axios";
 import {
   useSession,
@@ -85,18 +85,6 @@ type Notification = {
      clickable through. */
   url: string | null;
 };
-
-/** "2 minutes ago" from a timestamp, so the API can send a real one. */
-function ago(iso: string) {
-  const diff = Date.now() - new Date(iso).getTime();
-  const mins = Math.round(diff / 60000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins} min ago`;
-  const hours = Math.round(mins / 60);
-  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
-  const days = Math.round(hours / 24);
-  return days === 1 ? "yesterday" : `${days} days ago`;
-}
 
 export function TopBar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
   const { user, can, logout } = useSession();
@@ -164,27 +152,11 @@ export function TopBar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
      this, so the guard is for the type checker, not for runtime. */
   if (!user) return null;
 
-  const visibleQuickCreate = quickCreate.filter((qc) => can(qc.perm));
-
-
-  function formatDate(isoString: string) {
-  if (!isoString) return "";
-
-  // Trim extra microsecond digits to standard 3-digit milliseconds
-  let safeIso = isoString.replace(/(\.\d{3})\d+/, "$1");
-
-  // Agar timezone info nahi hai, backend UTC bhej raha hai to Z add kardo
-  if (!/Z$|[+-]\d\d:\d\d$/.test(safeIso)) {
-    safeIso += "Z";
-  }
-
-  const date = new Date(safeIso);
-
-  return new Intl.DateTimeFormat("en-US", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(date);
-}
+  /* From lib/shortcuts.ts, the same list the N-then-letter keys and the
+     palette read. It used to come from the mock data file and print ⌘O, ⌘I,
+     ⌘P, ⌘V, ⌘C, ⌘R -- none of which did anything, and half of which are copy,
+     paste, print and reload. */
+  const visibleQuickCreate = quickCreateFor(can, user.role);
 
   return (
     <header className="sticky top-0 z-20 h-16 bg-white dark:bg-navy-950 border-b border-slate-200 dark:border-navy-800 flex items-center px-3 sm:px-4 gap-2 flex-shrink-0">
@@ -193,24 +165,40 @@ export function TopBar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
         <Menu />
       </Button>
 
-      {/* Search */}
-      <div className="hidden md:flex flex-1 max-w-md mx-3 relative">
-        <Search className="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-        <Input
-          type="text"
-          placeholder="Search anything…"
-          className="pl-9 pr-16 bg-slate-50 dark:bg-navy-900 border-transparent focus:bg-white dark:focus:bg-navy-800"
-        />
-        <kbd className="hidden lg:flex items-center absolute right-3 top-1/2 -translate-y-1/2 px-1.5 py-0.5 text-2xs bg-white dark:bg-navy-800 border border-slate-200 dark:border-navy-600 rounded font-mono text-slate-500 dark:text-slate-400">
-          ⌘K
+      {/* Search. It looked like a text box and did nothing when typed into.
+          It is a button now that opens the palette, which searches customers,
+          orders, invoices and items in the database as you type -- one search,
+          reachable from here, from Ctrl+K and from "/". */}
+      <button
+        type="button"
+        onClick={openCommandPalette}
+        className="hidden md:flex flex-1 max-w-md mx-3 items-center gap-2 h-9 pl-3 pr-2 rounded-lg bg-slate-50 dark:bg-navy-900 border border-transparent hover:border-slate-200 dark:hover:border-navy-700 text-sm text-slate-400 transition-colors text-left"
+      >
+        <Search className="size-4 flex-shrink-0" />
+        <span className="flex-1 truncate">Search customers, orders, invoices…</span>
+        <kbd className="hidden lg:flex items-center px-1.5 py-0.5 text-2xs bg-white dark:bg-navy-800 border border-slate-200 dark:border-navy-600 rounded font-mono text-slate-500 dark:text-slate-400">
+          Ctrl K
         </kbd>
-      </div>
+      </button>
 
       <div className="flex-1" />
 
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={openCommandPalette}
+        className="md:hidden"
+        title="Search"
+        aria-label="Search"
+      >
+        <Search />
+      </Button>
+
       {/* Action cluster */}
       <div className="flex items-center gap-1 ml-auto">
-        {/* Quick Create */}
+        {/* Quick Create -- hidden altogether for somebody who may create nothing,
+            rather than opening onto an empty menu. */}
+        {visibleQuickCreate.length > 0 && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="accent" size="sm" className="gap-1.5 hidden sm:inline-flex">
@@ -232,13 +220,14 @@ export function TopBar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
                   <Link href={qc.href}>
                     <Icon />
                     <span className="flex-1">{qc.label}</span>
-                    <DropdownMenuShortcut>⌘{qc.shortcut}</DropdownMenuShortcut>
+                    <DropdownMenuShortcut>{quickCreateHint(qc.key)}</DropdownMenuShortcut>
                   </Link>
                 </DropdownMenuItem>
               );
             })}
           </DropdownMenuContent>
         </DropdownMenu>
+        )}
 
         {/* Notifications */}
         <DropdownMenu open={bellOpen} onOpenChange={setBellOpen}>
@@ -256,7 +245,7 @@ export function TopBar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
               )}
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-96 p-0">
+          <DropdownMenuContent align="end" className="w-[min(24rem,calc(100vw-1.5rem))] p-0">
             <div className="px-4 py-3 border-b border-slate-200 dark:border-navy-700 flex items-center justify-between">
               <div className="text-sm font-semibold text-navy-900 dark:text-white">
                 Notifications
@@ -308,7 +297,7 @@ export function TopBar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
                         {n.body}
                       </div>
                       <div className="text-2xs text-slate-400 dark:text-slate-500 mt-0.5">
-                        {formatDate(n.createdAt)}
+                        {formatDateTime(n.createdAt)}
                       </div>
                     </div>
                     {!n.isRead && (
@@ -358,9 +347,13 @@ export function TopBar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
                 );
               })}
             </div>
-            <div className="px-4 py-3 text-2xs text-center text-slate-400 dark:text-slate-500 border-t border-slate-200 dark:border-navy-700">
-              You&rsquo;re all caught up
-            </div>
+            {/* Only true when it is true. It used to sit under the list
+                whatever the list said, including under five unread rows. */}
+            {notifications.length > 0 && unreadCount === 0 && (
+              <div className="px-4 py-3 text-2xs text-center text-slate-400 dark:text-slate-500 border-t border-slate-200 dark:border-navy-700">
+                You&rsquo;re all caught up
+              </div>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
 

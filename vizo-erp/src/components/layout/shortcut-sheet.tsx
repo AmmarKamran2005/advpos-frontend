@@ -10,35 +10,48 @@ import {
   DialogDescription,
   DialogBody,
 } from "@/components/ui/dialog";
-import { shortcuts, type Shortcut } from "@/data/settings";
+import { useSession } from "@/components/providers/session-provider";
+import {
+  SHORTCUTS, isTypingTarget, quickCreateFor, type Shortcut,
+} from "@/lib/shortcuts";
 
-const GROUP_ORDER: Shortcut["group"][] = ["Record", "Navigation", "Grid", "Global"];
+const GROUP_ORDER: Shortcut["group"][] = ["Anywhere", "Create", "Expense sheet", "Dialogs"];
 
 const GROUP_HINT: Record<Shortcut["group"], string> = {
-  Record: "On any document screen",
-  Navigation: "Moving between saved records",
-  Grid: "Inside a line-item table",
-  Global: "Anywhere in the app",
+  Anywhere: "Not while typing in a box (except Ctrl+K)",
+  Create: "Press N, let go, then the letter",
+  "Expense sheet": "Inside a day's expense sheet",
+  Dialogs: "Any open dialog",
 };
 
 /**
  * Press `?` anywhere to see the keyboard map. Staff moving over from the old
  * system drive it entirely from the keyboard, so the shortcuts need to be
  * discoverable without hunting through menus.
+ *
+ * Every row is a key that really does something -- see lib/shortcuts.ts. The
+ * Create rows are this person's own Quick Create items, so nobody is shown a
+ * key for a screen they cannot open.
  */
 export function ShortcutSheet() {
   const [open, setOpen] = React.useState(false);
+  const { can, user } = useSession();
+
+  const rowsAll = React.useMemo<Shortcut[]>(() => [
+    ...SHORTCUTS,
+    ...quickCreateFor(can, user?.role).map((q) => ({
+      keys: ["N", q.key.toUpperCase()],
+      label: `New ${q.label.toLowerCase()}`,
+      group: "Create" as const,
+    })),
+  ], [can, user?.role]);
 
   React.useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       if (e.key !== "?") return;
 
       // Don't hijack the key while the user is typing.
-      const el = e.target as HTMLElement | null;
-      const tag = el?.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el?.isContentEditable) {
-        return;
-      }
+      if (isTypingTarget(e.target)) return;
 
       e.preventDefault();
       setOpen((v) => !v);
@@ -63,7 +76,7 @@ export function ShortcutSheet() {
         <DialogBody className="pb-6">
           <div className="grid sm:grid-cols-2 gap-x-8 gap-y-6">
             {GROUP_ORDER.map((group) => {
-              const rows = shortcuts.filter((s) => s.group === group);
+              const rows = rowsAll.filter((s) => s.group === group);
               if (rows.length === 0) return null;
 
               return (
@@ -76,9 +89,9 @@ export function ShortcutSheet() {
                   </p>
                   <dl className="space-y-1.5">
                     {rows.map((s) => (
-                      <div key={s.keys} className="flex items-center gap-3">
-                        <dt className="w-20 flex-shrink-0">
-                          <Kbd>{s.keys}</Kbd>
+                      <div key={s.keys.join("+") + s.label} className="flex items-center gap-3">
+                        <dt className="w-24 flex-shrink-0 flex items-center gap-1">
+                          {s.keys.map((k) => <Kbd key={k}>{k}</Kbd>)}
                         </dt>
                         <dd className="text-[13px] text-slate-600 dark:text-slate-300">
                           {s.label}

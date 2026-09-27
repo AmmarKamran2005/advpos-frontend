@@ -53,6 +53,11 @@ type DispatchOrder = {
   invoiceNo: string | null;
   paidAmount: number;
   suggestedCod: number;
+  /* Where the booking form starts. Worked out by the API from the data --
+     same city as the dispatching place -> by hand; otherwise the channel this
+     city was last booked on; else the first courier channel. See
+     DispatchController.SuggestChannels. */
+  suggestedChannelId: number | null;
   waitingDays: number;
   isLate: boolean;
 };
@@ -278,11 +283,11 @@ function DispatchSheet({
   onOpenChange: (v: boolean) => void;
   onDispatched: () => void;
 }) {
-  /* A Karachi address almost always goes out by hand -- start on the local
-     channel when there is one, otherwise the first channel the API returned. */
+  /* The API's suggestion. It used to be `order.city === "Karachi"` here, which
+     never matched -- the city arrives as "Karachi - Pakistan" -- and named the
+     one city with its own riders in code. */
   const initial =
-    (order.city === "Karachi" ? channels.find((c) => c.key === "local") : undefined) ??
-    channels.find((c) => c.key === "cargo") ??
+    channels.find((c) => c.id === order.suggestedChannelId) ??
     channels[0];
 
   const [channelId, setChannelId] = React.useState<number>(initial?.id ?? 0);

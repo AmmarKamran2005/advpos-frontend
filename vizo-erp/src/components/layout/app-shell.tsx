@@ -3,7 +3,7 @@
 import * as React from "react";
 import { Sidebar } from "./sidebar";
 import { TopBar } from "./top-bar";
-import { CommandPalette } from "./command-palette";
+import { GlobalShortcuts } from "./global-shortcuts";
 import { ShortcutSheet } from "./shortcut-sheet";
 import { SessionProvider, useSession } from "@/components/providers/session-provider";
 import { Toaster } from "@/components/ui/toaster";
@@ -108,7 +108,7 @@ function ShellBody({
           <div className="p-4 sm:p-6 max-w-[1600px] mx-auto w-full">{children}</div>
         </main>
       </div>
-      <CommandPalette />
+      <GlobalShortcuts />
       <ShortcutSheet />
       <Toaster />
     </div>

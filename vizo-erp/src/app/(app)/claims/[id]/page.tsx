@@ -15,7 +15,7 @@ import { Avatar } from "@/components/ui/avatar";
 import { StatusPill, Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ConfirmDialog } from "@/components/dialogs";
+import { ConfirmDialog } from "@/components/dialogs/confirm-dialog";
 import { SelectNative } from "@/components/ui/select-native";
 import { Label } from "@/components/ui/label";
 import { toast } from "@/components/ui/toaster";

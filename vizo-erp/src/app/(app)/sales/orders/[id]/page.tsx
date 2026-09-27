@@ -66,7 +66,7 @@ type OrderDetail = {
   /** The link Print should open — see lib/documents.ts on why it is not pdfUrl. */
   invoiceViewUrl: string | null;
   paidAmount: number; balance: number; paymentStatus: string; outstanding: number;
-  channel: string | null; carrier: string | null; trackingNo: string | null;
+  channel: string | null; channelName: string | null; carrier: string | null; trackingNo: string | null;
   deliveryState: string | null; dispatchedOn: string | null; deliveredOn: string | null;
   lines: OrderLine[];
   activity: Activity[];
@@ -582,7 +582,7 @@ export default function OrderDetailPage() {
               {order.deliveryState ? (
                 <dl className="space-y-2.5 text-sm">
                   <Meta label="State" value={<Badge variant="info">{statusLabel(order.deliveryState)}</Badge>} />
-                  {order.channel && <Meta label="Channel" value={statusLabel(order.channel)} />}
+                  {order.channel && <Meta label="Channel" value={order.channelName ?? statusLabel(order.channel)} />}
                   {order.carrier && <Meta label="Carrier" value={order.carrier} />}
                   {order.trackingNo && <Meta label="Tracking" value={<span className="tabular">{order.trackingNo}</span>} />}
                   {order.dispatchedOn && <Meta label="Dispatched" value={formatDate(order.dispatchedOn)} />}
