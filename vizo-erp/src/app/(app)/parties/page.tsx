@@ -13,7 +13,7 @@ import { Badge, StatusPill } from "@/components/ui/badge";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { FilterBar } from "@/components/ui/filter-bar";
 import { Skeleton } from "@/components/ui/skeleton";
-import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
+import { API_BASE_URL, authHeader, useSession } from "@/components/providers/session-provider";
 import { downloadXlsx, exportError } from "@/lib/export";
 import { formatCompact } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -73,6 +73,12 @@ function apiMessage(e: unknown, fallback: string) {
 }
 
 export default function PartiesPage() {
+  /* Import lives at /ledgers/customers/import, which only the Super Admin and
+     the accountant may open (proxy.ts ROUTE_RULES and CustomerLedgerController
+     both say so). Anyone else would be bounced to /forbidden, so the button is
+     not offered to them at all. */
+  const { user } = useSession();
+  const canImport = user?.role === "super-admin" || user?.role === "accountant";
   const [rows, setRows] = React.useState<Party[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
@@ -296,10 +302,14 @@ export default function PartiesPage() {
               <RefreshCw />
               <span className="hidden sm:inline">Refresh</span>
             </Button>
-            <Button variant="secondary" size="md" className="gap-1.5">
-              <Upload />
-              <span className="hidden sm:inline">Import</span>
-            </Button>
+            {canImport && (
+              <Button variant="secondary" size="md" className="gap-1.5" asChild>
+                <Link href="/ledgers/customers/import">
+                  <Upload />
+                  <span className="hidden sm:inline">Import</span>
+                </Link>
+              </Button>
+            )}
             <Button variant="secondary" size="md" className="gap-1.5" onClick={exportXlsx} disabled={exporting}>
               {exporting ? <Loader2 className="size-4 animate-spin" /> : <Download />}
               <span className="hidden sm:inline">{exporting ? "Exporting…" : "Export"}</span>

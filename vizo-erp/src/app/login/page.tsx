@@ -28,6 +28,7 @@ import {
 } from "@/components/providers/session-provider";
 import type { RoleKey } from "@/lib/app-config";
 import { cn } from "@/lib/utils";
+import { useCompanyName } from "@/lib/company";
 import s from "./login.module.css";
 
 /* Stagger index for the entrance animation (login.module.css .rise). */
@@ -80,6 +81,7 @@ const PANELS: Panel[] = [
 ];
 
 function LoginForm() {
+  const companyName = useCompanyName();
   const router = useRouter();
   const { resolvedTheme } = useTheme();
 
@@ -298,7 +300,7 @@ function LoginForm() {
               page is prerendered, so the build year may differ for a moment
               after New Year; suppressHydrationWarning covers exactly that. */}
           <div className={cn("mt-8 pt-5 border-t border-slate-200 dark:border-navy-800 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400", s.rise)} style={at(8)}>
-            <div suppressHydrationWarning>© {new Date().getFullYear()} AdvPOS</div>
+            <div suppressHydrationWarning>© {new Date().getFullYear()} {companyName}</div>
           </div>
         </div>
       </div>

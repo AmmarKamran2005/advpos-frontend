@@ -19,6 +19,7 @@ import { PageSkeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { toast } from "@/components/ui/toaster";
 import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
+import { setCompanyName } from "@/lib/company";
 
 /* ─────────────────────────── shapes from the API ─────────────────────────── */
 
@@ -176,6 +177,8 @@ export default function SettingsPage() {
           headers: authHeader(),
         });
         if (res.data?.message) messages.push(res.data.message);
+        /* The sidebar shows this name; let it follow without a reload. */
+        setCompanyName(company.companyName);
       }
       if (changedSettings.length > 0) {
         const res = await axios.put<{ message?: string }>(`${API_BASE_URL}/admin/settings`, changedSettings, {
@@ -199,7 +202,7 @@ export default function SettingsPage() {
       <PageHeader
         breadcrumbs={[{ label: "Administration" }, { label: "System Settings" }]}
         title="System Settings"
-        subtitle={savedAt ? `Last saved at ${savedAt}` : "Configure AdvPOS organisation-wide"}
+        subtitle={savedAt ? `Last saved at ${savedAt}` : `Configure ${companyBase?.companyName || "the company"} organisation-wide`}
         actions={
           <div className="flex items-center gap-2">
             {dirty && <span className="text-xs text-warning font-medium">● Unsaved changes</span>}

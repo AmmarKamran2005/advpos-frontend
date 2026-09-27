@@ -57,6 +57,12 @@ export type DispatchOrder = {
   invoiceNo: string | null;
   paidAmount: number;
   suggestedCod: number;
+  /* Where the booking form starts. Worked out by the API from the data --
+     same city as the dispatching place -> by hand; otherwise the channel this
+     city was last booked on; else the first courier channel. See
+     DispatchController.SuggestChannels. Optional: a caller whose endpoint
+     does not send it falls back to the rule below. */
+  suggestedChannelId?: number | null;
   collectsCash: boolean;
   waitingDays: number;
   isLate: boolean;
@@ -116,9 +122,11 @@ export function DispatchSheet({
   onOpenChange: (v: boolean) => void;
   onDispatched: (deliveryId: number | null) => void;
 }) {
-  /* A Karachi address almost always goes out by hand -- start on the local
-     channel when there is one, otherwise cargo, otherwise the first channel. */
+  /* The API's suggestion first (DispatchController.SuggestChannels). Without
+     one, a Karachi address almost always goes out by hand -- start on the
+     local channel when there is one, otherwise cargo, otherwise the first. */
   const initial =
+    channels.find((c) => c.id === order.suggestedChannelId) ??
     (order.city.startsWith("Karachi") ? channels.find((c) => c.key === "local") : undefined) ??
     channels.find((c) => c.key === "cargo") ??
     channels[0];

@@ -18,7 +18,7 @@ import { StatusPill, Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogBody, DialogFooter } from "@/components/ui/dialog";
-import { ConfirmDialog } from "@/components/dialogs";
+import { ConfirmDialog } from "@/components/dialogs/confirm-dialog";
 import { CollectDialog } from "@/components/accounting/collect-dialog";
 import { toast } from "@/components/ui/toaster";
 import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";

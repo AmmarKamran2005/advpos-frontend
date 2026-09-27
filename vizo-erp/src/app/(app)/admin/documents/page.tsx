@@ -52,36 +52,16 @@ function apiMessage(e: unknown, fallback: string) {
   return "Cannot reach the server.";
 }
 
-/** The document kinds the API can produce, for the filter. */
-const KINDS: { value: string; label: string }[] = [
-  { value: "", label: "Every kind" },
-  { value: "purchase-order", label: "Purchase orders" },
-  { value: "purchase-invoice", label: "Purchase invoices" },
-  { value: "goods-receipt", label: "Goods receipts" },
-  { value: "purchase-return", label: "Purchase returns" },
-  { value: "stock-adjustment", label: "Stock adjustments" },
-  { value: "stock-transfer", label: "Stock transfers" },
-  { value: "voucher", label: "Vouchers" },
-  { value: "journal-entry", label: "Journal entries" },
-  { value: "expense", label: "Expense vouchers" },
-  { value: "party-statement", label: "Account statements" },
-  { value: "report.sales-summary", label: "Report · Sales summary" },
-  { value: "report.aging-customer", label: "Report · Customer ageing" },
-  { value: "report.aging-supplier", label: "Report · Supplier ageing" },
-  { value: "report.dead-stock", label: "Report · Dead stock" },
-  { value: "report.slow-moving", label: "Report · Slow moving" },
-  { value: "report.top-customers", label: "Report · Top customers" },
-  { value: "statement.trial-balance", label: "Statement · Trial balance" },
-  { value: "statement.balance-sheet", label: "Statement · Balance sheet" },
-  { value: "statement.profit-loss", label: "Statement · Profit and loss" },
-  { value: "statement.cash-flow", label: "Statement · Cash flow" },
-  { value: "statement.ledger", label: "Statement · Ledger" },
-];
+/* GET /documents/store-info -> where the files go and which kinds exist.
+   Both used to be typed in here: the folder card printed "advpos/documents"
+   whatever CloudinaryPdfs:Folder said, and the kind list had already fallen
+   behind the API (no sales returns, expense sheets or purchase vouchers). The
+   kinds are DocumentBuilder.Kinds plus every kind actually stored, so an
+   archived report or statement is in the filter too. */
+type StoreInfo = { folder: string; kinds: { value: string; label: string }[] };
 
 const PAGE_SIZE = 25;
 
-const prettyKind = (k: string) =>
-  KINDS.find((x) => x.value === k)?.label ?? k.replace(/[.-]/g, " ");
 
 const kb = (b: number) => `${Math.max(1, Math.round(b / 1024))} KB`;
 
@@ -94,6 +74,17 @@ export default function DocumentStorePage() {
   const [kind, setKind] = React.useState("");
   const [search, setSearch] = React.useState("");
   const [page, setPage] = React.useState(1);
+  const [info, setInfo] = React.useState<StoreInfo | null>(null);
+
+  React.useEffect(() => {
+    /* Once, beside the list: the list does not wait for it. */
+    axios.get<StoreInfo>(`${API_BASE_URL}/documents/store-info`, { headers: authHeader() })
+      .then((res) => setInfo(res.data))
+      .catch(() => { /* the card shows a dash and the filter "Every kind" alone */ });
+  }, []);
+
+  const prettyKind = (k: string) =>
+    info?.kinds.find((x) => x.value === k)?.label ?? k.replace(/[.-]/g, " ");
 
   const load = React.useCallback(async () => {
     try {
@@ -191,7 +182,7 @@ export default function DocumentStorePage() {
         </Card>
         <Card className="p-4">
           <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Cloudinary folder</div>
-          <div className="text-sm tabular font-semibold text-navy-900 dark:text-white mt-2">advpos/documents</div>
+          <div className="text-sm tabular font-semibold text-navy-900 dark:text-white mt-2 break-all">{info?.folder ?? "—"}</div>
         </Card>
       </div>
 
@@ -232,7 +223,8 @@ export default function DocumentStorePage() {
               onChange={(e) => { setKind(e.target.value); setPage(1); }}
               className="mt-1.5"
             >
-              {KINDS.map((k) => <option key={k.value} value={k.value}>{k.label}</option>)}
+              <option value="">Every kind</option>
+              {(info?.kinds ?? []).map((k) => <option key={k.value} value={k.value}>{k.label}</option>)}
             </SelectNative>
           </div>
         </CardBody>

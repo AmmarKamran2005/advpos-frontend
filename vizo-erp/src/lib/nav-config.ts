@@ -207,6 +207,9 @@ export const navigation: NavNode[] = [
       { label: "Account List",     href: "/accounting/coa",             match: "accounting.coa",      perms: ["ledger.view"] },
       { label: "Ledgers",          href: "/accounting/ledgers",         match: "accounting.ledgers",  perms: ["ledger.view"] },
       { label: "Manual Entries",   href: "/accounting/journal-entries", match: "accounting.je",       perms: ["ledger.manage"] },
+      /* It existed only as a link on a voucher; it is on the menu now that a
+         statement can actually be started and loaded from it (E3, 27 Sep). */
+      { label: "Bank Reconciliation", href: "/accounting/reconciliation", match: "accounting.recon", perms: ["ledger.manage"] },
       /* Trial Balance removed from the menu on the owner's word (27 Sep). */
       { label: "Income Statement", href: "/accounting/profit-loss",     match: "accounting.pl",       perms: ["statements.view"] },
       { label: "Balance Sheet",    href: "/accounting/balance-sheet",   match: "accounting.bs",       perms: ["statements.view"] },

@@ -2,9 +2,10 @@
 
 import * as React from "react";
 import axios from "axios";
+import dynamic from "next/dynamic";
 import {
   Landmark, CheckCircle2, AlertTriangle, Sparkles, Link2, X, Loader2,
-  AlertCircle, RefreshCw, Lock,
+  AlertCircle, RefreshCw, Lock, Plus, Upload, Pencil, Trash2,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardBody } from "@/components/ui/card";
@@ -21,11 +22,23 @@ import { API_BASE_URL, authHeader } from "@/components/providers/session-provide
 import { formatMoney, formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
+/* The three dialogs that start a reconciliation and load its statement. Loaded
+   the first time one opens (AGENTS.md rule 4): most visits here are matching,
+   not importing. */
+const ReconHeaderDialog = dynamic(
+  () => import("@/components/accounting/reconciliation-dialogs").then((m) => m.ReconHeaderDialog), { ssr: false });
+const StatementLineDialog = dynamic(
+  () => import("@/components/accounting/reconciliation-dialogs").then((m) => m.StatementLineDialog), { ssr: false });
+const StatementImportDialog = dynamic(
+  () => import("@/components/accounting/reconciliation-dialogs").then((m) => m.StatementImportDialog), { ssr: false });
+
 /* GET /accounting/reconciliation -> one row per statement. */
 type ReconSummary = {
   id: number;
   accountId: number;
   accountName: string;
+  /** First day the statement covers (migration 41); null on the older, seeded ones. */
+  periodFrom: string | null;
   statementDate: string;
   openingBalance: number;
   closingBalance: number;
@@ -48,6 +61,7 @@ type StatementLine = {
   id: number;
   date: string;
   description: string;
+  reference: string | null;
   amount: number;
   matchedLineId: number | null;
 };
@@ -67,6 +81,7 @@ type ReconDetail = {
   accountId: number;
   accountName: string;
   accountCode: string;
+  periodFrom: string | null;
   statementDate: string;
   openingBalance: number;
   closingBalance: number;
@@ -97,6 +112,10 @@ export default function ReconciliationPage() {
   const [selectedLedger, setSelectedLedger] = React.useState<number | null>(null);
   const [busy, setBusy] = React.useState(false);
   const [confirmFinalize, setConfirmFinalize] = React.useState(false);
+
+  /* Which feeding dialog is open. "edit" reuses the start dialog. */
+  const [dialog, setDialog] = React.useState<null | "new" | "edit" | "line" | "import">(null);
+  const [confirmDelete, setConfirmDelete] = React.useState(false);
 
   const loadList = React.useCallback(async () => {
     try {
@@ -275,6 +294,49 @@ export default function ReconciliationPage() {
     }
   }
 
+  /** A statement line loaded by mistake. The API refuses a matched one. */
+  async function deleteLine(lineId: number) {
+    if (!detail) return;
+    setBusy(true);
+    try {
+      await axios.delete(`${API_BASE_URL}/accounting/reconciliation/${detail.id}/lines/${lineId}`, { headers: authHeader() });
+      await loadDetail();
+      await loadList();
+      toast.info("Statement line removed");
+    } catch (e) {
+      toast.error("Not removed", { description: apiMessage(e, "Please try again.") });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deleteRecon() {
+    if (!detail) return;
+    setBusy(true);
+    try {
+      await axios.delete(`${API_BASE_URL}/accounting/reconciliation/${detail.id}`, { headers: authHeader() });
+      setConfirmDelete(false);
+      setDetail(null);
+      setSelectedId(null);
+      await loadList();
+      toast.success("Reconciliation deleted");
+    } catch (e) {
+      toast.error("Not deleted", { description: apiMessage(e, "Please try again.") });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** After a start or an edit: open that reconciliation and refresh both halves. */
+  async function afterSaved(id: number) {
+    if (id === selectedId) await loadDetail();
+    else setSelectedId(id);
+    await loadList();
+  }
+
+  /** "1 Aug – 26 Sep 2026", or just the end date for the older, seeded rows. */
+  const period = (from: string | null, to: string) => (from ? `${formatDate(from)} – ${formatDate(to)}` : `to ${formatDate(to)}`);
+
   /* ── render ──────────────────────────────────────────────────────── */
 
   return (
@@ -287,6 +349,9 @@ export default function ReconciliationPage() {
           <>
             <Button variant="ghost" className="gap-1.5" onClick={() => { setLoadingList(true); void loadList(); void loadDetail(); }}>
               <RefreshCw className="size-4" /><span className="hidden sm:inline">Refresh</span>
+            </Button>
+            <Button variant="secondary" className="gap-1.5" onClick={() => setDialog("new")}>
+              <Plus className="size-4" />New
             </Button>
             <Button variant="accent" className="gap-1.5"
               onClick={() => setConfirmFinalize(true)}
@@ -323,7 +388,8 @@ export default function ReconciliationPage() {
             <EmptyState
               icon={Landmark}
               title="No bank reconciliations"
-              description="Nothing exists in BankReconciliation yet, so there is no statement to work through."
+              description="Start one for a bank account and load its statement."
+              action={<Button variant="accent" className="gap-1.5" onClick={() => setDialog("new")}><Plus className="size-4" />New reconciliation</Button>}
             />
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
@@ -337,7 +403,7 @@ export default function ReconciliationPage() {
                 >
                   {list.map((r) => (
                     <option key={r.id} value={r.id}>
-                      {r.accountName} — {formatDate(r.statementDate)} ({r.statusName})
+                      {r.accountName} — {period(r.periodFrom, r.statementDate)} ({r.statusName})
                     </option>
                   ))}
                 </SelectNative>
@@ -360,18 +426,38 @@ export default function ReconciliationPage() {
           {detail && (
             <div className="mt-5 flex flex-wrap items-center justify-between gap-3 p-3 bg-slate-50 dark:bg-navy-900 rounded-lg">
               <div className="text-xs text-slate-500 dark:text-slate-400">
-                Prepared by <span className="font-semibold text-navy-900 dark:text-white">{detail.preparedBy}</span>
+                Statement {period(detail.periodFrom, detail.statementDate)} · {detail.statementLines.length} {detail.statementLines.length === 1 ? "line" : "lines"}
+                {" · "}prepared by <span className="font-semibold text-navy-900 dark:text-white">{detail.preparedBy}</span>
                 {locked && detail.finalizedOn && <> · finalised {formatDate(detail.finalizedOn)}</>}
-                {/* No statement import exists: BankStatementLine rows are
-                    seeded/entered, and there is no CSV or MT940 parser behind
-                    the old upload button, so it is not shown. */}
-                <> · statement lines come from the database</>
               </div>
-              <Button variant="accent" size="md" className="gap-1.5"
-                onClick={() => void autoMatch()}
-                disabled={locked || busy || unmatchedStatement.length === 0}>
-                {busy ? <Loader2 className="size-4 animate-spin" /> : <Sparkles />}Auto-match
-              </Button>
+              {/* Feeding the statement: import the bank's file, or type a
+                  line. Both through BankReconciliationController; neither is
+                  offered once the statement is finalised. */}
+              <div className="flex flex-wrap items-center gap-2">
+                {!locked && (
+                  <>
+                    <Button variant="secondary" size="md" className="gap-1.5" disabled={busy} onClick={() => setDialog("import")}>
+                      <Upload className="size-4" />Import statement
+                    </Button>
+                    <Button variant="secondary" size="md" className="gap-1.5" disabled={busy} onClick={() => setDialog("line")}>
+                      <Plus className="size-4" />Add line
+                    </Button>
+                    <Button variant="ghost" size="icon" aria-label="Correct the statement details" title="Correct the statement details"
+                      disabled={busy} onClick={() => setDialog("edit")}>
+                      <Pencil className="size-4" />
+                    </Button>
+                    <Button variant="ghost" size="icon" aria-label="Delete this reconciliation" title="Delete this reconciliation"
+                      disabled={busy} onClick={() => setConfirmDelete(true)}>
+                      <Trash2 className="size-4 text-danger" />
+                    </Button>
+                  </>
+                )}
+                <Button variant="accent" size="md" className="gap-1.5"
+                  onClick={() => void autoMatch()}
+                  disabled={locked || busy || unmatchedStatement.length === 0}>
+                  {busy ? <Loader2 className="size-4 animate-spin" /> : <Sparkles />}Auto-match
+                </Button>
+              </div>
             </div>
           )}
         </CardBody>
@@ -437,35 +523,53 @@ export default function ReconciliationPage() {
                       </h3>
                       <Badge variant="muted">{unmatchedStatement.length} unmatched</Badge>
                     </div>
-                    {unmatchedStatement.length === 0 ? (
+                    {detail.statementLines.length === 0 ? (
+                      <div className="py-6 text-center">
+                        <p className="text-sm text-slate-500 dark:text-slate-400">No statement lines yet.</p>
+                        {!locked && (
+                          <Button variant="accent" size="sm" className="gap-1.5 mt-3" onClick={() => setDialog("import")}>
+                            <Upload className="size-4" />Import the statement
+                          </Button>
+                        )}
+                      </div>
+                    ) : unmatchedStatement.length === 0 ? (
                       <p className="text-sm text-slate-500 dark:text-slate-400 py-6 text-center">
                         Every statement line is matched.
                       </p>
                     ) : (
                       <div className="space-y-1.5">
                         {unmatchedStatement.map((l) => (
-                          <button
-                            key={l.id}
-                            type="button"
-                            disabled={locked || busy}
-                            onClick={() => setSelectedStatement(selectedStatement === l.id ? null : l.id)}
-                            className={cn(
-                              "w-full text-left p-2.5 rounded-lg border-2 transition-colors disabled:opacity-60",
-                              selectedStatement === l.id
-                                ? "border-brand-yellow bg-brand-yellow/5"
-                                : "border-slate-200 dark:border-navy-700 hover:border-slate-300"
-                            )}
-                          >
-                            <div className="flex items-center justify-between gap-3">
-                              <div className="min-w-0">
-                                <div className="text-sm text-navy-900 dark:text-white truncate">{l.description}</div>
-                                <div className="text-2xs text-slate-500 dark:text-slate-400">{formatDate(l.date)}</div>
+                          <div key={l.id} className="flex items-stretch gap-1">
+                            <button
+                              type="button"
+                              disabled={locked || busy}
+                              onClick={() => setSelectedStatement(selectedStatement === l.id ? null : l.id)}
+                              className={cn(
+                                "flex-1 min-w-0 text-left p-2.5 rounded-lg border-2 transition-colors disabled:opacity-60",
+                                selectedStatement === l.id
+                                  ? "border-brand-yellow bg-brand-yellow/5"
+                                  : "border-slate-200 dark:border-navy-700 hover:border-slate-300"
+                              )}
+                            >
+                              <div className="flex items-center justify-between gap-3">
+                                <div className="min-w-0">
+                                  <div className="text-sm text-navy-900 dark:text-white truncate">{l.description}</div>
+                                  <div className="text-2xs text-slate-500 dark:text-slate-400 truncate">
+                                    {formatDate(l.date)}{l.reference ? ` · ${l.reference}` : ""}
+                                  </div>
+                                </div>
+                                <span className={cn("tabular text-sm font-bold shrink-0", l.amount < 0 ? "text-danger" : "text-success")}>
+                                  {formatMoney(l.amount)}
+                                </span>
                               </div>
-                              <span className={cn("tabular text-sm font-bold shrink-0", l.amount < 0 ? "text-danger" : "text-success")}>
-                                {formatMoney(l.amount)}
-                              </span>
-                            </div>
-                          </button>
+                            </button>
+                            {!locked && (
+                              <Button variant="ghost" size="icon" aria-label="Remove this statement line" title="Remove this statement line"
+                                className="self-center shrink-0" disabled={busy} onClick={() => void deleteLine(l.id)}>
+                                <X className="size-4 text-slate-400" />
+                              </Button>
+                            )}
+                          </div>
                         ))}
                       </div>
                     )}
@@ -584,6 +688,50 @@ export default function ReconciliationPage() {
           </Tabs>
         </>
       )}
+
+      {(dialog === "new" || dialog === "edit") && (
+        <ReconHeaderDialog
+          open
+          onOpenChange={(v) => { if (!v) setDialog(null); }}
+          editing={dialog === "edit" ? detail : null}
+          onSaved={(id) => void afterSaved(id)}
+        />
+      )}
+      {dialog === "line" && detail && (
+        <StatementLineDialog
+          open
+          onOpenChange={(v) => { if (!v) setDialog(null); }}
+          reconId={detail.id}
+          periodFrom={detail.periodFrom}
+          statementDate={detail.statementDate}
+          onSaved={() => { void loadDetail(); void loadList(); }}
+        />
+      )}
+      {dialog === "import" && detail && (
+        <StatementImportDialog
+          open
+          onOpenChange={(v) => { if (!v) setDialog(null); }}
+          reconId={detail.id}
+          onImported={() => { void loadDetail(); void loadList(); }}
+        />
+      )}
+
+      <ConfirmDialog
+        open={confirmDelete}
+        onOpenChange={setConfirmDelete}
+        title="Delete this reconciliation?"
+        description={
+          /* Plain text: ConfirmDialog already wraps this in a <p>. */
+          <>
+            {detail?.accountName}, {detail ? period(detail.periodFrom, detail.statementDate) : ""}, and its
+            {" "}{detail?.statementLines.length ?? 0} statement {detail?.statementLines.length === 1 ? "line" : "lines"} will be
+            removed. Nothing in the books changes — a statement line only ever pointed at a ledger line.
+          </>
+        }
+        variant="danger"
+        confirmLabel={busy ? "Deleting…" : "Delete"}
+        onConfirm={() => { void deleteRecon(); }}
+      />
 
       <ConfirmDialog
         open={confirmFinalize}

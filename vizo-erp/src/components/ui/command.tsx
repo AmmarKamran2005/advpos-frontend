@@ -21,22 +21,28 @@ const Command = React.forwardRef<
 ));
 Command.displayName = CommandPrimitive.displayName;
 
-type CommandDialogProps = React.ComponentProps<typeof DialogPrimitive.Root>;
+type CommandDialogProps = React.ComponentProps<typeof DialogPrimitive.Root> & {
+  /* Passed through to cmdk. False when the caller filters for itself -- the
+     palette does, because its record results come back from the server
+     already matched (by phone number, barcode...) and cmdk's own fuzzy match
+     would hide rows whose visible text does not contain what was typed. */
+  shouldFilter?: boolean;
+};
 
-const CommandDialog = ({ children, ...props }: CommandDialogProps) => (
+const CommandDialog = ({ children, shouldFilter, ...props }: CommandDialogProps) => (
   <DialogPrimitive.Root {...props}>
     <DialogPrimitive.Portal>
       <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-navy-900/55 backdrop-blur-sm data-[state=open]:animate-fade-in" />
       <DialogPrimitive.Content
         className={cn(
-          "fixed left-1/2 top-[20%] z-50 w-full max-w-2xl -translate-x-1/2",
+          "fixed left-1/2 top-[8%] sm:top-[20%] z-50 w-[calc(100%-1.5rem)] max-w-2xl -translate-x-1/2",
           "border border-slate-200 dark:border-navy-700 rounded-xl shadow-elevated overflow-hidden",
           "data-[state=open]:animate-slide-up outline-none"
         )}
       >
         <DialogPrimitive.Title className="sr-only">Command Palette</DialogPrimitive.Title>
         <DialogPrimitive.Description className="sr-only">Search and run actions</DialogPrimitive.Description>
-        <Command className="[&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:py-2 [&_[cmdk-group-heading]]:text-2xs [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-wider [&_[cmdk-group-heading]]:text-slate-500 dark:[&_[cmdk-group-heading]]:text-slate-400">
+        <Command shouldFilter={shouldFilter} className="[&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:py-2 [&_[cmdk-group-heading]]:text-2xs [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-wider [&_[cmdk-group-heading]]:text-slate-500 dark:[&_[cmdk-group-heading]]:text-slate-400">
           {children}
         </Command>
       </DialogPrimitive.Content>

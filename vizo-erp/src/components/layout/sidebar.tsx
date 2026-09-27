@@ -11,6 +11,7 @@ import { navigationFor, isActiveMatch, type NavNode, type LiveBadgeKey } from "@
 import { useSession, API_BASE_URL, authHeader } from "@/components/providers/session-provider";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { useCompanyName } from "@/lib/company";
 
 /**
  * The counts a nav badge can show, read from the API rather than typed into
@@ -56,6 +57,8 @@ export function Sidebar({
 }) {
   const pathname = usePathname();
   const { user, can } = useSession();
+  /* The business's own name from the Company row, not the software's. */
+  const companyName = useCompanyName();
   /* The shell does not mount this until the session has resolved, so user
      is set. An early `return null` here would sit above the hooks below
      and change the hook count between renders. */
@@ -107,7 +110,7 @@ export function Sidebar({
             <div className="relative size-8 rounded-md overflow-hidden flex-shrink-0">
               <Image
                 src="/vizo-logo.png"
-                alt="AdvPOS"
+                alt={companyName || "Logo"}
                 fill
                 sizes="32px"
                 className="object-cover dark:hidden"
@@ -115,7 +118,7 @@ export function Sidebar({
               />
               <Image
                 src="/vizo-logo-dark.jpg"
-                alt="AdvPOS"
+                alt={companyName || "Logo"}
                 fill
                 sizes="32px"
                 className="object-cover hidden dark:block"
@@ -124,8 +127,8 @@ export function Sidebar({
             </div>
             {!collapsed && (
               <div className="min-w-0">
-                <div className="text-sm font-bold text-navy-900 dark:text-white leading-tight truncate">
-                  AdvPOS
+                <div className="text-sm font-bold text-navy-900 dark:text-white leading-tight truncate min-h-[1.25em]">
+                  {companyName}
                 </div>
                 <div className="text-2xs text-slate-500 dark:text-slate-400 leading-tight truncate">
                   {me.roleLabel}
