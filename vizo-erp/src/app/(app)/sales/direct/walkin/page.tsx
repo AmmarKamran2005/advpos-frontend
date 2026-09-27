@@ -21,7 +21,7 @@ import { WhatsAppShareDialog } from "@/components/dialogs/whatsapp-share-dialog"
 import { toast } from "@/components/ui/toaster";
 import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
 import { downloadXlsx, exportError } from "@/lib/export";
-import { openDocument, openDocumentWhenReady, viewableUrl } from "@/lib/documents";
+import { printPdf, downloadPdf } from "@/lib/documents";
 import { formatMoney, formatDate } from "@/lib/format";
 import { statusLabel } from "@/lib/labels";
 import { prettyPhone } from "@/lib/whatsapp";
@@ -110,21 +110,14 @@ export default function WalkInSalesPage() {
      must be one that needs none -- and the raw Cloudinary URL is not it: PDF
      delivery is switched off on that account, so the stored link answers 401.
      `viewUrl` is whichever of the two actually opens. See lib/documents.ts. */
-  async function openBill(invoiceId: number, storedUrl?: string | null, attachment = false) {
-    if (storedUrl) {
-      openDocument(storedUrl, attachment);
-      return;
-    }
-    const opened = await openDocumentWhenReady(async () => {
-      const res = await axios.post<{ pdfUrl: string | null; shareUrl?: string | null; viewUrl?: string | null }>(
-        `${API_BASE_URL}/sales/invoices/${invoiceId}/pdf`, {}, { headers: authHeader() });
-      return viewableUrl(res.data);
-    }, attachment);
-    if (!opened) {
-      toast.error("Could not open the bill", {
-        description: "It could not be saved to the document store. Try again in a moment.",
-      });
-    }
+  /* THE BILL (27 Sep). Print opens the browser's print dialog on the bill,
+     rebuilt from the database by the API and fetched with the sign-in header;
+     Download saves it. No popup, no dependence on the Cloudinary copy being
+     served -- the reason Print did nothing before is in lib/documents.ts. */
+  async function openBill(invoiceId: number, _storedUrl?: string | null, attachment = false) {
+    const path = `/sales/invoices/${invoiceId}/pdf`;
+    const ok = attachment ? await downloadPdf(path, `invoice-${invoiceId}`) : await printPdf(path);
+    if (!ok) toast.error("Could not open the bill", { description: "Try again in a moment." });
   }
 
   const [exporting, setExporting] = React.useState(false);
