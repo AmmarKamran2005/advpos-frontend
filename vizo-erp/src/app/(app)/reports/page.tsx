@@ -25,6 +25,8 @@ type ReportsIndex = {
   monthInvoices: number;
   receivable: number;
   stockValue: number;
+  /* "cost" for the Super Admin, "sale" for everybody else (27 Sep). */
+  stockValuedAt?: "cost" | "sale";
   stockUnits: number;
   activeCustomers: number;
   activeProducts: number;
@@ -140,7 +142,7 @@ export default function ReportsPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <Stat label="Revenue this month" loading={loading} value={formatCompact(stats.monthRevenue)} sub={`${stats.monthInvoices} invoices`} />
         <Stat label="Receivable" loading={loading} value={formatCompact(stats.receivable)} tone="text-warning" />
-        <Stat label="Stock value" loading={loading} value={formatCompact(stats.stockValue)} sub={`${stats.stockUnits.toLocaleString()} units`} />
+        <Stat label={stats.stockValuedAt === "sale" ? "Stock at sale price" : "Stock value"} loading={loading} value={formatCompact(stats.stockValue)} sub={`${stats.stockUnits.toLocaleString()} units`} />
         <Stat label="Open claims" loading={loading} value={String(stats.openClaims)} sub={`${stats.deliveriesInFlight} deliveries out`} tone="text-info" />
       </div>
 
