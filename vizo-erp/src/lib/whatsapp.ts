@@ -146,3 +146,52 @@ export function reminderMessage(p: {
   lines.push("", `Shukriya.`);
   return lines.join("\n");
 }
+
+/**
+ * An overdue-payment reminder from AR Aging (27 Sep, round E), in English or
+ * Urdu. Polite and plain, like `reminderMessage` above: what is owed, how late
+ * the oldest of it is, and who to talk to. The figures come from the ageing
+ * report the screen is showing, so the message says what the report says.
+ */
+export function overdueMessage(p: {
+  customerName: string;
+  overdue: number;
+  outstanding: number;
+  daysOverdue: number;
+  salesPerson?: string | null;
+  companyName?: string;
+  language: "en" | "ur";
+}): string {
+  const company = p.companyName ?? "VIZO";
+  const notYetDue = p.overdue <= 0;
+  if (p.language === "ur") {
+    const lines = [
+      `السلام علیکم ${p.customerName}،`,
+      "",
+      `${company} کی طرف سے آپ کے کھاتے کی یاد دہانی۔`,
+      "",
+      notYetDue
+        ? `کل واجب الادا رقم: *${money(p.outstanding)}*`
+        : `واجب الادا رقم: *${money(p.overdue)}* (${p.daysOverdue} دن سے زائد)`,
+    ];
+    if (!notYetDue && p.outstanding > p.overdue) lines.push(`کل بقایا: ${money(p.outstanding)}`);
+    lines.push("", "براہ کرم جلد از جلد ادائیگی کا انتظام فرمائیں۔");
+    if (p.salesPerson) lines.push(`رابطہ: ${p.salesPerson}`);
+    lines.push("", "شکریہ۔");
+    return lines.join("\n");
+  }
+  const lines = [
+    `Assalam-o-Alaikum ${p.customerName},`,
+    "",
+    `A reminder from ${company} about your account.`,
+    "",
+    notYetDue
+      ? `Outstanding balance: *${money(p.outstanding)}*`
+      : `Overdue: *${money(p.overdue)}* (${p.daysOverdue} days past due)`,
+  ];
+  if (!notYetDue && p.outstanding > p.overdue) lines.push(`Total outstanding: ${money(p.outstanding)}`);
+  lines.push("", "Kindly arrange the payment at your earliest.");
+  if (p.salesPerson) lines.push(`Your contact: ${p.salesPerson}`);
+  lines.push("", "Shukriya.");
+  return lines.join("\n");
+}

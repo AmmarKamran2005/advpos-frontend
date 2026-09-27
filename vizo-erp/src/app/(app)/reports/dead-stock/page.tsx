@@ -15,7 +15,7 @@ import { SelectNative } from "@/components/ui/select-native";
 import { API_BASE_URL, authHeader, useSession } from "@/components/providers/session-provider";
 import { itemHref } from "@/lib/item-links";
 import { formatMoney, formatCompact } from "@/lib/format";
-import { toast } from "@/components/ui/toaster";
+import { ClearanceDialog } from "@/components/widgets/clearance-dialog";
 
 /* GET /reports/dead-stock?days=90
 
@@ -40,6 +40,11 @@ type DeadResponse = {
   windowDays: number;
   count: number;
   tiedUpValue: number;
+  /* What an item cost is the Super Admin's alone (26 Sep): the API values
+     this stock at cost for him, at the selling price for the accountant, and
+     sends the order desk no money at all ("none"). */
+  valuedAt?: "cost" | "sale" | "none";
+  mayPlanClearance?: boolean;
   items: DeadRow[];
 };
 
@@ -55,6 +60,8 @@ export default function DeadStockPage() {
   const [days, setDays] = React.useState(90);
   const [locationId, setLocationId] = React.useState<number | null>(null);
   const [data, setData] = React.useState<DeadResponse>({ windowDays: 90, count: 0, tiedUpValue: 0, items: [] });
+  const [planning, setPlanning] = React.useState(false);
+  const valuedAt = data.valuedAt ?? "none";
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -115,19 +122,26 @@ export default function DeadStockPage() {
         </Badge>
       ),
     },
-    {
-      key: "costPrice",
-      header: "Cost",
-      align: "right",
-      cell: (p) => <span className="tabular text-sm text-slate-600 dark:text-slate-300">{formatMoney(p.costPrice)}</span>,
-    },
-    {
-      key: "tiedUpValue",
-      header: "Tied Up",
-      sortable: true,
-      align: "right",
-      cell: (p) => <span className="tabular text-sm font-bold text-danger">{formatMoney(p.tiedUpValue)}</span>,
-    },
+    /* No money columns at all for the order desk. */
+    ...(valuedAt === "none" ? [] : [
+      {
+        key: valuedAt === "cost" ? "costPrice" : "salePrice",
+        header: valuedAt === "cost" ? "Cost" : "Sale Price",
+        align: "right" as const,
+        cell: (p: DeadRow) => (
+          <span className="tabular text-sm text-slate-600 dark:text-slate-300">
+            {formatMoney(valuedAt === "cost" ? p.costPrice : p.salePrice)}
+          </span>
+        ),
+      },
+      {
+        key: "tiedUpValue",
+        header: valuedAt === "cost" ? "Tied Up" : "At Sale Price",
+        sortable: true,
+        align: "right" as const,
+        cell: (p: DeadRow) => <span className="tabular text-sm font-bold text-danger">{formatMoney(p.tiedUpValue)}</span>,
+      },
+    ]),
   ];
 
   return (
@@ -149,20 +163,18 @@ export default function DeadStockPage() {
               <option value="180">Last 180 days</option>
               <option value="365">Last year</option>
             </SelectNative>
-            <Button
-              variant="secondary"
-              size="md"
-              className="gap-1.5"
-              disabled={data.items.length === 0}
-              onClick={() =>
-                toast.info("Clearance is not wired up yet", {
-                  description: `${data.count} lines worth ${formatCompact(data.tiedUpValue)} would need a price change or a write-off.`,
-                })
-              }
-            >
-              <Archive />
-              <span className="hidden sm:inline">Plan Clearance</span>
-            </Button>
+            {data.mayPlanClearance && (
+              <Button
+                variant="secondary"
+                size="md"
+                className="gap-1.5"
+                disabled={data.items.length === 0}
+                onClick={() => setPlanning(true)}
+              >
+                <Archive />
+                <span className="hidden sm:inline">Plan Clearance</span>
+              </Button>
+            )}
             <ReportToolbar mode="asOf" reportName="Dead Stock" locationId={locationId} onLocationChange={setLocationId}
               doc={{ family: "report", key: "dead-stock" }} docParams={{ days }} />
           </>
@@ -186,9 +198,15 @@ export default function DeadStockPage() {
                    : <div className="text-2xl tabular font-bold text-danger mt-1">{data.count}</div>}
         </Card>
         <Card className="p-4">
-          <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Capital Tied Up</div>
+          <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">
+            {valuedAt === "cost" ? "Capital Tied Up" : valuedAt === "sale" ? "Worth at Sale Price" : "Units on the Shelf"}
+          </div>
           {loading ? <Skeleton className="h-8 w-24 mt-1" />
-                   : <div className="text-2xl tabular font-bold text-navy-900 dark:text-white mt-1">{formatCompact(data.tiedUpValue)}</div>}
+                   : <div className="text-2xl tabular font-bold text-navy-900 dark:text-white mt-1">
+                       {valuedAt === "none"
+                         ? data.items.reduce((s, r) => s + r.onHand, 0).toLocaleString()
+                         : formatCompact(data.tiedUpValue)}
+                     </div>}
         </Card>
         <Card className="p-4">
           <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Window</div>
@@ -212,6 +230,16 @@ export default function DeadStockPage() {
           <DataTable columns={columns} data={data.items} rowHref={(p) => itemHref(can, p.id)} pageSize={15} />
         )}
       </Card>
+
+      {planning && (
+        <ClearanceDialog
+          open
+          onOpenChange={setPlanning}
+          days={days}
+          count={data.count}
+          seesCost={valuedAt === "cost"}
+        />
+      )}
 
       {/* Feature #5. The report already knows what is dead; this says what to
           do with each -- a discount it can survive, a bundle, or send it back. */}

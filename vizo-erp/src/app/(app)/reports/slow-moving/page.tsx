@@ -39,6 +39,9 @@ type SlowResponse = {
   minCoverDays: number;
   count: number;
   tiedUpValue: number;
+  /* Cost for the Super Admin, sale price for the accountant, nothing for the
+     order desk -- see the Dead Stock page and ReportsController. */
+  valuedAt?: "cost" | "sale" | "none";
   items: SlowRow[];
 };
 
@@ -104,8 +107,10 @@ export default function SlowMovingPage() {
           {p.coverDays > 3650 ? "10y+" : `${p.coverDays}d`}
         </Badge>
       ) },
-    { key: "tiedUpValue", header: "Tied Up", sortable: true, align: "right",
-      cell: (p) => <span className="tabular text-sm font-bold text-warning">{formatMoney(p.tiedUpValue)}</span> },
+    ...(data.valuedAt === "none" ? [] : [
+      { key: "tiedUpValue", header: data.valuedAt === "cost" ? "Tied Up" : "At Sale Price", sortable: true, align: "right" as const,
+        cell: (p: SlowRow) => <span className="tabular text-sm font-bold text-warning">{formatMoney(p.tiedUpValue)}</span> },
+    ]),
   ];
 
   return (
@@ -151,9 +156,13 @@ export default function SlowMovingPage() {
                    : <div className="text-2xl tabular font-bold text-warning mt-1">{data.count}</div>}
         </Card>
         <Card className="p-4">
-          <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Capital Tied Up</div>
+          <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">
+            {data.valuedAt === "cost" ? "Capital Tied Up" : data.valuedAt === "sale" ? "Worth at Sale Price" : "Units on the Shelf"}
+          </div>
           {loading ? <Skeleton className="h-8 w-24 mt-1" />
-                   : <div className="text-2xl tabular font-bold text-navy-900 dark:text-white mt-1">{formatCompact(data.tiedUpValue)}</div>}
+                   : <div className="text-2xl tabular font-bold text-navy-900 dark:text-white mt-1">
+                       {data.valuedAt === "none" ? data.items.reduce((s, r) => s + r.onHand, 0).toLocaleString() : formatCompact(data.tiedUpValue)}
+                     </div>}
         </Card>
         <Card className="p-4">
           <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Threshold</div>

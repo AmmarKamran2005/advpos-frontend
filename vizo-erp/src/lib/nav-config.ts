@@ -224,8 +224,16 @@ export const navigation: NavNode[] = [
       { label: "All Reports",     href: "/reports",                match: "reports.lib",      perms: ["reports.full"] },
       { label: "Sales Summary",   href: "/reports/sales-summary",  match: "reports.sales",    perms: ["reports.view"] },
       { label: "Top Customers",   href: "/reports/top-customers",  match: "reports.top-cust", perms: ["reports.full"] },
+      /* Built 27 Sep (round E) -- they were "Not built" cards on /reports. A rep
+         sees his own row / his own invoices; the API scopes it. */
+      { label: "Sales by Salesperson", href: "/reports/sales-by-rep",     match: "reports.by-rep",     perms: ["reports.view"] },
+      { label: "Sales by Product",     href: "/reports/sales-by-product", match: "reports.by-product", perms: ["reports.view"] },
       { label: "Recovery — Customers", href: "/reports/aging/customer", match: "reports.ar-aging", perms: ["reports.full"] },
       { label: "Recovery — Suppliers", href: "/reports/aging/supplier", match: "reports.ap-aging", perms: ["reports.full"] },
+      /* Supplier Ledger: Super Admin and accountant (ledger.view). Purchase
+         Summary: purchase prices, the Super Admin alone (purchases.view). */
+      { label: "Supplier Ledger",  href: "/reports/supplier-ledger",  match: "reports.sup-ledger", perms: ["ledger.view"] },
+      { label: "Purchase Summary", href: "/reports/purchase-summary", match: "reports.purchases",  perms: ["purchases.view"] },
       { label: "Slow Selling",    href: "/reports/slow-moving",    match: "reports.slow",     perms: ["stock.view"] },
       { label: "Not Selling",     href: "/reports/dead-stock",     match: "reports.dead",     perms: ["stock.view"] },
     ],
