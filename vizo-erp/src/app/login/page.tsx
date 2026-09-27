@@ -10,7 +10,7 @@ import { z } from "zod";
 import axios from "axios";
 import {
   Mail, Lock, Eye, EyeOff, Loader2, AlertCircle, ArrowRight,
-  ShoppingCart, ClipboardList, Wallet, Shield, Check, PackageCheck, BadgeCheck,
+  ShoppingCart, ClipboardList, Wallet, Shield, Check, PackageCheck, BookCheck,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from "@/components/ui/form";
@@ -22,6 +22,7 @@ import { Toaster, toast } from "@/components/ui/toaster";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import {
   saveSession,
+  fetchMustChangePassword,
   API_BASE_URL,
   type SessionUser,
 } from "@/components/providers/session-provider";
@@ -55,20 +56,26 @@ const PANEL_TONE: Record<RoleKey, { ring: string; chip: string }> = {
 };
 
 /**
- * Shortcut buttons that fill in the address for each panel. Emails only --
- * a password baked into the bundle is a password everybody has, and these
- * are real accounts now.
+ * The four panels, by ROLE only.
+ *
+ * These cards used to carry a real person's name and email address each --
+ * on a public page anybody on the internet can open, which is a list of who
+ * works here and which address to try a password against. They now say what
+ * each panel is for and nothing about who holds it. Choosing one only marks it
+ * and puts the cursor in the email box; the account's own role (from the API)
+ * decides where the person lands, whichever card was chosen. There is
+ * deliberately no endpoint that lists staff for this page.
  */
-type Panel = { role: RoleKey; label: string; person: string; email: string; blurb: string };
+type Panel = { role: RoleKey; label: string; blurb: string };
 
 const PANELS: Panel[] = [
-  { role: "sales", label: "Sales", person: "Zara Malik", email: "sales@advpos.pk",
+  { role: "sales", label: "Sales",
     blurb: "Takes customer orders and follows up on payments." },
-  { role: "order-dept", label: "Order Department", person: "Bilal Ahmed", email: "order@advpos.pk",
+  { role: "order-dept", label: "Order Department",
     blurb: "Checks stock, packs orders, moves goods and books deliveries." },
-  { role: "accountant", label: "Accountant", person: "Hassan Raza", email: "accounts@advpos.pk",
+  { role: "accountant", label: "Accountant",
     blurb: "Records money in and out, keeps the ledgers and statements." },
-  { role: "super-admin", label: "Super Admin", person: "Umer Memon", email: "vizo.com.pk@gmail.com",
+  { role: "super-admin", label: "Super Admin",
     blurb: "Sees everything, plus users, setup and backup." },
 ];
 
@@ -91,8 +98,7 @@ function LoginForm() {
   function choosePanel(panel: Panel) {
     setSelected(panel.role);
     setServerError(null);
-    form.setValue("email", panel.email);
-    form.setFocus("password");
+    form.setFocus("email");
   }
 
   async function onSubmit(data: LoginForm) {
@@ -104,7 +110,16 @@ function LoginForm() {
       );
 
       const { token, user } = res.data;
-      saveSession(token, user);
+      /* "Keep me signed in" unticked = session cookies, gone when the browser closes. */
+      saveSession(token, user, data.remember !== false);
+
+      /* A temporary password (new account, or reset by the Super Admin) is
+         replaced before anything else. */
+      if (await fetchMustChangePassword(token)) {
+        toast.success(`Welcome, ${user.fullName}`, { description: "Choose your own password to continue." });
+        router.replace("/setup");
+        return;
+      }
 
       toast.success(`Signed in as ${user.fullName}`, { description: `${user.roleLabel} panel` });
 
@@ -162,7 +177,7 @@ function LoginForm() {
           <div className={cn("mb-6", s.rise)} style={at(1)}>
             <h1 className="text-3xl font-bold tracking-tight">Choose your panel</h1>
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-2">
-              Each role sees a different app. Pick one to fill in its address, then enter your password.
+              Each role sees a different app. Pick yours, then sign in with your own email and password.
             </p>
           </div>
 
@@ -192,18 +207,12 @@ function LoginForm() {
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="text-sm font-semibold truncate">{account.label}</div>
-                      <div className="text-2xs text-slate-500 dark:text-slate-400 truncate">
-                        {account.person}
-                      </div>
                     </div>
                     {active && <Check key={account.role} className={cn("size-4 text-brand-yellow flex-shrink-0", s.pop)} />}
                   </div>
                   <p className="text-2xs text-slate-500 dark:text-slate-400 mt-2 leading-snug">
                     {account.blurb}
                   </p>
-                  <div className="tabular text-2xs text-slate-400 dark:text-slate-500 mt-2 truncate">
-                    {account.email}
-                  </div>
                 </button>
               );
             })}
@@ -284,13 +293,12 @@ function LoginForm() {
             </form>
           </Form>
 
+          {/* The Privacy / Terms / Help links went nowhere (href="#") and there
+              are no such pages, so they are gone. The year is today's -- the
+              page is prerendered, so the build year may differ for a moment
+              after New Year; suppressHydrationWarning covers exactly that. */}
           <div className={cn("mt-8 pt-5 border-t border-slate-200 dark:border-navy-800 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400", s.rise)} style={at(8)}>
-            <div>© 2026 AdvPOS</div>
-            <div className="flex items-center gap-3">
-              <Link href="#" className="hover:text-navy-900 dark:hover:text-white">Privacy</Link>
-              <Link href="#" className="hover:text-navy-900 dark:hover:text-white">Terms</Link>
-              <Link href="#" className="hover:text-navy-900 dark:hover:text-white">Help</Link>
-            </div>
+            <div suppressHydrationWarning>© {new Date().getFullYear()} AdvPOS</div>
           </div>
         </div>
       </div>
@@ -303,25 +311,34 @@ function LoginForm() {
         <div className={cn("absolute bottom-1/4 -left-10 w-72 h-72 bg-brand-yellow/10 rounded-full blur-3xl", s.orb2)} />
         <div className={cn("absolute top-10 left-1/3 w-56 h-56 bg-sky-400/10 rounded-full blur-3xl", s.orb3)} />
 
-        {/* Two small "live" cards drifting over the panel: what the system does all day. */}
-        <div className={cn("absolute top-14 right-16 z-10 hidden xl:block", s.fadeScale)} style={at(6)}>
+        {/* Two small cards drifting over the panel: what the system does all day.
+            ILLUSTRATIONS, not data -- they used to show an order number and a
+            rupee amount that looked live and were made up. Now they name the
+            two things the app does and carry a moving bar, nothing more. */}
+        <div aria-hidden className={cn("absolute top-14 right-16 z-10 hidden xl:block", s.fadeScale)} style={at(6)}>
           <div className={cn("w-60 rounded-xl border border-white/10 bg-white/5 p-3.5 backdrop-blur-md shadow-2xl", s.float)}>
-            <div className="flex items-center gap-2 text-xs text-slate-300">
-              <PackageCheck className="size-4 text-success" /> Order packed & dispatched
+            <div className="flex items-center gap-2 text-sm font-semibold text-white">
+              <span className="size-7 rounded-lg bg-success/15 flex items-center justify-center">
+                <PackageCheck className="size-4 text-success" />
+              </span>
+              Orders packed &amp; dispatched
             </div>
-            <div className="mt-1 tabular text-sm font-semibold text-white">ORD-26-0175 · 24 items</div>
-            <div className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-white/10">
-              <div className={cn("h-full w-full rounded-full bg-success", s.grow)} />
+            <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/10">
+              <div className={cn("h-full w-full rounded-full bg-success/80", s.grow, s.shimmerBar)} />
             </div>
           </div>
         </div>
-        <div className={cn("absolute bottom-16 right-24 z-10 hidden xl:block", s.fadeScale)} style={at(8)}>
-          <div className={cn("w-56 rounded-xl border border-white/10 bg-white/5 p-3.5 backdrop-blur-md shadow-2xl", s.float2)}>
-            <div className="flex items-center gap-2 text-xs text-slate-300">
-              <BadgeCheck className="size-4 text-brand-yellow" /> Collection confirmed
+        <div aria-hidden className={cn("absolute bottom-16 right-24 z-10 hidden xl:block", s.fadeScale)} style={at(8)}>
+          <div className={cn("w-60 rounded-xl border border-white/10 bg-white/5 p-3.5 backdrop-blur-md shadow-2xl", s.float2)}>
+            <div className="flex items-center gap-2 text-sm font-semibold text-white">
+              <span className="size-7 rounded-lg bg-brand-yellow/15 flex items-center justify-center">
+                <BookCheck className="size-4 text-brand-yellow" />
+              </span>
+              Collections posted to the ledger
             </div>
-            <div className="mt-1 tabular text-lg font-bold text-white">PKR 65,400</div>
-            <div className="text-2xs text-slate-400">posted to the customer&apos;s ledger</div>
+            <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/10">
+              <div className={cn("h-full w-full rounded-full bg-brand-yellow/80", s.grow, s.shimmerBar)} />
+            </div>
           </div>
         </div>
 

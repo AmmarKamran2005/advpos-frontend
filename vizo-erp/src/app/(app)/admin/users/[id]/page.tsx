@@ -6,8 +6,10 @@ import { useParams, useRouter } from "next/navigation";
 import axios from "axios";
 import {
   Edit3, Lock, Mail, Phone, Calendar, AlertCircle, Trash2, KeyRound, ArrowLeft,
-  Activity as ActivityIcon, MapPin, ShieldCheck, Check,
+  Activity as ActivityIcon, MapPin, ShieldCheck, Check, ChevronDown, Send,
 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { TemporaryPasswordDialog, type TemporaryPasswordResult } from "@/components/widgets/temporary-password-dialog";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardBody } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -50,6 +52,9 @@ type UserDetail = {
   isLocked: boolean;
   lastLoginAt: string | null;
   createdAt: string;
+  /** Still signing in with a temporary password (new account, or set below). */
+  mustChangePassword: boolean;
+  temporaryPasswordIssuedAt: string | null;
 };
 
 type ActivityRow = {
@@ -101,6 +106,9 @@ export default function UserDetailPage() {
   const [busy, setBusy] = React.useState(false);
 
   const [resetPwd, setResetPwd] = React.useState(false);
+  const [tempPwd, setTempPwd] = React.useState(false);
+  const [tempEmail, setTempEmail] = React.useState(true);
+  const [tempResult, setTempResult] = React.useState<TemporaryPasswordResult | null>(null);
   const [del, setDel] = React.useState(false);
 
   /* `silent` keeps the page on screen while a refresh after a mutation runs —
@@ -193,6 +201,9 @@ export default function UserDetailPage() {
     }
   }
 
+  /* Emails a six-digit code. The current password is NOT touched -- this
+     used to overwrite it with a random one and email nothing, which simply
+     locked the person out. They finish on the Forgot password screen. */
   async function sendPasswordReset() {
     setBusy(true);
     try {
@@ -201,10 +212,36 @@ export default function UserDetailPage() {
         {},
         { headers: authHeader() }
       );
-      toast.success(res.data?.message ?? "Reset link sent.", { description: user?.email ?? undefined });
+      toast.success("Reset code sent", { description: res.data?.message });
       setResetPwd(false);
+      await load(true);
     } catch (err) {
-      toast.error(apiMessage(err, "Could not send the reset link."));
+      toast.error("Reset code not sent", { description: apiMessage(err, "Could not send the reset code.") });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /* A random password shown once; the person must change it at sign-in. */
+  async function setTemporaryPassword() {
+    setBusy(true);
+    try {
+      const res = await axios.post<{
+        message?: string; email: string | null; temporaryPassword: string;
+        emailRequested: boolean; emailed: boolean; emailError: string | null;
+      }>(`${API_BASE_URL}/admin/users/${id}/temporary-password`, { sendEmail: tempEmail }, { headers: authHeader() });
+      setTempPwd(false);
+      setTempResult({
+        name: user?.fullName ?? "This user",
+        email: res.data.email,
+        password: res.data.temporaryPassword,
+        emailRequested: res.data.emailRequested,
+        emailed: res.data.emailed,
+        emailError: res.data.emailError,
+      });
+      await load(true);
+    } catch (err) {
+      toast.error(apiMessage(err, "Could not set a temporary password."));
     } finally {
       setBusy(false);
     }
@@ -281,11 +318,12 @@ export default function UserDetailPage() {
             <Avatar initials={u.initials} size="xl" />
             <div>
               <div>{u.fullName}</div>
-              <div className="flex items-center gap-2 mt-1.5">
+              <div className="flex flex-wrap items-center gap-2 mt-1.5">
                 <span className="text-xs text-slate-500 dark:text-slate-400 tabular">{u.employeeCode ?? "—"}</span>
                 {u.roles.map((r) => <Badge key={r} variant="info">{r}</Badge>)}
                 {u.isActive ? <StatusPill variant="success">Active</StatusPill> : <StatusPill variant="muted">Inactive</StatusPill>}
                 {u.isLocked && <StatusPill variant="danger">Locked</StatusPill>}
+                {u.mustChangePassword && <StatusPill variant="warning">Must change password</StatusPill>}
               </div>
             </div>
           </div>
@@ -294,7 +332,28 @@ export default function UserDetailPage() {
           <>
             <Button variant="ghost" asChild><Link href="/admin/users"><ArrowLeft />Back</Link></Button>
             <Button variant="secondary" className="gap-1.5" asChild><Link href={`/admin/users/new?id=${u.id}`}><Edit3 />Edit</Link></Button>
-            <Button variant="ghost" className="gap-1.5" onClick={() => setResetPwd(true)}><KeyRound />Reset Password</Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" className="gap-1.5" disabled={busy}><KeyRound />Password<ChevronDown className="size-3.5" /></Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-72">
+                <DropdownMenuLabel>Help this person sign in</DropdownMenuLabel>
+                <DropdownMenuItem onSelect={() => setResetPwd(true)} disabled={!u.email || !u.isActive}>
+                  <Send />
+                  <span className="flex-1">
+                    <span className="block">Email a reset code</span>
+                    <span className="block text-2xs text-slate-500 dark:text-slate-400">Their password keeps working until they use it</span>
+                  </span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => setTempPwd(true)}>
+                  <KeyRound />
+                  <span className="flex-1">
+                    <span className="block">Set a temporary password</span>
+                    <span className="block text-2xs text-slate-500 dark:text-slate-400">Shown to you once; they change it at sign-in</span>
+                  </span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             <Button variant="ghost" className="text-danger" onClick={() => setDel(true)}><Trash2 />Delete</Button>
           </>
         }
@@ -320,6 +379,13 @@ export default function UserDetailPage() {
                   <Meta label="Phone" icon={Phone} value={<span className="tabular">{u.phone ?? "—"}</span>} />
                   <Meta label="Created" icon={Calendar} value={formatDate(u.createdAt)} />
                   <Meta label="Last Login" value={u.lastLoginAt ? formatRelative(u.lastLoginAt) : "Never"} />
+                  <Meta
+                    label="Password"
+                    icon={KeyRound}
+                    value={u.mustChangePassword
+                      ? `Temporary${u.temporaryPasswordIssuedAt ? `, set ${formatRelative(u.temporaryPasswordIssuedAt)}` : ""}; must change at sign-in`
+                      : "Chosen by the user"}
+                  />
                 </dl>
               </CardBody>
             </Card>
@@ -489,13 +555,37 @@ export default function UserDetailPage() {
       <ConfirmDialog
         open={resetPwd}
         onOpenChange={setResetPwd}
-        title="Reset this user's password?"
-        description={`A password reset link will be emailed to ${u.email ?? "this user"}. They will need to set a new password before signing in again.`}
+        title="Email a reset code?"
+        description={`A six-digit code goes to ${u.email ?? "this user"}. They enter it on the Forgot password screen and choose a new password. Until then their current password keeps working.`}
         variant="info"
-        confirmLabel="Send reset link"
+        confirmLabel="Send reset code"
         loading={busy}
         onConfirm={() => sendPasswordReset()}
       />
+      <ConfirmDialog
+        open={tempPwd}
+        onOpenChange={setTempPwd}
+        title="Set a temporary password?"
+        description={
+          <span className="block space-y-3">
+            <span className="block">
+              {u.fullName}&apos;s current password stops working now. You will see the new one once, and
+              they must choose their own the next time they sign in.
+            </span>
+            {u.email && (
+              <label className="flex items-center gap-2 text-sm text-navy-900 dark:text-white cursor-pointer">
+                <Checkbox checked={tempEmail} onCheckedChange={(v) => setTempEmail(v === true)} />
+                <span>Also email it to <span className="break-all">{u.email}</span></span>
+              </label>
+            )}
+          </span>
+        }
+        variant="warning"
+        confirmLabel="Set temporary password"
+        loading={busy}
+        onConfirm={() => setTemporaryPassword()}
+      />
+      <TemporaryPasswordDialog result={tempResult} onClose={() => setTempResult(null)} />
       <ConfirmDialog
         open={del}
         onOpenChange={setDel}

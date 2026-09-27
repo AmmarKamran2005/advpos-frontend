@@ -4,7 +4,7 @@ import * as React from "react";
 import axios from "axios";
 import {
   Database, Download, Play, CheckCircle2, XCircle, HardDrive, Archive,
-  ShieldCheck, AlertCircle, RefreshCw, Loader2,
+  ShieldCheck, AlertCircle, RefreshCw, Loader2, FileArchive, Info,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardBody } from "@/components/ui/card";
@@ -15,8 +15,24 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { toast } from "@/components/ui/toaster";
 import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
-import { formatDate, formatRelative, formatNumber, formatPercent } from "@/lib/format";
+import { downloadFile } from "@/lib/documents";
+import { exportError } from "@/lib/export";
+import { formatDate, formatDateTime, formatRelative, formatNumber, formatPercent } from "@/lib/format";
 import { cn } from "@/lib/utils";
+
+/**
+ * Setup -> Backups.
+ *
+ * Until 27 Sep this page was called "Backup & Restore" and had neither: "Run
+ * Backup Now" recorded a RUNNING row that never finished, Download was greyed
+ * out for good, and the rows were seed data. Now the button takes a real
+ * backup on the server (every table as CSV in one .zip, with a manifest) and
+ * Download saves that file.
+ *
+ * There is no Restore button, on purpose, and the page says so: loading a
+ * backup replaces every row in the database, which the owner does from the
+ * file into a fresh database following the RESTORE.txt inside it.
+ */
 
 /* ─────────────────────────── shapes from the API ─────────────────────────── */
 
@@ -28,18 +44,28 @@ type Backup = {
   status: string;
   statusKey: string;
   sizeMb: number | null;
+  sizeBytes: number | null;
+  fileName: string | null;
   destination: string | null;
   durationSeconds: number | null;
   hash: string | null;
+  tableCount: number | null;
+  rowTotal: number | null;
+  error: string | null;
+  hasFile: boolean;
   triggeredBy: string | null;
 };
 
 type BackupStats = {
   lastBackupAt: string | null;
   lastBackupStatus: string | null;
+  lastBackupStatusKey: string | null;
+  lastSuccessAt: string | null;
   totalSizeMb: number;
   retained: number;
-  successRate: number;
+  keepFiles: number;
+  runs: number;
+  successRate: number | null;
 };
 
 function apiMessage(e: unknown, fallback: string) {
@@ -49,14 +75,16 @@ function apiMessage(e: unknown, fallback: string) {
   return "Cannot reach the server.";
 }
 
-/** `sizeMb` arrives as a number now — turn it into something readable. */
-function formatSize(mb: number | null) {
-  if (mb === null || Number.isNaN(mb)) return "—";
-  if (mb >= 1024) return `${(mb / 1024).toFixed(2)} GB`;
-  return `${mb.toFixed(mb < 10 ? 1 : 0)} MB`;
+/** Exact bytes when the file is still kept; the stored MB figure otherwise. */
+function formatSize(bytes: number | null, mb: number | null) {
+  const b = bytes ?? (mb !== null ? mb * 1048576 : null);
+  if (b === null || Number.isNaN(b) || b <= 0) return "—";
+  if (b < 1024) return `${b} B`;
+  if (b < 1048576) return `${(b / 1024).toFixed(0)} KB`;
+  if (b < 1073741824) return `${(b / 1048576).toFixed(1)} MB`;
+  return `${(b / 1073741824).toFixed(2)} GB`;
 }
 
-/** `durationSeconds` arrives as a number now — `222` → `3m 42s`. */
 function formatDuration(seconds: number | null) {
   if (seconds === null || Number.isNaN(seconds)) return "—";
   const s = Math.max(0, Math.round(seconds));
@@ -67,13 +95,46 @@ function formatDuration(seconds: number | null) {
   return `${Math.floor(m / 60)}h ${m % 60}m`;
 }
 
-/* The status cell used to be a green tick no matter what the row said. It is
-   driven by statusKey now, so a failed run reads as failed. */
+/* The status cell is driven by statusKey, so a failed run reads as failed. */
 const STATUS_META: Record<string, { icon: typeof CheckCircle2; className: string; spin?: boolean }> = {
   SUCCESS: { icon: CheckCircle2, className: "text-success" },
   FAILED: { icon: XCircle, className: "text-danger" },
   RUNNING: { icon: Loader2, className: "text-info", spin: true },
 };
+
+function StatusCell({ b }: { b: Backup }) {
+  const meta = STATUS_META[b.statusKey] ?? { icon: AlertCircle, className: "text-slate-500" };
+  const Icon = meta.icon;
+  return (
+    <div className="min-w-0">
+      <span className={cn("inline-flex items-center gap-1.5 text-xs font-medium", meta.className)}>
+        <Icon className={cn("size-3.5", meta.spin && "animate-spin")} />
+        {b.status}
+      </span>
+      {b.error && <div className="text-2xs text-danger mt-0.5 max-w-[240px] break-words">{b.error}</div>}
+    </div>
+  );
+}
+
+function DownloadButton({
+  b, busy, onDownload, className,
+}: {
+  b: Backup; busy: boolean; onDownload: (b: Backup) => void; className?: string;
+}) {
+  if (!b.hasFile) {
+    return (
+      <span className={cn("text-2xs text-slate-400", className)} title={b.destination ?? undefined}>
+        {b.statusKey === "SUCCESS" ? "File not kept" : "No file"}
+      </span>
+    );
+  }
+  return (
+    <Button variant="secondary" size="sm" className={cn("gap-1", className)} disabled={busy} onClick={() => onDownload(b)}>
+      {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />}
+      Download
+    </Button>
+  );
+}
 
 export default function BackupPage() {
   const [rows, setRows] = React.useState<Backup[]>([]);
@@ -81,6 +142,7 @@ export default function BackupPage() {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [running, setRunning] = React.useState(false);
+  const [downloading, setDownloading] = React.useState<number | null>(null);
 
   const load = React.useCallback(async () => {
     try {
@@ -107,22 +169,35 @@ export default function BackupPage() {
     void load();
   }, [load]);
 
+  /* The API takes the backup inside this request and answers when it is done
+     -- seconds for this database -- so the button simply waits. */
   const runBackup = React.useCallback(async () => {
     setRunning(true);
     try {
       const res = await axios.post<{ message?: string }>(
         `${API_BASE_URL}/admin/backups/run`,
-        { typeKey: "MANUAL", destination: "Manual download" },
-        { headers: authHeader() }
+        { typeKey: "MANUAL" },
+        { headers: authHeader(), timeout: 10 * 60_000 }
       );
-      toast.success(res.data?.message ?? "Backup started.");
-      await load();
+      toast.success("Backup taken", { description: res.data?.message });
     } catch (e) {
-      toast.error(apiMessage(e, "The backup could not be started."));
+      toast.error("Backup failed", { description: apiMessage(e, "The backup could not be taken.") });
     } finally {
       setRunning(false);
+      await load();
     }
   }, [load]);
+
+  const download = React.useCallback(async (b: Backup) => {
+    setDownloading(b.id);
+    try {
+      await downloadFile(`/admin/backups/${b.id}/download`, b.fileName ?? `advpos-backup-${b.id}.zip`);
+    } catch (e) {
+      toast.error("Download failed", { description: await exportError(e, "The file could not be downloaded.") });
+    } finally {
+      setDownloading(null);
+    }
+  }, []);
 
   const columns: Column<Backup>[] = [
     {
@@ -130,143 +205,113 @@ export default function BackupPage() {
       header: "Date",
       cell: (b) => (
         <div>
-          <div className="text-sm font-medium text-navy-900 dark:text-white">{formatDate(b.startedAt)}</div>
-          <div className="text-2xs text-slate-500 dark:text-slate-400">{formatRelative(b.startedAt)}</div>
+          <div className="text-sm font-medium text-navy-900 dark:text-white">{formatDateTime(b.startedAt)}</div>
+          <div className="text-2xs text-slate-500 dark:text-slate-400">{formatRelative(b.startedAt)} · {b.triggeredBy ?? "—"}</div>
         </div>
       ),
     },
     { key: "type", header: "Type", cell: (b) => <Badge variant={b.typeKey === "MANUAL" ? "accent" : "info"}>{b.type}</Badge> },
-    { key: "sizeMb", header: "Size", align: "right", cell: (b) => <span className="tabular text-sm text-slate-600 dark:text-slate-300">{formatSize(b.sizeMb)}</span> },
-    { key: "durationSeconds", header: "Duration", cell: (b) => <span className="tabular text-xs text-slate-500 dark:text-slate-400">{formatDuration(b.durationSeconds)}</span> },
-    { key: "destination", header: "Destination", cell: (b) => <span className="text-xs text-slate-600 dark:text-slate-300">{b.destination ?? "—"}</span> },
-    { key: "hash", header: "Integrity", cell: (b) => <span className="font-mono text-2xs text-slate-500 dark:text-slate-400 truncate max-w-[120px] block">{b.hash ?? "—"}</span> },
     {
-      key: "status",
-      header: "Status",
-      cell: (b) => {
-        const meta = STATUS_META[b.statusKey] ?? { icon: AlertCircle, className: "text-slate-500" };
-        const Icon = meta.icon;
-        return (
-          <span className={cn("inline-flex items-center gap-1.5 text-xs font-medium", meta.className)}>
-            <Icon className={cn("size-3.5", meta.spin && "animate-spin")} />
-            {b.status}
-          </span>
-        );
-      },
-    },
-    {
-      key: "actions",
-      header: "",
-      align: "right",
-      /* No download endpoint exists and none is planned: the dump is written to
-         the backup destination by pg_dump, not served by the web app. Left
-         visible but disabled so nobody mistakes it for a working control. */
-      cell: () => (
-        <span title="Backups are pulled from the backup destination, not downloaded from the web app.">
-          <Button variant="ghost" size="sm" className="gap-1" disabled>
-            <Download className="size-3.5" />
-            Download
-          </Button>
+      key: "contents",
+      header: "Contents",
+      cell: (b) => (
+        <span className="tabular text-xs text-slate-600 dark:text-slate-300">
+          {b.tableCount ? `${formatNumber(b.tableCount)} tables · ${formatNumber(b.rowTotal ?? 0)} rows` : "—"}
         </span>
       ),
     },
+    { key: "size", header: "Size", align: "right", cell: (b) => <span className="tabular text-sm text-slate-600 dark:text-slate-300">{formatSize(b.sizeBytes, b.sizeMb)}</span> },
+    { key: "durationSeconds", header: "Took", cell: (b) => <span className="tabular text-xs text-slate-500 dark:text-slate-400">{formatDuration(b.durationSeconds)}</span> },
+    {
+      key: "hash",
+      header: "Checksum",
+      cell: (b) => (
+        <span title={b.hash ?? undefined} className="font-mono text-2xs text-slate-500 dark:text-slate-400 truncate max-w-[120px] block">
+          {b.hash ? b.hash.replace("sha256:", "sha256 ").slice(0, 19) + "…" : "—"}
+        </span>
+      ),
+    },
+    { key: "status", header: "Status", cell: (b) => <StatusCell b={b} /> },
+    { key: "actions", header: "", align: "right", cell: (b) => <DownloadButton b={b} busy={downloading === b.id} onDownload={(x) => void download(x)} /> },
   ];
 
-  const lastOk = (stats?.lastBackupStatus ?? "").toLowerCase().startsWith("success");
+  const lastOk = stats?.lastBackupStatusKey === "SUCCESS";
 
   return (
     <>
       <PageHeader
-        breadcrumbs={[{ label: "Administration" }, { label: "Backup & Restore" }]}
-        title="Backup & Restore"
-        subtitle="Every backup run the server has recorded"
+        breadcrumbs={[{ label: "Administration" }, { label: "Backups" }]}
+        title="Backups"
+        subtitle="Take a copy of the whole database and download it"
         actions={
           <Button variant="accent" size="md" className="gap-1.5" onClick={() => void runBackup()} disabled={running}>
             {running ? <Loader2 className="animate-spin" /> : <Play />}
-            <span>{running ? "Starting…" : "Run Backup Now"}</span>
+            <span>{running ? "Taking backup…" : "Run Backup Now"}</span>
           </Button>
         }
       />
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <Card className="p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Last Backup</div>
-              {stats === null ? (
-                <Skeleton className="h-6 w-24 mt-1.5" />
-              ) : (
-                <>
-                  <div className="text-base tabular font-bold text-navy-900 dark:text-white mt-1">
-                    {stats.lastBackupAt ? formatRelative(stats.lastBackupAt) : "Never"}
-                  </div>
-                  <div className={cn("text-xs mt-1 inline-flex items-center gap-1", lastOk ? "text-success" : "text-slate-500 dark:text-slate-400")}>
-                    {lastOk ? <CheckCircle2 className="size-3" /> : <AlertCircle className="size-3" />}
-                    {stats.lastBackupStatus ?? "No runs recorded"}
-                  </div>
-                </>
-              )}
-            </div>
-            <Database className={cn("size-5", lastOk ? "text-success" : "text-slate-400")} />
-          </div>
-        </Card>
-
-        <Card className="p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Storage Used</div>
-              {stats === null ? (
-                <Skeleton className="h-6 w-24 mt-1.5" />
-              ) : (
-                <>
-                  <div className="text-base tabular font-bold text-navy-900 dark:text-white mt-1">{formatSize(stats.totalSizeMb)}</div>
-                  <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">across every retained run</div>
-                </>
-              )}
-            </div>
-            <HardDrive className="size-5 text-info" />
-          </div>
-        </Card>
-
-        <Card className="p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Backups Retained</div>
-              {stats === null ? (
-                <Skeleton className="h-6 w-16 mt-1.5" />
-              ) : (
-                <>
-                  <div className="text-base tabular font-bold text-navy-900 dark:text-white mt-1">{formatNumber(stats.retained)}</div>
-                  <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">runs on record</div>
-                </>
-              )}
-            </div>
-            <Archive className="size-5 text-warning" />
-          </div>
-        </Card>
-
-        <Card className="p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Success Rate</div>
-              {stats === null ? (
-                <Skeleton className="h-6 w-16 mt-1.5" />
-              ) : (
-                <>
-                  <div className="text-base tabular font-bold text-navy-900 dark:text-white mt-1">{formatPercent(stats.successRate)}</div>
-                  <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">of all recorded runs</div>
-                </>
-              )}
-            </div>
-            <ShieldCheck className={cn("size-5", (stats?.successRate ?? 100) >= 95 ? "text-success" : "text-warning")} />
-          </div>
-        </Card>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
+        <StatCard
+          label="Last Backup"
+          icon={<Database className={cn("size-5", lastOk ? "text-success" : "text-slate-400")} />}
+          loading={stats === null}
+          value={stats?.lastBackupAt ? formatRelative(stats.lastBackupAt) : "Never"}
+          sub={
+            <span className={cn("inline-flex items-center gap-1", lastOk ? "text-success" : "text-slate-500 dark:text-slate-400")}>
+              {lastOk ? <CheckCircle2 className="size-3" /> : <AlertCircle className="size-3" />}
+              {stats?.lastBackupStatus ?? "No runs yet"}
+            </span>
+          }
+        />
+        <StatCard
+          label="Stored on server"
+          icon={<HardDrive className="size-5 text-info" />}
+          loading={stats === null}
+          value={formatSize(null, stats?.totalSizeMb ?? 0)}
+          sub={`${formatNumber(stats?.retained ?? 0)} file${stats?.retained === 1 ? "" : "s"} kept`}
+        />
+        <StatCard
+          label="Files Kept"
+          icon={<Archive className="size-5 text-warning" />}
+          loading={stats === null}
+          value={`${formatNumber(stats?.retained ?? 0)} of ${formatNumber(stats?.keepFiles ?? 0)}`}
+          sub="older files are let go"
+        />
+        <StatCard
+          label="Success Rate"
+          icon={<ShieldCheck className={cn("size-5", (stats?.successRate ?? 100) >= 95 ? "text-success" : "text-warning")} />}
+          loading={stats === null}
+          value={stats?.successRate === null || stats?.successRate === undefined ? "—" : formatPercent(stats.successRate, 0)}
+          sub={`of ${formatNumber(stats?.runs ?? 0)} run${stats?.runs === 1 ? "" : "s"}`}
+        />
       </div>
+
+      <Card className="mb-6 bg-info/5 border-info/20">
+        <CardBody>
+          <div className="flex items-start gap-3">
+            <Info className="size-4 text-info flex-shrink-0 mt-0.5" />
+            <div className="text-xs text-info-dark dark:text-info-light space-y-1.5 min-w-0">
+              <p>
+                <span className="font-semibold">What a backup is.</span> Every table, read at one instant, saved as a
+                spreadsheet file (CSV) inside one <code className="font-mono">.zip</code>, with a manifest of the row counts
+                and a <code className="font-mono">RESTORE.txt</code>. It is kept on the server — download it and store it
+                somewhere else, because a copy on the server does not survive losing the server.
+              </p>
+              <p>
+                <span className="font-semibold">Restoring</span> is not a button here. It replaces every record, so it is
+                done by the owner from the downloaded file, into a fresh database, following{" "}
+                <code className="font-mono">RESTORE.txt</code>.
+              </p>
+            </div>
+          </div>
+        </CardBody>
+      </Card>
 
       <div className="mb-3">
         <h3 className="text-base font-semibold text-navy-900 dark:text-white">Backup History</h3>
         <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-          Recording a run here is not the same as taking the dump — that is a <code className="bg-slate-100 dark:bg-navy-700 px-1.5 py-0.5 rounded font-mono text-2xs">pg_dump</code> job on the server.
+          Only the newest {stats?.keepFiles ?? "few"} files are kept; older runs stay listed without their file.
         </p>
       </div>
 
@@ -288,27 +333,78 @@ export default function BackupPage() {
             />
           </CardBody>
         </Card>
-      ) : (
-        <Card className="p-0 overflow-hidden">
-          <DataTable
-            columns={columns}
-            data={rows}
-            emptyState={
-              <EmptyState
-                icon={Database}
-                title="No backups recorded yet"
-                description="Nothing has been logged against this database. Run one now to create the first entry."
-                action={
-                  <Button variant="accent" onClick={() => void runBackup()} disabled={running}>
-                    {running ? <Loader2 className="animate-spin" /> : <Play />}
-                    Run Backup Now
-                  </Button>
-                }
-              />
-            }
-          />
+      ) : rows.length === 0 ? (
+        <Card>
+          <CardBody>
+            <EmptyState
+              icon={Database}
+              title="No backups yet"
+              description="Nothing has been taken from this database. Run one now to make the first file."
+              action={
+                <Button variant="accent" onClick={() => void runBackup()} disabled={running}>
+                  {running ? <Loader2 className="animate-spin" /> : <Play />}
+                  Run Backup Now
+                </Button>
+              }
+            />
+          </CardBody>
         </Card>
+      ) : (
+        <>
+          {/* Phones: one card per run, so nothing scrolls sideways. */}
+          <div className="sm:hidden space-y-3">
+            {rows.map((b) => (
+              <Card key={b.id} className="p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold text-navy-900 dark:text-white">{formatDate(b.startedAt)}</div>
+                    <div className="text-2xs text-slate-500 dark:text-slate-400">{formatRelative(b.startedAt)} · {b.triggeredBy ?? "—"}</div>
+                  </div>
+                  <StatusCell b={b} />
+                </div>
+                <div className="mt-3 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300 min-w-0">
+                    <FileArchive className="size-4 text-slate-400 flex-shrink-0" />
+                    <span className="tabular">
+                      {formatSize(b.sizeBytes, b.sizeMb)}
+                      {b.tableCount ? ` · ${formatNumber(b.tableCount)} tables · ${formatNumber(b.rowTotal ?? 0)} rows` : ""}
+                    </span>
+                  </div>
+                  <DownloadButton b={b} busy={downloading === b.id} onDownload={(x) => void download(x)} className="flex-shrink-0" />
+                </div>
+              </Card>
+            ))}
+          </div>
+          <Card className="p-0 overflow-hidden hidden sm:block">
+            <DataTable columns={columns} data={rows} hoverable={false} />
+          </Card>
+        </>
       )}
     </>
+  );
+}
+
+function StatCard({
+  label, icon, loading, value, sub,
+}: {
+  label: string; icon: React.ReactNode; loading: boolean; value: React.ReactNode; sub: React.ReactNode;
+}) {
+  return (
+    <Card className="p-3 sm:p-4">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">{label}</div>
+          {loading ? (
+            <Skeleton className="h-6 w-20 mt-1.5" />
+          ) : (
+            <>
+              <div className="text-base tabular font-bold text-navy-900 dark:text-white mt-1 truncate">{value}</div>
+              <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">{sub}</div>
+            </>
+          )}
+        </div>
+        <div className="flex-shrink-0">{icon}</div>
+      </div>
+    </Card>
   );
 }

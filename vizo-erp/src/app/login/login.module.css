@@ -116,3 +116,15 @@
 /* the live cards' progress bar */
 @keyframes grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
 .grow { transform-origin: left; animation: grow 1.8s cubic-bezier(0.65, 0, 0.35, 1) 1.4s both; }
+
+/* the illustrative cards' bar: after it has grown, a light keeps passing along
+   it -- "this happens all day" without inventing a figure to show (27 Sep). */
+.shimmerBar { position: relative; overflow: hidden; }
+.shimmerBar::after {
+  content: "";
+  position: absolute; inset: 0;
+  background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.55) 50%, transparent 100%);
+  transform: translateX(-100%);
+  animation: barShimmer 2.4s ease-in-out 3.3s infinite;
+}
+@keyframes barShimmer { to { transform: translateX(100%); } }
