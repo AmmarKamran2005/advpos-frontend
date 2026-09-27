@@ -1,0 +1,118 @@
+/* ──────────────────────────────────────────────────────────────────────────
+   The sign-in page's motion (27 Sep: "login page animated ... looks beautiful
+   when rendered").
+
+   Pure CSS, no animation library: the page is the first thing every user
+   loads, and speed is a standing requirement here (AGENTS.md). Everything
+   animates transform/opacity only, so it stays on the compositor. The global
+   prefers-reduced-motion rule in globals.css collapses all of it to an instant
+   final state for anyone who asks their OS for less motion.
+   ────────────────────────────────────────────────────────────────────────── */
+
+/* ── entrance: each block rises in, one after another ─────────────────── */
+@keyframes rise {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.rise {
+  opacity: 0;
+  animation: rise 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: calc(var(--i, 0) * 80ms + 60ms);
+}
+
+@keyframes fadeScale {
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: scale(1); }
+}
+.fadeScale {
+  opacity: 0;
+  animation: fadeScale 0.9s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: calc(var(--i, 0) * 90ms + 150ms);
+}
+
+/* ── the role cards ───────────────────────────────────────────────────── */
+.panelCard {
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s ease, border-color 0.2s ease, background-color 0.2s ease;
+}
+.panelCard:hover { transform: translateY(-2px); box-shadow: 0 10px 24px -12px rgba(15, 23, 42, 0.25); }
+.panelCard:active { transform: translateY(0) scale(0.99); }
+.panelIcon { transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1); }
+.panelCard:hover .panelIcon { transform: rotate(-6deg) scale(1.08); }
+
+@keyframes pop {
+  0%   { opacity: 0; transform: scale(0.3) rotate(-30deg); }
+  70%  { opacity: 1; transform: scale(1.2) rotate(6deg); }
+  100% { opacity: 1; transform: scale(1) rotate(0); }
+}
+.pop { animation: pop 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+
+/* ── the sign-in button: a light sweep on hover ───────────────────────── */
+.shine { position: relative; overflow: hidden; isolation: isolate; }
+.shine::after {
+  content: "";
+  position: absolute; inset: 0;
+  background: linear-gradient(110deg, transparent 20%, rgba(255, 255, 255, 0.55) 45%, transparent 70%);
+  transform: translateX(-120%);
+  z-index: 1; pointer-events: none;
+}
+.shine:hover::after { animation: sweep 0.9s ease; }
+@keyframes sweep { to { transform: translateX(120%); } }
+
+/* ── error shake ──────────────────────────────────────────────────────── */
+@keyframes shake {
+  10%, 90% { transform: translateX(-1px); }
+  20%, 80% { transform: translateX(3px); }
+  30%, 50%, 70% { transform: translateX(-5px); }
+  40%, 60% { transform: translateX(5px); }
+}
+.shake { animation: shake 0.5s cubic-bezier(0.36, 0.07, 0.19, 0.97) both; }
+
+/* ── the right-hand panel ─────────────────────────────────────────────── */
+@keyframes drift1 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33%      { transform: translate(-40px, 30px) scale(1.1); }
+  66%      { transform: translate(25px, -20px) scale(0.95); }
+}
+@keyframes drift2 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50%      { transform: translate(45px, -35px) scale(1.15); }
+}
+.orb1 { animation: drift1 16s ease-in-out infinite; }
+.orb2 { animation: drift2 20s ease-in-out infinite; }
+.orb3 { animation: drift1 24s ease-in-out infinite reverse; }
+
+@keyframes gridPan { from { background-position: 0 0, 0 0; } to { background-position: 64px 64px, 64px 64px; } }
+.grid { animation: gridPan 12s linear infinite; }
+
+/* the line that joins the three steps fills from top to bottom, once */
+@keyframes fillDown { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+.flowLine { transform-origin: top; animation: fillDown 1.6s cubic-bezier(0.65, 0, 0.35, 1) 0.9s both; }
+
+@keyframes ping {
+  0%   { transform: scale(1); opacity: 0.6; }
+  80%, 100% { transform: scale(2.2); opacity: 0; }
+}
+.ping { animation: ping 2.4s cubic-bezier(0, 0, 0.2, 1) infinite; animation-delay: calc(var(--i, 0) * 0.8s + 1.2s); }
+
+/* the small "live" cards float */
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-10px); }
+}
+.float  { animation: float 6s ease-in-out infinite; }
+.float2 { animation: float 7s ease-in-out 1.5s infinite; }
+
+/* headline accent: a slow shimmer through the yellow words */
+@keyframes textShimmer { to { background-position: 200% center; } }
+.accentText {
+  background: linear-gradient(90deg, var(--color-brand-yellow-500) 0%, var(--color-brand-yellow-100) 25%, var(--color-brand-yellow-500) 50%, var(--color-brand-yellow-100) 75%, var(--color-brand-yellow-500) 100%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: textShimmer 6s linear infinite;
+}
+
+/* the live cards' progress bar */
+@keyframes grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+.grow { transform-origin: left; animation: grow 1.8s cubic-bezier(0.65, 0, 0.35, 1) 1.4s both; }
