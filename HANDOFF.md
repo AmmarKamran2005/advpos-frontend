@@ -156,6 +156,7 @@ then merged into one branch and tested together.
 | **B** | `feat/b-ledgers` | `NOTES-b.md` | Order desk panel (week's orders, own order form, no money anywhere); sales posted to the books (D7 closed) with a backfill button; customer ledgers (SOA like the old system); staff ledgers; categories; Faysal Bank; Excel import |
 | **C** | `feat/c-expenses` | `NOTES-c.md` | One expense sheet per day and location, typed like a spreadsheet, approved and posted as one entry, printed as one invoice |
 | **merged** | `integration/2026-09-26` | this section | A + B + C, conflicts resolved, all migrations applied to a fresh copy, cross-checked |
+| **D** (27 Sep) | `feat/d-collections` → merged in | `NOTES-d.md` | Confirm Collections made live (collect on any invoiced order → receipt posted to the customer and his invoice; confirm a rep's collection for what arrived; bounce); animated sign-in page; migration 36 (COL series) |
 
 **Read the three NOTES files** — each has an "OWNER MUST SEE" at the top, the
 full list of files, the decisions taken and the test evidence.
@@ -211,7 +212,7 @@ Margin 2 Reserve.
 PO status/expected/approved after deploy**) · `30_ledger_accounts.sql` ·
 `31_staff_ledgers.sql` (**must run before the new API**) ·
 `32_ledger_entry_items.sql` · `33_order_desk_no_money.sql` ·
-`35_expense_sheets.sql` (run before AND after the deploy). Order: changa.txt §G.
+`35_expense_sheets.sql` (run before AND after the deploy) · `36_collection_series.sql` (27 Sep). Order: changa.txt §G.
 
 ### How it was verified together (`integration/2026-09-26` on `advpos_int`)
 
