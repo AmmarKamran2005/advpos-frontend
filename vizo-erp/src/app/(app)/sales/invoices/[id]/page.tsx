@@ -18,7 +18,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { WhatsAppShareDialog } from "@/components/dialogs/whatsapp-share-dialog";
 import { toast } from "@/components/ui/toaster";
 import { API_BASE_URL, authHeader, useSession } from "@/components/providers/session-provider";
-import { openDocument, openDocumentWhenReady, viewableUrl } from "@/lib/documents";
+import { printPdf, downloadPdf } from "@/lib/documents";
 import { formatMoney, formatDate } from "@/lib/format";
 import { statusLabel } from "@/lib/labels";
 import { prettyPhone } from "@/lib/whatsapp";
@@ -130,19 +130,14 @@ export default function InvoiceDetailPage() {
      button useless: the upload succeeds and the delivery is refused, so the
      stored link answers 401. `viewUrl` is whichever of the two actually opens.
      See lib/documents.ts. */
+  /* THE BILL (27 Sep). Print opens the browser's print dialog on the bill,
+     rebuilt from the database by the API and fetched with the sign-in header;
+     Download saves it. No popup, no dependence on the Cloudinary copy being
+     served -- the reason Print did nothing before is in lib/documents.ts. */
   async function openBill(attachment = false) {
-    const known = viewableUrl(invoice ?? {});
-    if (known) {
-      openDocument(known, attachment);
-      return;
-    }
-    const opened = await openDocumentWhenReady(async () => {
-      const res = await axios.post<{ pdfUrl: string | null; shareUrl?: string | null; viewUrl?: string | null }>(
-        `${API_BASE_URL}/sales/invoices/${id}/pdf`, {}, { headers: authHeader() });
-      await load();
-      return viewableUrl(res.data);
-    }, attachment);
-    if (!opened) toast.error("Could not open the bill", { description: "Try again in a moment." });
+    const path = `/sales/invoices/${id}/pdf`;
+    const ok = attachment ? await downloadPdf(path, invoice?.invoiceNo ?? `invoice-${id}`) : await printPdf(path);
+    if (!ok) toast.error("Could not open the bill", { description: "Try again in a moment." });
   }
 
   async function rebuildBill() {

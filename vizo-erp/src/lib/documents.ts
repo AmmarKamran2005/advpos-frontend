@@ -1,3 +1,6 @@
+import axios from "axios";
+import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
+
 /**
  * ─────────────────────────────────────────────────────────────────────────────
  * Opening a stored document
@@ -101,7 +104,14 @@ export async function openDocumentWhenReady(
   resolve: () => Promise<string | null | undefined>,
   attachment = false
 ): Promise<boolean> {
-  const tab = window.open("", "_blank", "noopener,noreferrer");
+  /* NOT "noopener" here. Browsers return null from window.open whenever
+     noopener is asked for, so the tab opened but the code could never point it
+     anywhere -- and then fell back to a second window.open AFTER the await,
+     which every popup blocker stops. That was why a bill that had not been
+     stored yet never opened, on any screen (found 27 Sep). The opener link is
+     cut by hand instead, once the handle is in hand. */
+  const tab = window.open("", "_blank");
+  if (tab) tab.opener = null;
   try {
     const url = await resolve();
     if (!url) {
@@ -114,6 +124,91 @@ export async function openDocumentWhenReady(
     return true;
   } catch {
     tab?.close();
+    return false;
+  }
+}
+
+/**
+ * ─────────────────────────────────────────────────────────────────────────────
+ * PRINT AND DOWNLOAD, WITHOUT A POPUP (27 Sep)
+ * ─────────────────────────────────────────────────────────────────────────────
+ * The owner: "why is the bill not printing anywhere?" Two reasons, both fixed
+ * here rather than on each screen:
+ *
+ *   1. openDocumentWhenReady asked for noopener, got null back, and the bill
+ *      tab was never pointed at the bill (see above).
+ *   2. Even when a link did open, "Print" only showed the PDF in a new tab --
+ *      nothing ever PRINTED.
+ *
+ * So Print now fetches the PDF bytes from the API WITH the sign-in header (an
+ * axios call, not a navigation -- HANDOFF trap 14 does not apply), loads them
+ * into a hidden frame on this page and opens the browser's print dialog on it.
+ * No popup, no dependence on Cloudinary serving PDFs, and the document is
+ * rebuilt from the database, so it is never stale.
+ *
+ * On a phone a hidden frame cannot print a PDF, so the bytes open in a tab that
+ * was created INSIDE the click (the only kind a popup blocker allows), where
+ * the phone's own viewer has Print/Share.
+ *
+ * `path` is an API path returning application/pdf, e.g.
+ * `/sales/invoices/12/pdf` or `/documents/purchase-order/5/pdf`.
+ */
+async function fetchPdf(path: string): Promise<Blob> {
+  const res = await axios.get<Blob>(`${API_BASE_URL}${path}`, { headers: authHeader(), responseType: "blob" });
+  return res.data.type === "application/pdf" ? res.data : new Blob([res.data], { type: "application/pdf" });
+}
+
+const isPhone = () =>
+  typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches && window.innerWidth < 900;
+
+/** Opens the print dialog for the PDF at `path`. Resolves false if it could not be fetched. */
+export async function printPdf(path: string): Promise<boolean> {
+  const tab = isPhone() ? window.open("", "_blank") : null;
+  if (tab) tab.opener = null;
+  try {
+    const url = URL.createObjectURL(await fetchPdf(path));
+    if (tab) {
+      tab.location.href = url;
+      return true;
+    }
+    const frame = document.createElement("iframe");
+    frame.setAttribute("aria-hidden", "true");
+    frame.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden";
+    frame.onload = () => {
+      /* Give the PDF viewer a moment to lay the pages out, then print. */
+      setTimeout(() => {
+        try {
+          frame.contentWindow?.focus();
+          frame.contentWindow?.print();
+        } catch {
+          window.open(url, "_blank", "noopener,noreferrer");
+        }
+      }, 300);
+    };
+    frame.src = url;
+    document.body.appendChild(frame);
+    /* The dialog blocks until closed; clean up well after. */
+    setTimeout(() => { frame.remove(); URL.revokeObjectURL(url); }, 120_000);
+    return true;
+  } catch {
+    tab?.close();
+    return false;
+  }
+}
+
+/** Saves the PDF at `path` to the device as `filename`. */
+export async function downloadPdf(path: string, filename: string): Promise<boolean> {
+  try {
+    const url = URL.createObjectURL(await fetchPdf(path));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename.endsWith(".pdf") ? filename : `${filename}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    return true;
+  } catch {
     return false;
   }
 }

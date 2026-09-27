@@ -18,7 +18,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { ConfirmDialog } from "@/components/dialogs/confirm-dialog";
 import { toast } from "@/components/ui/toaster";
 import { formatMoney, formatDate, formatDateTime } from "@/lib/format";
-import { openDocumentWhenReady, viewableUrl } from "@/lib/documents";
+import { openDocumentWhenReady, viewableUrl, printPdf, downloadPdf } from "@/lib/documents";
 import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
 import {
   ExpenseGrid, isBlank, newRowKey, parseAmount, validateRow,
@@ -344,7 +344,11 @@ export default function ExpenseSheetPage() {
       if (!ok) return;
     }
     setBusy("print");
-    const opened = await openDocumentWhenReady(async () => {
+    /* Print prints; Download saves -- from the API, rebuilt from the database
+       (lib/documents.ts). The stored copy is the fallback. */
+    const path = `/documents/expense-sheet/${sheet.id}/pdf`;
+    let opened = attachment ? await downloadPdf(path, sheet.sheetNo ?? `expense-sheet-${sheet.id}`) : await printPdf(path);
+    if (!opened) opened = await openDocumentWhenReady(async () => {
       const kind = "expense-sheet";
       const file = await axios.get<StoredFile>(`${API_BASE_URL}/documents/${kind}/${sheet.id}/file`, { headers: authHeader() });
       if (file.data.archived) return viewableUrl(file.data);

@@ -23,7 +23,7 @@ import {
 import { ConfirmDialog } from "@/components/dialogs/confirm-dialog";
 import { WhatsAppShareDialog } from "@/components/dialogs/whatsapp-share-dialog";
 import { useSession, API_BASE_URL, authHeader } from "@/components/providers/session-provider";
-import { openDocument, openDocumentWhenReady, viewableUrl } from "@/lib/documents";
+import { printPdf, downloadPdf } from "@/lib/documents";
 import { formatMoney, formatDate, formatNumber, formatRelative } from "@/lib/format";
 import { toast } from "@/components/ui/toaster";
 import { cn } from "@/lib/utils";
@@ -223,30 +223,15 @@ export default function OrderDetailPage() {
      it directly is what produced a 401 page instead of an invoice, for the
      owner, the warehouse and the order desk alike. The API works out which of
      the two links actually opens and sends that one. See lib/documents.ts. */
+  /* THE BILL (27 Sep). Print opens the browser's print dialog on the bill,
+     rebuilt from the database by the API and fetched with the sign-in header;
+     Download saves it. No popup, no dependence on the Cloudinary copy being
+     served -- the reason Print did nothing before is in lib/documents.ts. */
   async function openBill(attachment = false) {
     if (!order?.invoiceId) return;
-
-    const known = viewableUrl(order.invoiceViewUrl
-      ? { viewUrl: order.invoiceViewUrl }
-      : { pdfUrl: order.invoicePdfUrl, shareUrl: order.invoiceShareUrl });
-
-    if (known) {
-      openDocument(known, attachment);
-      return;
-    }
-
-    const opened = await openDocumentWhenReady(async () => {
-      const res = await axios.post<{ pdfUrl: string | null; shareUrl?: string | null; viewUrl?: string | null }>(
-        `${API_BASE_URL}/sales/invoices/${order.invoiceId}/pdf`, {}, { headers: authHeader() });
-      await load();
-      return viewableUrl(res.data);
-    }, attachment);
-
-    if (!opened) {
-      toast.error("Could not open the bill", {
-        description: "The document store could not be reached. Try again in a moment.",
-      });
-    }
+    const path = `/sales/invoices/${order.invoiceId}/pdf`;
+    const ok = attachment ? await downloadPdf(path, order.invoiceNo ?? `invoice-${order.invoiceId}`) : await printPdf(path);
+    if (!ok) toast.error("Could not open the bill", { description: "Try again in a moment." });
   }
 
   if (loading) {

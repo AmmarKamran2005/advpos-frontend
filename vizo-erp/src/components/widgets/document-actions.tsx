@@ -6,7 +6,7 @@ import { Printer, Download, CloudUpload, Check, Loader2, ExternalLink } from "lu
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toaster";
 import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
-import { openDocument, openDocumentWhenReady, viewableUrl } from "@/lib/documents";
+import { openDocument, openDocumentWhenReady, viewableUrl, printPdf, downloadPdf } from "@/lib/documents";
 
 /**
  * Print / Download / Save-to-store for one document.
@@ -102,7 +102,16 @@ export function DocumentActions({
   }
 
   async function open(attachment = false) {
-    /* The common case: the link is already in hand, so the tab opens straight
+    /* PRINT PRINTS, DOWNLOAD SAVES (27 Sep). Both fetch the PDF from the API with
+       the sign-in header -- rebuilt from the database -- instead of opening a
+       stored link in a tab, which is why Print never printed anything and an
+       unarchived document never opened at all. lib/documents.ts. */
+    const path = `/documents/${kind}/${id}/pdf`;
+    const ok = attachment ? await downloadPdf(path, `${kind}-${id}`) : await printPdf(path);
+    if (ok) return;
+
+    /* The API could not render it -- fall back to the stored copy, if any. The
+       common case: the link is already in hand, so the tab opens straight
        away with no round trip.
 
        viewableUrl, not pdfUrl. Opening the Cloudinary link directly is what put

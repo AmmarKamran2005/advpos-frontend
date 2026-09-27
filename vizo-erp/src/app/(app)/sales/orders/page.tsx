@@ -18,7 +18,7 @@ import { AlertCircle } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
 import { getChannel, type ChannelKey } from "@/lib/app-config";
-import { openDocumentWhenReady, viewableUrl } from "@/lib/documents";
+import { printPdf } from "@/lib/documents";
 
 /* GET /sales/orders -> { total, page, pageSize, items }.
 
@@ -421,20 +421,16 @@ function QuickAction({ order, onDone }: { order: Order; onDone: () => void | Pro
      be one that needs none -- and the raw Cloudinary URL is not it: PDF
      delivery is blocked on that account, so a stored link opens a 401. The API
      returns whichever link actually works. See lib/documents.ts. */
+  /* THE BILL (27 Sep). Print opens the browser's print dialog on the bill,
+     rebuilt from the database by the API and fetched with the sign-in header;
+     Download saves it. No popup, no dependence on the Cloudinary copy being
+     served -- the reason Print did nothing before is in lib/documents.ts. */
   async function printBill() {
     if (!order.invoiceId) return;
     setBusy(true);
     try {
-      const opened = await openDocumentWhenReady(async () => {
-        const res = await axios.post<{ pdfUrl: string | null; shareUrl?: string | null; viewUrl?: string | null }>(
-          `${API_BASE_URL}/sales/invoices/${order.invoiceId}/pdf`, {}, { headers: authHeader() });
-        return viewableUrl(res.data);
-      });
-      if (!opened) {
+      if (!(await printPdf(`/sales/invoices/${order.invoiceId}/pdf`)))
         toast.error("Could not open the bill", { description: "Try again in a moment." });
-      }
-    } catch (e) {
-      toast.error("Could not open the bill", { description: apiMessage(e, "Please try again.") });
     } finally {
       setBusy(false);
     }

@@ -16,7 +16,7 @@ import { AlertCircle } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
 import { downloadXlsx, exportError } from "@/lib/export";
-import { openDocument, viewableUrl } from "@/lib/documents";
+import { openDocument, viewableUrl, printPdf } from "@/lib/documents";
 
 /* GET /sales/returns. resalableQty / damagedQty come from the line
    ReturnCondition -- only resalable stock goes back on the shelf. */
@@ -151,9 +151,13 @@ export default function SalesReturnsPage() {
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
-            const url = viewableUrl(r);
-            if (url) openDocument(url);
-            else toast.error("No return note yet", { description: "Open the return and print it from there." });
+            /* Printed from the API, rebuilt from the database (lib/documents.ts). */
+            void printPdf(`/documents/sales-return/${r.id}/pdf`).then((ok) => {
+              if (ok) return;
+              const url = viewableUrl(r);
+              if (url) openDocument(url);
+              else toast.error("The return note could not be opened", { description: "Try again in a moment." });
+            });
           }}
         >
           <Printer className="size-4" />

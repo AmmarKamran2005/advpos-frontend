@@ -17,7 +17,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ConfirmDialog } from "@/components/dialogs/confirm-dialog";
 import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
-import { openDocument, openDocumentWhenReady, viewableUrl } from "@/lib/documents";
+import { openDocument, openDocumentWhenReady, viewableUrl, printPdf } from "@/lib/documents";
 import { formatMoney, formatDate, formatRelative } from "@/lib/format";
 import { toast } from "@/components/ui/toaster";
 import { cn } from "@/lib/utils";
@@ -212,9 +212,12 @@ export default function SalesReturnDetailPage() {
                 for it. See backend Documents/DocumentBuilder.SalesReturn. */}
             <Button variant="ghost" className="gap-1.5"
               onClick={() => {
-                const url = viewableUrl(r);
-                if (url) openDocument(url);
-                else toast.error("The return note could not be opened", { description: "Try again in a moment." });
+                void printPdf(`/documents/sales-return/${r.id}/pdf`).then((ok) => {
+                  if (ok) return;
+                  const url = viewableUrl(r);
+                  if (url) openDocument(url);
+                  else toast.error("The return note could not be opened", { description: "Try again in a moment." });
+                });
               }}>
               <FileText /><span className="hidden sm:inline">Return note</span>
             </Button>
