@@ -127,6 +127,9 @@ export function TopBar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
      badge is instant; the list catches up a moment later. */
   useLiveNotifications(Boolean(user), React.useCallback(() => {
     setUnreadCount((n) => n + 1);
+    /* The sidebar's live badges listen for this rather than opening a second
+       SignalR connection of their own. */
+    window.dispatchEvent(new Event("advpos:notification"));
     void loadNotifications();
   }, [loadNotifications]));
 

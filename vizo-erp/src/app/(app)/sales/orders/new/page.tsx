@@ -308,6 +308,10 @@ export default function NewOrderPage() {
           productId: l.productId,
           qty: l.qty,
           rate: l.rate,
+          /* The original price the margin sits on, stored with the line
+             (migration 42) so the edit screen shows the rep's real margin
+             even after the item is re-priced. */
+          basePrice: l.base,
           discountPercent: 0,
           /* The product's own rate, carried from the catalogue rather than
              typed: the box is gone from the form, the tax is not. */

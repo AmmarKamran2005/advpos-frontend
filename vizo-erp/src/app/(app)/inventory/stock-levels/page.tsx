@@ -167,7 +167,10 @@ export default function StockLevelsPage() {
     for (const p of byProduct.values()) {
       p.status = p.totalStock <= 0 ? "out" : p.totalStock <= p.minQty ? "low" : "ok";
     }
-    return [...byProduct.values()].sort((a, b) => a.name.localeCompare(b.name));
+    /* Newest product first (ids are identity, so a higher id was created
+       later). The API returns name order because the transfer and adjustment
+       pickers read the same endpoint; this screen is a table, not a picker. */
+    return [...byProduct.values()].sort((a, b) => b.productId - a.productId);
   }, [rows]);
 
   const filtered = React.useMemo(() => {

@@ -24,6 +24,7 @@ import { cn } from "@/lib/utils";
 import { PARTY_TAX, partyOrigin } from "@/lib/party-tax";
 import { openDocument, asAttachment } from "@/lib/documents";
 import { LogVisitSheet, VisitMapLink } from "@/components/parties/log-visit-sheet";
+import { CreditLimitDialog } from "@/components/parties/credit-limit-dialog";
 
 /* GET /parties/{id}. The whole page ran off getParty() in src/data/parties
    before, so a customer created on /parties/new opened a "not found" screen. */
@@ -115,6 +116,7 @@ export default function PartyDetailPage() {
   const [error, setError] = React.useState<string | null>(null);
   const [toggling, setToggling] = React.useState(false);
   const [rebuilding, setRebuilding] = React.useState(false);
+  const [settingLimit, setSettingLimit] = React.useState(false);
 
   const load = React.useCallback(async () => {
     if (!partyId) { setNotFound(true); setLoading(false); return; }
@@ -373,10 +375,19 @@ export default function PartyDetailPage() {
         </Card>
         <Card className="p-4">
           <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Credit Limit</div>
-          <div className="text-2xl tabular font-bold text-navy-900 dark:text-white mt-1">{formatMoney(party.creditLimit)}</div>
+          <div className="text-2xl tabular font-bold text-navy-900 dark:text-white mt-1">
+            {party.creditLimit > 0 ? formatMoney(party.creditLimit) : <span className="text-base text-slate-500">No limit</span>}
+          </div>
           <div className="w-full h-1 bg-slate-100 dark:bg-navy-700 rounded-full overflow-hidden mt-2">
             <div className={cn("h-full", overLimit ? "bg-danger" : "bg-success")} style={{ width: `${usedPercent}%` }} />
           </div>
+          {/* Setting the limit is the Super Admin's and the accountant's alone
+              (the owner, 30 Sep); the API refuses anybody else. */}
+          {backOffice && party.type !== "SUPPLIER" && (
+            <Button variant="secondary" size="sm" className="mt-3 w-full" onClick={() => setSettingLimit(true)}>
+              Set credit limit
+            </Button>
+          )}
         </Card>
         </>}
         <Card className="p-4">
@@ -521,6 +532,17 @@ export default function PartyDetailPage() {
           </TabsContent>
         )}
 
+        {backOffice && (
+          <CreditLimitDialog
+            open={settingLimit}
+            onOpenChange={setSettingLimit}
+            partyId={party.id}
+            partyName={party.displayName || party.legalName}
+            current={party.creditLimit}
+            balance={party.currentBalance}
+            onSaved={() => void load()}
+          />
+        )}
         {loggingVisit && party && (
           <LogVisitSheet
             open

@@ -82,6 +82,8 @@ type Order = {
   location: string;
   locationCode: string;
   salesPerson: string | null;
+  /** Whoever keyed the order in, by their own name (rep, order desk or admin). */
+  createdBy: string | null;
   orderDate: string;
   deliveryDate: string | null;
   status: OrderStatus;
@@ -147,7 +149,13 @@ export default function OrdersPage() {
   const me = user!;
 
 
-  const isRep = !can("orders.approve");
+  /* ONLY THE SALES ROLE IS A REP. This read `!can("orders.approve")`, and the
+     accountant does not hold that right -- so the accountant's list was
+     filtered down to orders where HE was the salesperson: none. Hassan Raza
+     saw an empty Orders screen while every rep's order sat waiting for him to
+     confirm and invoice (the owner, 30 Sep). The API already scopes a rep to
+     their own orders; this is only the subtitle and the convenience filter. */
+  const isRep = me.role === "sales";
 
   const [all, setAll] = React.useState<Order[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -177,12 +185,11 @@ export default function OrdersPage() {
     void load();
   }, [load]);
 
-  /* A rep sees only their own orders. This is a convenience filter, not a
-     security boundary -- the API is the boundary. */
-  const scope = React.useMemo(
-    () => (isRep ? all.filter((o) => o.salesPerson === me.fullName) : all),
-    [all, isRep, me.fullName]
-  );
+  /* The API already sends a rep only the orders they are the salesperson on OR
+     created (SalesController.GetOrders); filtering again here by salesperson
+     name dropped the ones a rep keyed in for a colleague. Everyone else gets
+     every order, the accountant included. */
+  const scope = all;
 
   const [search, setSearch] = React.useState("");
   const [tab, setTab] = React.useState<TabKey>("ALL");
@@ -196,6 +203,7 @@ export default function OrdersPage() {
       return (
         o.orderNo.toLowerCase().includes(q) ||
         o.customerName.toLowerCase().includes(q) ||
+        (o.createdBy ?? "").toLowerCase().includes(q) ||
         (o.trackingNo ?? "").toLowerCase().includes(q)
       );
     });
@@ -331,6 +339,11 @@ function OrderCard({ order, onDone }: { order: Order; onDone: () => void | Promi
             <div className="min-w-0">
               <div className="text-sm font-semibold text-navy-900 dark:text-white truncate group-hover:text-brand-yellow transition-colors">
                 {order.customerName}
+                {/* Who created it, in brackets -- the person's name, never the
+                    role's (the owner, 30 Sep). */}
+                {order.createdBy && (
+                  <span className="font-normal text-slate-500 dark:text-slate-400"> ({order.createdBy})</span>
+                )}
               </div>
               <div className="tabular text-2xs text-slate-500 dark:text-slate-400">
                 {order.orderNo} · {formatDate(order.orderDate)} · {order.city}

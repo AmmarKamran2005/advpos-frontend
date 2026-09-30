@@ -28,7 +28,7 @@ export type NavBadge = {
  * A live badge shows nothing at all while it is loading and nothing when the
  * count is zero, so it never claims work that is not there.
  */
-export type LiveBadgeKey = "creditHolds";
+export type LiveBadgeKey = "creditHolds" | "newOrders" | "newCustomers";
 
 export type NavChild = {
   label: string;
@@ -38,6 +38,8 @@ export type NavChild = {
   liveBadge?: LiveBadgeKey;
   /** Hidden unless the signed-in role holds at least one of these. */
   perms?: string[];
+  /** Hidden for these roles even when they hold the permission. */
+  hideForRoles?: string[];
 };
 
 export type NavNode =
@@ -108,7 +110,9 @@ export const navigation: NavNode[] = [
     icon: ShoppingCart,
     match: "sales",
     children: [
-      { label: "Orders",          href: "/sales/orders",       match: "sales.orders",   perms: ["orders.view"] },
+      /* newOrders: orders created since this person last opened the list
+         (Super Admin, accountant, order desk -- SidebarBadgesController). */
+      { label: "Orders",          href: "/sales/orders",       match: "sales.orders",   perms: ["orders.view"], liveBadge: "newOrders" },
       { label: "Sale Invoices",   href: "/sales/invoices",     match: "sales.invoices", perms: ["invoices.view"] },
       { label: "Counter Sale",    href: "/sales/direct",       match: "sales.direct",   perms: ["sales.direct"] },
       { label: "Sales Returns",   href: "/sales/returns",      match: "sales.returns",  perms: ["returns.sales"] },
@@ -181,9 +185,11 @@ export const navigation: NavNode[] = [
     icon: Users,
     match: "parties",
     children: [
-      { label: "Customers",       href: "/parties/customers", match: "parties.customers", perms: ["customers.view"] },
+      { label: "Customers",       href: "/parties/customers", match: "parties.customers", perms: ["customers.view"], liveBadge: "newCustomers" },
       { label: "Suppliers",       href: "/parties/suppliers", match: "parties.suppliers", perms: ["suppliers.manage", "purchases.view"] },
-      { label: "Customer Visits", href: "/parties/visits",    match: "parties.visits",    perms: ["visits.view"] },
+      /* Off the sales panel's menu (the owner, 30 Sep). A rep still logs a
+         visit from the customer's own page; the list is the office's. */
+      { label: "Customer Visits", href: "/parties/visits",    match: "parties.visits",    perms: ["visits.view"], hideForRoles: ["sales"] },
     ],
   },
 
@@ -279,7 +285,7 @@ const FLATTEN_AT = 2;
  * with three screens should not have to open three accordions to reach them.
  * Section headings with nothing under them are dropped.
  */
-export function navigationFor(can: (permission: string) => boolean): NavNode[] {
+export function navigationFor(can: (permission: string) => boolean, role?: string): NavNode[] {
   /* Takes the predicate rather than a role, so the menu is driven by the
      permission list the API put in the token. Edit a role in Setup > Roles and
      the sidebar follows on next sign-in -- no code change, no second copy of
@@ -295,7 +301,9 @@ export function navigationFor(can: (permission: string) => boolean): NavNode[] {
     }
 
     if (node.type === "group") {
-      const children = node.children.filter((c) => allowed(c.perms));
+      const children = node.children.filter(
+        (c) => allowed(c.perms) && !(role && c.hideForRoles?.includes(role))
+      );
       if (children.length === 0) continue;
 
       if (children.length <= FLATTEN_AT) {

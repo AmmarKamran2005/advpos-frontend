@@ -65,11 +65,22 @@ export function Sidebar({
   const me = user!;
 
 
-  const navigation = React.useMemo(() => navigationFor(can), [can]);
+  const navigation = React.useMemo(() => navigationFor(can, me.role), [can, me.role]);
   const activeMatch = resolveActiveMatch(navigation, pathname);
 
   const [counts, setCounts] = React.useState<LiveCounts>({});
   const canSeeHolds = can("limits.manage");
+  /* The "new" badges on Orders and Customers go to the people new work
+     arrives TO -- the API answers 0 for anybody else. */
+  const getsNewBadges = me.role === "super-admin" || me.role === "accountant" || me.role === "order-dept";
+  /* Bumped by a live notification (top-bar re-broadcasts it as a window
+     event), so a new order shows its badge without waiting for a click. */
+  const [liveTick, setLiveTick] = React.useState(0);
+  React.useEffect(() => {
+    const bump = () => setLiveTick((n) => n + 1);
+    window.addEventListener("advpos:notification", bump);
+    return () => window.removeEventListener("advpos:notification", bump);
+  }, []);
 
   /* Refetched whenever the route changes, which is the cheapest honest signal
      that something might have moved: releasing a hold navigates, and the badge
@@ -83,7 +94,29 @@ export function Sidebar({
       .then((r) => { if (live) setCounts((c) => ({ ...c, creditHolds: r.data.count })); })
       .catch(() => undefined);
     return () => { live = false; };
-  }, [canSeeHolds, pathname]);
+  }, [canSeeHolds, pathname, liveTick]);
+
+  /* NEW ORDERS / NEW CUSTOMERS (the owner, 30 Sep). Opening the page is what
+     clears it: on /sales/orders the orders marker is moved up to the newest
+     order, on /parties/customers the customers marker -- per person, so one
+     person looking does not clear it for another. */
+  React.useEffect(() => {
+    if (!getsNewBadges) return;
+    let live = true;
+    const area = pathname.startsWith("/sales/orders") ? "orders"
+      : pathname.startsWith("/parties/customers") ? "customers" : null;
+    void (async () => {
+      try {
+        if (area) await axios.post(`${API_BASE_URL}/badges/${area}/seen`, {}, { headers: authHeader() });
+        const r = await axios.get<{ newOrders: number; newCustomers: number }>(
+          `${API_BASE_URL}/badges`, { headers: authHeader() });
+        if (live) setCounts((c) => ({ ...c, newOrders: r.data.newOrders, newCustomers: r.data.newCustomers }));
+      } catch {
+        /* silent, as above */
+      }
+    })();
+    return () => { live = false; };
+  }, [getsNewBadges, pathname, liveTick]);
 
   return (
     <>
@@ -245,6 +278,7 @@ function NavRenderer({
   // group
   const Icon = node.icon;
   const groupHasActive = node.children.some((c) => isActiveMatch(activeMatch, c.match));
+  const groupTotal = node.children.reduce((s, c) => s + (c.liveBadge ? counts[c.liveBadge] ?? 0 : 0), 0);
 
   if (collapsed) {
     // In collapsed mode, render as a single icon (clicking goes to first child)
@@ -278,6 +312,10 @@ function NavRenderer({
         >
           <Icon className="size-[18px] flex-shrink-0" />
           <span className="flex-1 text-left truncate">{node.label}</span>
+          {/* A closed group still shows that something inside is waiting. */}
+          {groupTotal > 0 && (
+            <span className="group-data-[state=open]/trigger:hidden"><Badge variant="warning">{groupTotal}</Badge></span>
+          )}
           <ChevronDown className="size-3.5 transition-transform duration-200 group-data-[state=open]/trigger:rotate-180" />
         </button>
       </Collapsible.Trigger>

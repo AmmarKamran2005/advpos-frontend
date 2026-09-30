@@ -142,6 +142,59 @@ post the history — **changa.txt §G, in that order.**
 
 ---
 
+## LATEST — 30 Sep: the accountant runs the orders; out of the ledger on cancel; badges; credit limit
+
+The owner's list (Roman Urdu, 30 Sep), all built on `main`/`master` and tested
+on `advpos_main` (a local restore of live taken 30 Sep 14:04, plus migration
+42). **Not pushed or deployed yet**; migration 42 must run on live BEFORE the API.
+
+- **Why Hassan Raza saw no orders:** `/sales/orders` treated anyone WITHOUT
+  `orders.approve` as a rep and filtered the list to "my orders", and the
+  accountant never held that right. Now only the `sales` role is a rep (the API
+  already scopes reps), and migration 42 grants the accountant `orders.approve`.
+- **Order workflow (`Services/OrderWorkflow.cs`):**
+  - The accountant may confirm, decline, cancel or hold (limit cross) any order
+    until it is dispatched, and may set "Processing in Order Dept".
+  - New orders notify the Super Admin and the accountants, with the amount. The
+    order desk gets its own copy without the amount.
+  - Processing in Order Dept notifies the desk ("Ready for packing").
+  - The desk sending out an un-invoiced order gets exactly *"This order is not
+    invoiced by super admin or accountant"*.
+  - The desk can no longer change quantities at dispatch.
+- **Out of the ledger:**
+  - Cancelled, declined or credit-hold before dispatch: the invoice goes
+    **VOID**, its journal entry and lines are deleted, and any receipt
+    allocations are released as customer credit (`SalesController.VoidOrderInvoice`).
+  - A global EF filter hides VOID invoices everywhere (`AppDbContext.Custom.cs`).
+  - Billing the order again brings back the **same** invoice number, rebuilt
+    and re-posted (`ReinstateOrderInvoice`; OrderId is unique).
+  - After dispatch it is still "raise a sales return".
+- **Order edit:**
+  - Lines are Quantity / Original price / Margin (Rs.) / Margin % / Final
+    price / Total. There is no tax or discount.
+  - Saving rebuilds the invoice and re-posts the ledger. Tested: 20 → 10
+    moved the invoice and the ledger to 15,400.
+  - `SalesOrderItem.BasePrice` (migration 42) keeps the original price, so the
+    rep's margin survives a product re-price.
+- **Packing:**
+  - The page lists every salesperson, customer and order, with their status.
+  - Each recent order has a **Pack** button that fills in the three boxes and
+    lists the items.
+  - "Ready for packing" group; quantities are read-only; the desk sees no
+    prices; the refusal toast is as above.
+- **Other changes:**
+  - Sidebar badges for new orders and new customers, per person, cleared on
+    opening the page (`SidebarBadgesController`, table `UserSeenMarker`).
+  - "Set credit limit" on `/parties/{id}`, for the Super Admin and accountant
+    only. Other roles' saves no longer change the limit.
+  - Customer Visits is off the sales menu.
+  - `/sales/orders` shows *customer (creator's name)*.
+  - About 20 list endpoints are now newest first (customers by id).
+  - No "Dispatching" page 2 on the invoice PDF.
+- **Tests:** 40/40 checks (`flow30.py` in the session scratchpad). Browser
+  checks as the accountant, the order desk and a rep. Backend 0 errors; `tsc`
+  clean; `eslint` 0 errors.
+
 > **27 Sep, 13:50 — DEPLOYED.** Everything below is on `master`/`main`, and every
 > migration listed (26 §1+§2, 30–33, 35, 36–39, 41) has been run on live Neon.
 > The backup from just before is `D:\Main\advpos-testdb\LIVE-BACKUP-before-migrations-2026-09-27_1346.dump`.

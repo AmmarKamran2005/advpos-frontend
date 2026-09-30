@@ -56,7 +56,7 @@ export default function CustomerLedgersPage() {
   const [q, setQ] = React.useState("");
   const [term, setTerm] = React.useState("");
   const [categoryId, setCategoryId] = React.useState<number | null>(null);
-  const [sort, setSort] = React.useState("name");
+  const [sort, setSort] = React.useState("newest");
   const [page, setPage] = React.useState(1);
 
   const [data, setData] = React.useState<Page | null>(null);
@@ -189,6 +189,7 @@ export default function CustomerLedgersPage() {
           </div>
           <div className="w-36 sm:w-44">
             <SelectNative value={sort} onChange={(e) => { setSort(e.target.value); setPage(1); }} aria-label="Sort">
+              <option value="newest">Newest first</option>
               <option value="name">Name A–Z</option>
               <option value="balance">Highest balance</option>
               <option value="code">Account code</option>
