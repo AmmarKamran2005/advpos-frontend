@@ -2,20 +2,18 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import axios from "axios";
 import {
-  Package, Search, ChevronRight, ArrowLeft, Loader2, AlertCircle, AlertTriangle,
-  Send, Store, Truck, PackageCheck, Check, Hash, Calendar, Plus, Lock,
+  Package, Search, ChevronRight, Loader2, AlertCircle, AlertTriangle, Truck, Plus, Lock, Pencil,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardBody } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SelectNative } from "@/components/ui/select-native";
-import { DateInput } from "@/components/ui/date-input";
-import { todayISO, addDaysISO } from "@/lib/dates";
+import {
+  DispatchSheet, type Channel, type DispatchLookups, type DispatchOrderDetail,
+} from "@/components/delivery/dispatch-sheet";
 import { StatusPill } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -45,13 +43,13 @@ import { cn } from "@/lib/utils";
    EVERYTHING IS LISTED, NOT ONLY WHAT IS READY (the owner, 30 September):
    every salesperson, every customer, every order, each order with its status
    beside it -- the desk has to be able to find an order somebody is asking
-   about even when it is not invoiced yet. The ready ones (INVOICED, and
-   AT_ORDER_DEPT "Processing in Order Dept") come first in the order box.
-   Being LISTED is no longer the same as being PACKABLE: pressing Next on an
-   order that is not at one of those two statuses is refused, right here, with
-   the owner's own sentence (NOT_INVOICED) -- the button stays pressable, so
-   the desk is told why instead of facing a greyed-out button that says
-   nothing. SalesController.SetOrderStatus refuses it too, in the same words.
+   about even when it is not invoiced yet. The ready ones come first in the
+   order box (see READY TO PACK, BY ROLE below). Being LISTED is not the same
+   as being PACKABLE: pressing Next on an order that is not ready is refused,
+   right here, with the owner's own sentence (NOT_INVOICED / NOT_HANDED_OVER)
+   -- the button stays pressable, so the desk is told why instead of facing a
+   greyed-out button that says nothing. SalesController.SetOrderStatus
+   refuses it too, in the same words.
 
    THE LINES ARE READ-ONLY (same day). The desk used to be able to reduce a
    quantity here; that right is gone. Only the Super Admin and the accountant
@@ -74,13 +72,49 @@ import { cn } from "@/lib/utils";
    an option from the order itself so the box never shows blank; and a
    second Pack pressed before the first has answered wins (loadSeq).
 
-   TWO STEPS TO DISPATCH, not one call: Next dispatches -- this is the moment
-   stock actually leaves the shelf, so it has to be a real step, not a page
-   transition with nothing behind it -- and only once that has succeeded does
-   the courier step appear, booking through the same endpoint /dispatch
-   already uses. If booking the courier fails, the order stays dispatched and
-   the screen offers to try booking again rather than repeating the part that
-   already worked.
+   NEXT ONLY OPENS THE FORM (the owner, 2 October). Next used to dispatch the
+   order on the spot and show the courier step afterwards, so an order went
+   out the moment somebody pressed Next to have a look at the form. Now:
+
+     Next      opens the "How is it going" form (components/delivery/
+               dispatch-sheet.tsx -- the same one /dispatch uses, fields
+               unchanged) on the order, which is still NOT dispatched.
+               Cancel closes it and nothing has happened.
+     Dispatch  (the form's own button) does the two halves in order:
+               1. PATCH /sales/orders/{id}/status DISPATCHED + the place --
+                  status and stock, the one dispatch path there is
+                  (SalesController.SetOrderStatus: shortages, the order-desk
+                  rules, the invoice rebuild all live there and stay there);
+               2. POST /dispatch/{id}/dispatch -- the booking, with the form's
+                  details.
+               A refusal in step 1 (a shortage, an order not handed over)
+               leaves everything as it was: a shortage closes the form and
+               marks the short lines below. A refusal in step 2 means the
+               goods HAVE left: the form stays open saying so, and pressing
+               Dispatch again retries only the booking. Walking away at that
+               point leaves the order dispatched but unbooked, which is the
+               state /dispatch exists to list -- and the toast says where to
+               finish it.
+
+   Why not one server call doing both in one transaction: the dispatch half
+   is a few hundred lines of SetOrderStatus (stock lots, shortages, invoice
+   PDF, notifications, the workflow rules another change is editing right
+   now), and a second copy of it in DispatchController would drift from the
+   first. The form checks everything the booking can refuse for (bilty,
+   parcels, COD) BEFORE step 1 runs, so step 2 failing is down to the network
+   or a channel switched off in the same minute.
+
+   EDIT (same day). A dispatched order shows Edit instead of Pack, in the
+   list at the top and here. It reopens the same form filled in from the
+   booked delivery (GET /dispatch/orders/{id}) and Save changes only updates
+   that delivery (PUT /dispatch/deliveries/{id}) -- the status stays
+   DISPATCHED, no stock moves. An old dispatched order with no delivery
+   booked yet gets the plain booking form instead (no status change either).
+
+   READY TO PACK, BY ROLE (same day). The order desk may pack only what the
+   Super Admin or the accountant has moved to AT_ORDER_DEPT ("Processing in
+   Order Dept"); they themselves may also send an INVOICED order out. For the
+   desk anything else is refused, before any request, in the API's own words.
    ─────────────────────────────────────────────────────────────────────────── */
 
 type RepOption = { id: number; name: string };
@@ -132,25 +166,26 @@ type OrderDetail = {
 
 type Place = { id: number; code: string; name: string; kind: string; isSellable: boolean };
 
-type Carrier = {
-  id: number; name: string; shortName: string;
-  bookingCharge: number; codFeePercent: number; codSettlementDays: number;
-};
-type Channel = {
-  id: number; key: string; name: string; description: string;
-  requiresBilty: boolean; remindAfterDays: number; carriers: Carrier[];
-};
+/** What the order desk may pack: only what has been handed to it. */
+const DESK_READY = ["AT_ORDER_DEPT"];
+/** The Super Admin and the accountant may also send an invoiced order straight out. */
+const OFFICE_READY = ["INVOICED", "AT_ORDER_DEPT"];
+/** The statuses an order sits at before it is invoiced. */
+const BEFORE_INVOICED = ["DRAFT", "SUBMITTED", "CONFIRMED", "CREDIT_HOLD"];
 
-const CHANNEL_ICON: Record<string, typeof Truck> = {
-  local: Store, online: Send, cargo: Truck, logistics: PackageCheck,
-};
-
-/** The two statuses an order may be packed and dispatched from (OrderWorkflow). */
-const PACKABLE = ["INVOICED", "AT_ORDER_DEPT"];
-const isPackable = (status: string) => PACKABLE.includes(status);
-
-/** The owner's own words, exactly -- SalesController.SetOrderStatus answers with the same sentence. */
+/** The owner's own words, exactly -- SalesController.SetOrderStatus answers with the same sentences. */
 const NOT_INVOICED = "This order is not invoiced by super admin or accountant";
+const NOT_HANDED_OVER = "This order has not been moved to Processing in Order Dept by super admin or accountant";
+
+/** Why an order that is not ready cannot be packed, in the API's words where it has them. */
+function notReadyMessage(status: string, statusName: string, orderNo: string) {
+  if (BEFORE_INVOICED.includes(status)) return NOT_INVOICED;
+  if (status === "INVOICED") return NOT_HANDED_OVER;
+  return `${orderNo} is ${statusName.toLowerCase()}, so there is nothing to pack.`;
+}
+
+/** Which form is open, on which order: Next (dispatch), Edit (edit), or Edit on an unbooked order (book). */
+type FormState = { detail: DispatchOrderDetail; mode: "dispatch" | "edit" | "book" };
 
 function apiMessage(e: unknown, fallback: string) {
   if (axios.isAxiosError(e) && e.response) {
@@ -162,8 +197,12 @@ function apiMessage(e: unknown, fallback: string) {
 type Shortage = { sku: string | null; name: string; needed: number; onHand: number; shortBy: number };
 
 export default function PackingPage() {
-  const router = useRouter();
   const { role } = useSession();
+
+  /* Before the session has loaded the role reads "sales" -- the strict rule
+     applies until it is known, never the looser one. */
+  const readyStatuses = role === "super-admin" || role === "accountant" ? OFFICE_READY : DESK_READY;
+  const isPackable = (status: string) => readyStatuses.includes(status);
 
   const [salesPeople, setSalesPeople] = React.useState<RepOption[]>([]);
   const [customers, setCustomers] = React.useState<CustomerOption[]>([]);
@@ -241,9 +280,15 @@ export default function PackingPage() {
     void loadOrders(repId, customerId);
   }, [repId, customerId, loadOrders]);
 
-  const [step, setStep] = React.useState<"lines" | "logistics">("lines");
-  const [dispatching, setDispatching] = React.useState(false);
-  const [dispatched, setDispatched] = React.useState(false);
+  /* The "How is it going" form: which order, in which mode, and the delivery
+     channels it draws (read once, the first time a form opens). */
+  const [form, setForm] = React.useState<FormState | null>(null);
+  const [channels, setChannels] = React.useState<Channel[] | null>(null);
+  const [opening, setOpening] = React.useState<number | null>(null);
+  /* Set the moment the form's Dispatch has taken the order off the shelf --
+     so closing the form before the courier is booked can say so. A ref:
+     the form reads it after an await, not on a render. */
+  const leftShelf = React.useRef(false);
 
   /* Only the LAST order asked for may land. Two quick Pack presses (or a Pack
      and then a pick from the order box) would otherwise race, and whichever
@@ -263,9 +308,6 @@ export default function PackingPage() {
     const seq = ++loadSeq.current;
     setOrderLoading(true);
     setShortages([]);
-    /* A new order starts at its lines, whatever the previous one had got to. */
-    setStep("lines");
-    setDispatched(false);
     try {
       const res = await axios.get<OrderDetail>(`${API_BASE_URL}/packing/orders/${id}`, { headers: authHeader() });
       if (seq !== loadSeq.current) return;
@@ -345,36 +387,125 @@ export default function PackingPage() {
 
   const totalAtBase = order ? order.lines.reduce((s, l) => s + l.qty * l.price, 0) : 0;
 
-  async function dispatchOrder() {
+  /* The order in the form's own shape (GET /dispatch/orders/{id}: city, the
+     suggested channel, whether cash is collected, and the delivery already
+     booked) plus the channels, in one round trip's time. */
+  async function loadForm(id: number): Promise<DispatchOrderDetail | null> {
+    setOpening(id);
+    try {
+      const [detail, chans] = await Promise.all([
+        axios.get<DispatchOrderDetail>(`${API_BASE_URL}/dispatch/orders/${id}`, { headers: authHeader() })
+          .then((r) => r.data),
+        channels ?? axios.get<DispatchLookups>(`${API_BASE_URL}/dispatch/lookups`, { headers: authHeader() })
+          .then((r) => r.data.channels),
+      ]);
+      setChannels(chans);
+      if (chans.length === 0) {
+        toast.error("No delivery channels are set up", { description: "Ask the Super Admin to add one." });
+        return null;
+      }
+      return detail;
+    } catch (e) {
+      toast.error("Could not open the form", { description: apiMessage(e, "Please try again.") });
+      return null;
+    } finally {
+      setOpening(null);
+    }
+  }
+
+  /* ── NEXT: open the form. Nothing is dispatched here. ── */
+  async function openDispatchForm() {
     if (!order) return;
     /* Refused here first, before anything is sent -- the API refuses it too,
        but the desk should not have to wait for a round trip to be told. */
-    if (!isPackable(order.status)) { toast.error(NOT_INVOICED); return; }
+    if (!isPackable(order.status)) {
+      toast.error(notReadyMessage(order.status, order.statusName, order.orderNo));
+      return;
+    }
     if (!dispatchLocationId) { toast.error("Say which place it is going out of."); return; }
 
-    setDispatching(true);
+    setShortages([]);
+    const detail = await loadForm(order.id);
+    if (!detail) return;
+    /* Somebody else may have moved it while this screen sat open. */
+    if (!isPackable(detail.status)) {
+      toast.error(notReadyMessage(detail.status, detail.statusName, detail.orderNo));
+      return;
+    }
+    leftShelf.current = false;
+    setForm({ detail, mode: "dispatch" });
+  }
+
+  /* ── The form's Dispatch, first half: status and stock. ──
+     No `lines`: the order goes out exactly as ordered. Resolves false, with
+     nothing moved, when the API refuses -- a shortage closes the form so the
+     short lines can be seen below it. */
+  async function takeOffShelf(orderId: number): Promise<boolean> {
     setShortages([]);
     try {
-      /* No `lines`: the order goes out exactly as ordered. */
       await axios.patch(
-        `${API_BASE_URL}/sales/orders/${order.id}/status`,
+        `${API_BASE_URL}/sales/orders/${orderId}/status`,
         { statusKey: "DISPATCHED", locationId: dispatchLocationId },
         { headers: authHeader() }
       );
-      setDispatched(true);
-      setStep("logistics");
+      leftShelf.current = true;
       setRecentKey((k) => k + 1);
-      toast.success(`${order.orderNo} dispatched`, { description: "Sent in full. Now book how it is going out." });
+      return true;
     } catch (e) {
       const short = axios.isAxiosError(e)
         ? (e.response?.data as { shortages?: Shortage[] })?.shortages
         : undefined;
-      if (short?.length) setShortages(short);
-      /* "Say which place" comes back with no shortages -- the location box is
-         required before anything else is even checked. */
+      if (short?.length) {
+        setShortages(short);
+        setForm(null);
+      }
       toast.error("Not dispatched", { description: apiMessage(e, "Please try again.") });
-    } finally {
-      setDispatching(false);
+      return false;
+    }
+  }
+
+  /* ── EDIT: a dispatched order's booking, reopened filled in. ── */
+  async function openEditForm(id: number) {
+    const detail = await loadForm(id);
+    if (!detail) return;
+    if (detail.status !== "DISPATCHED") {
+      toast.error(`${detail.orderNo} is ${detail.statusName.toLowerCase()}`, {
+        description: "Only a dispatched order's delivery details can be changed here.",
+      });
+      return;
+    }
+    if (detail.delivery && !detail.delivery.editable) {
+      toast.error(`${detail.delivery.deliveryNo} can no longer be changed`, {
+        description: `It is ${detail.delivery.statusName.toLowerCase()}${detail.delivery.isCodSettled ? " and its COD is settled" : ""}.`,
+      });
+      return;
+    }
+    leftShelf.current = false;
+    /* Dispatched before a courier was ever booked (old data, or a booking
+       that failed and was walked away from): Edit books it -- the plain
+       booking form, which leaves the status alone. */
+    setForm({ detail, mode: detail.delivery ? "edit" : "book" });
+  }
+
+  function formDone() {
+    const wasDispatch = form?.mode === "dispatch";
+    setForm(null);
+    leftShelf.current = false;
+    if (wasDispatch) reset();
+    else setRecentKey((k) => k + 1);
+  }
+
+  function formClosed() {
+    const f = form;
+    setForm(null);
+    if (f?.mode === "dispatch" && leftShelf.current) {
+      /* Walked away between the two halves: the goods are out, the courier is
+         not booked. Not an error to hide -- say exactly where to finish it. */
+      leftShelf.current = false;
+      toast.warning(`${f.detail.orderNo} is dispatched, but no courier is booked`, {
+        description: "Press Edit on it to book the courier, or book it from the Dispatch screen.",
+      });
+      reset();
     }
   }
 
@@ -394,8 +525,6 @@ export default function PackingPage() {
 
   function reset() {
     setOrder(null);
-    setStep("lines");
-    setDispatched(false);
     setShortages([]);
     setRecentKey((k) => k + 1);
     void loadLookups();
@@ -459,7 +588,7 @@ export default function PackingPage() {
           every order handed to the desk (AT_ORDER_DEPT) however old -- no
           money on it (components/packing/recent-orders.tsx). Its Pack
           buttons fill the boxes below. */}
-      <RecentOrders onPack={packFromList} refreshKey={recentKey} />
+      <RecentOrders onPack={packFromList} onEdit={(id) => void openEditForm(id)} refreshKey={recentKey} />
 
       {error ? (
         <Card><CardBody className="text-center py-10">
@@ -521,8 +650,8 @@ export default function PackingPage() {
                             )}
                             {otherOrders.length > 0 && (
                               <CommandGroup heading={ordersTruncated
-                                ? `Not invoiced yet or already sent -- latest ${otherOrders.length}; pick a salesperson or customer to see more`
-                                : `${otherOrders.length} not invoiced yet or already sent`}>
+                                ? `Not ready yet or already sent -- latest ${otherOrders.length}; pick a salesperson or customer to see more`
+                                : `${otherOrders.length} not ready yet or already sent`}>
                                 {otherOrders.map(orderRow)}
                               </CommandGroup>
                             )}
@@ -545,15 +674,6 @@ export default function PackingPage() {
               <EmptyState icon={Package} title="Pick an order to start"
                 description="Choose a salesperson, a customer, or an order directly -- the other two boxes fill themselves in. Or press Pack on an order above." />
             </Card>
-          ) : dispatched && step === "logistics" ? (
-            <LogisticsStep
-              order={order}
-              places={places}
-              locationId={dispatchLocationId}
-              noMoney={noMoney}
-              onDone={() => { toast.success("On its way", { description: `${order.orderNo} is booked.` }); router.push("/delivery"); }}
-              onCancel={reset}
-            />
           ) : (
             <>
               <Card>
@@ -574,20 +694,32 @@ export default function PackingPage() {
                     <div className="flex items-start gap-2 mt-3 p-2.5 rounded-lg bg-warning/5 border border-warning/30">
                       <AlertTriangle className="size-4 text-warning shrink-0 mt-0.5" />
                       <p className="text-xs text-warning-dark dark:text-warning-light">
-                        {["DISPATCHED", "DELIVERED", "RETURNED"].includes(order.status)
+                        {order.status === "DISPATCHED"
+                          ? <>Already dispatched. Press Edit to change how it is going -- the courier, bilty,
+                              parcels or note. Nothing is sent again.</>
+                          : ["DELIVERED", "RETURNED"].includes(order.status)
                           ? <>Not ready to pack: this order is already {order.statusName.toLowerCase()}.</>
-                          : <>Not ready to pack: this order is {order.statusName.toLowerCase()}. It can be packed
-                              once the Super Admin or the accountant has invoiced it.</>}
+                          : BEFORE_INVOICED.includes(order.status)
+                          ? <>Not ready to pack: this order is {order.statusName.toLowerCase()}. It can be packed
+                              once the Super Admin or the accountant has invoiced it and moved it to
+                              Processing in Order Dept.</>
+                          : order.status === "INVOICED"
+                          ? <>Not ready to pack: invoiced, but not yet moved to Processing in Order Dept by the
+                              Super Admin or the accountant.</>
+                          : <>Not ready to pack: this order is {order.statusName.toLowerCase()}.</>}
                       </p>
                     </div>
                   )}
 
-                  <div className="mt-2">
-                    <Label>Sending from</Label>
-                    <SelectNative value={dispatchLocationId || ""} onChange={(e) => setDispatchLocationId(Number(e.target.value))}>
-                      {places.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                    </SelectNative>
-                  </div>
+                  {/* Where it goes out of -- asked only while it can still go out. */}
+                  {order.status !== "DISPATCHED" && (
+                    <div className="mt-2">
+                      <Label>Sending from</Label>
+                      <SelectNative value={dispatchLocationId || ""} onChange={(e) => setDispatchLocationId(Number(e.target.value))}>
+                        {places.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                      </SelectNative>
+                    </div>
+                  )}
                 </CardBody>
               </Card>
 
@@ -657,186 +789,44 @@ export default function PackingPage() {
               </Card>
 
               <div className="flex justify-end">
-                {/* Never disabled for the status -- pressing it on an order that
-                    is not invoiced says why (NOT_INVOICED) instead. */}
-                <Button variant="accent" size="lg" className="gap-1.5" disabled={dispatching}
-                  onClick={() => void dispatchOrder()}>
-                  {dispatching ? <><Loader2 className="size-4 animate-spin" />Dispatching…</> : <>Next <ChevronRight className="size-4" /></>}
-                </Button>
+                {order.status === "DISPATCHED" ? (
+                  /* The same Edit the list at the top offers. */
+                  <Button variant="outline" size="lg" className="gap-1.5" disabled={opening !== null}
+                    onClick={() => void openEditForm(order.id)}>
+                    {opening === order.id ? <Loader2 className="size-4 animate-spin" /> : <Pencil className="size-4" />} Edit
+                  </Button>
+                ) : (
+                  /* Never disabled for the status -- pressing it on an order
+                     that is not ready says why (notReadyMessage) instead. It
+                     only OPENS the form; nothing is dispatched until the
+                     form's own Dispatch button. */
+                  <Button variant="accent" size="lg" className="gap-1.5" disabled={opening !== null}
+                    onClick={() => void openDispatchForm()}>
+                    {opening === order.id ? <><Loader2 className="size-4 animate-spin" />Opening…</> : <>Next <ChevronRight className="size-4" /></>}
+                  </Button>
+                )}
               </div>
             </>
           )}
         </div>
       )}
+
+      {/* THE "HOW IS IT GOING" FORM -- keyed so each opening starts clean
+          (and an Edit starts from what the database holds, not from what
+          the last form had typed). */}
+      {form && channels && (
+        <DispatchSheet
+          key={`${form.mode}-${form.detail.id}`}
+          order={form.detail}
+          channels={channels}
+          moneyHidden={noMoney || form.detail.moneyHidden}
+          open
+          onOpenChange={(v) => { if (!v) formClosed(); }}
+          onDispatched={formDone}
+          dispatchFirst={form.mode === "dispatch" ? () => takeOffShelf(form.detail.id) : undefined}
+          existing={form.mode === "edit" ? form.detail.delivery : null}
+        />
+      )}
     </>
-  );
-}
-
-/* ─────────────────────────── step 2: logistics ─────────────────────────── */
-
-function LogisticsStep({
-  order, places, locationId, noMoney, onDone, onCancel,
-}: {
-  order: OrderDetail;
-  places: Place[];
-  locationId: number;
-  /** The order desk types no COD -- the server charges what is unpaid on the order when it books. */
-  noMoney: boolean;
-  onDone: () => void;
-  onCancel: () => void;
-}) {
-  const [channels, setChannels] = React.useState<Channel[] | null>(null);
-  const [loadError, setLoadError] = React.useState<string | null>(null);
-
-  const [channelId, setChannelId] = React.useState(0);
-  const [carrierId, setCarrierId] = React.useState<number | null>(null);
-  const [tracking, setTracking] = React.useState("");
-  const [expected, setExpected] = React.useState(() => addDaysISO(todayISO(), 2));
-  const [parcels, setParcels] = React.useState("1");
-  const [weightKg, setWeightKg] = React.useState("0");
-  const [cod, setCod] = React.useState("0");
-  const [notes, setNotes] = React.useState("");
-  const [saving, setSaving] = React.useState(false);
-
-  React.useEffect(() => {
-    axios.get<{ channels: Channel[] }>(`${API_BASE_URL}/dispatch/lookups`, { headers: authHeader() })
-      .then((res) => {
-        setChannels(res.data.channels);
-        const first = res.data.channels[0];
-        setChannelId(first?.id ?? 0);
-        setCarrierId(first?.carriers[0]?.id ?? null);
-      })
-      .catch((e) => setLoadError(apiMessage(e, "Could not load the delivery options.")));
-  }, []);
-
-  const channel = channels?.find((c) => c.id === channelId) ?? null;
-  const carrier = channel?.carriers.find((c) => c.id === carrierId) ?? null;
-  const missingRef = (channel?.requiresBilty ?? false) && tracking.trim().length === 0;
-
-  async function book() {
-    if (!channel) return;
-    if (missingRef) {
-      toast.error("Bilty number needed", { description: "Freight cannot be traced without it." });
-      return;
-    }
-    setSaving(true);
-    try {
-      await axios.post(
-        `${API_BASE_URL}/dispatch/${order.id}/dispatch`,
-        {
-          channelId: channel.id,
-          courierId: carrierId,
-          trackingNo: tracking.trim() || null,
-          bookedDate: todayISO(),
-          expectedDate: expected || null,
-          parcels: Number(parcels) || 1,
-          weightKg: Number(weightKg) || 0,
-          /* For the order desk the server works the COD out itself and
-             ignores this -- 0 just says "not typed". */
-          codAmount: noMoney ? 0 : Number(cod) || 0,
-          bookingCharge: carrier?.bookingCharge ?? 0,
-          notes: notes.trim() || null,
-        },
-        { headers: authHeader() }
-      );
-      onDone();
-    } catch (e) {
-      toast.error("Not booked yet", {
-        description: apiMessage(e, "The order has already left the shelf -- try booking the courier again."),
-      });
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <Card>
-      <CardBody>
-        <div className="flex items-center gap-2 mb-1">
-          <Check className="size-4 text-success" />
-          <span className="text-sm font-semibold text-navy-900 dark:text-white">
-            {order.orderNo} left {places.find((p) => p.id === locationId)?.name}
-          </span>
-        </div>
-        <p className="text-2xs text-slate-500 dark:text-slate-400 mb-4">
-          Now say how it is going out. This can be tried again if it does not save the first time --
-          the order will not be sent twice.
-        </p>
-
-        {loadError ? (
-          <p className="text-sm text-danger">{loadError}</p>
-        ) : !channels ? (
-          <Skeleton className="h-48" />
-        ) : (
-          <>
-            <Label>How is it going?</Label>
-            <div className="grid grid-cols-2 gap-2 mt-1.5 mb-4">
-              {channels.map((ch) => {
-                const Icon = CHANNEL_ICON[ch.key] ?? Truck;
-                const active = channelId === ch.id;
-                return (
-                  <button key={ch.id} type="button" onClick={() => { setChannelId(ch.id); setCarrierId(ch.carriers[0]?.id ?? null); }}
-                    className={cn("text-left p-3 rounded-lg border-2 transition-colors",
-                      active ? "border-brand-yellow bg-brand-yellow/5" : "border-slate-200 dark:border-navy-700 hover:border-slate-300")}>
-                    <div className="flex items-center gap-2">
-                      <Icon className={cn("size-4", active ? "text-brand-yellow" : "text-slate-400")} />
-                      <span className="text-sm font-semibold text-navy-900 dark:text-white">{ch.name}</span>
-                    </div>
-                    <p className="text-2xs text-slate-500 dark:text-slate-400 mt-1 leading-snug">{ch.description}</p>
-                  </button>
-                );
-              })}
-            </div>
-
-            {channel && channel.carriers.length > 0 && (
-              <div className="mb-3">
-                <Label>Who is carrying it</Label>
-                <SelectNative value={carrierId ?? ""} onChange={(e) => setCarrierId(e.target.value ? Number(e.target.value) : null)}>
-                  {channel.carriers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </SelectNative>
-              </div>
-            )}
-
-            <div className="grid grid-cols-2 gap-3 mb-3">
-              <div>
-                <Label className="flex items-center gap-1"><Hash className="size-3.5" />Bilty / tracking {channel?.requiresBilty && <span className="text-danger">*</span>}</Label>
-                <Input value={tracking} onChange={(e) => setTracking(e.target.value)} placeholder="e.g. TCS12345" />
-              </div>
-              <div>
-                <Label className="flex items-center gap-1"><Calendar className="size-3.5" />Expected by</Label>
-                <DateInput value={expected} onChange={(e) => setExpected(e.target.value)} />
-              </div>
-              <div>
-                <Label>Parcels</Label>
-                <Input type="number" min={1} value={parcels} onChange={(e) => setParcels(e.target.value)} />
-              </div>
-              <div>
-                <Label>Weight (kg)</Label>
-                <Input type="number" min={0} step="0.1" value={weightKg} onChange={(e) => setWeightKg(e.target.value)} />
-              </div>
-              {/* No COD box for the order desk: it sees no money, and the
-                  server charges whatever is unpaid on the order when it books. */}
-              {!noMoney && (
-                <div className="col-span-2">
-                  <Label>Cash on delivery</Label>
-                  <Input type="number" min={0} value={cod} onChange={(e) => setCod(e.target.value)} />
-                </div>
-              )}
-              <div className="col-span-2">
-                <Label>Notes</Label>
-                <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Anything the courier or the office should know" />
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between gap-2 mt-4">
-              <Button variant="ghost" onClick={onCancel}><ArrowLeft className="size-4" />Back to Packing</Button>
-              <Button variant="accent" size="lg" className="gap-1.5" disabled={saving} onClick={() => void book()}>
-                {saving ? <><Loader2 className="size-4 animate-spin" />Booking…</> : <><Send className="size-4" />Dispatch</>}
-              </Button>
-            </div>
-          </>
-        )}
-      </CardBody>
-    </Card>
   );
 }

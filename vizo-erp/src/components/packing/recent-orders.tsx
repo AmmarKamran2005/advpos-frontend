@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import axios from "axios";
-import { CalendarDays, ChevronDown, PackageCheck, PackageOpen, User } from "lucide-react";
+import { CalendarDays, ChevronDown, PackageCheck, PackageOpen, Pencil, User } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -36,6 +36,12 @@ import { cn } from "@/lib/utils";
    the row still opens the read-only page, so the button sits beside the link,
    not inside it (a button inside an <a> is invalid and clicks both).
 
+   ONCE DISPATCHED, PACK BECOMES EDIT (the owner, 2 October). A dispatched
+   order has nothing left to pack; what the desk may still need is to correct
+   how it went -- a bilty typed wrong, one parcel more. Edit hands the id to the
+   page, which reopens the same "How is it going" form filled in from the
+   booked delivery and only updates it: no status change, no stock moved.
+
    Fast on a phone: one request, one short list, grouped by day, collapsed to
    the first eight rows until asked for more.
    ─────────────────────────────────────────────────────────────────────────── */
@@ -63,10 +69,13 @@ const COLLAPSED = 8;
 
 export function RecentOrders({
   onPack,
+  onEdit,
   refreshKey = 0,
 }: {
   /** Fill the Packing page's dropdowns with this order and open its lines. */
   onPack: (orderId: number) => void;
+  /** A dispatched order: reopen its booking form, filled in, to correct the delivery details. */
+  onEdit: (orderId: number) => void;
   /** Bumped by the page after a dispatch, so a packed order stops saying "Ready for packing". */
   refreshKey?: number;
 }) {
@@ -125,7 +134,7 @@ export function RecentOrders({
                   <PackageCheck className="size-3.5" /> Ready for packing
                 </div>
                 <ul className="divide-y divide-slate-100 dark:divide-navy-700/60">
-                  {ready.map((r) => <Row key={r.id} r={r} ready onPack={onPack} />)}
+                  {ready.map((r) => <Row key={r.id} r={r} ready onPack={onPack} onEdit={onEdit} />)}
                 </ul>
               </div>
             )}
@@ -135,7 +144,7 @@ export function RecentOrders({
                   {dayLabel(g.day)}
                 </div>
                 <ul className="divide-y divide-slate-100 dark:divide-navy-700/60">
-                  {g.items.map((r) => <Row key={r.id} r={r} ready={false} onPack={onPack} />)}
+                  {g.items.map((r) => <Row key={r.id} r={r} ready={false} onPack={onPack} onEdit={onEdit} />)}
                 </ul>
               </div>
             ))}
@@ -152,7 +161,9 @@ export function RecentOrders({
   );
 }
 
-function Row({ r, ready, onPack }: { r: Recent; ready: boolean; onPack: (orderId: number) => void }) {
+function Row({ r, ready, onPack, onEdit }: {
+  r: Recent; ready: boolean; onPack: (orderId: number) => void; onEdit: (orderId: number) => void;
+}) {
   return (
     <li className={cn(
       "flex items-center gap-2 pr-3 hover:bg-slate-50 dark:hover:bg-navy-700/40",
@@ -184,10 +195,17 @@ function Row({ r, ready, onPack }: { r: Recent; ready: boolean; onPack: (orderId
           {ready && <><span>·</span><span>{formatDate(r.createdAt)}</span></>}
         </div>
       </Link>
-      <Button type="button" size="sm" variant={ready ? "accent" : "outline"} className="shrink-0 gap-1 px-2.5"
-        aria-label={`Pack ${r.orderNo}`} onClick={() => onPack(r.id)}>
-        <PackageOpen /> Pack
-      </Button>
+      {r.status === "DISPATCHED" ? (
+        <Button type="button" size="sm" variant="outline" className="shrink-0 gap-1 px-2.5"
+          aria-label={`Edit the delivery of ${r.orderNo}`} onClick={() => onEdit(r.id)}>
+          <Pencil /> Edit
+        </Button>
+      ) : (
+        <Button type="button" size="sm" variant={ready ? "accent" : "outline"} className="shrink-0 gap-1 px-2.5"
+          aria-label={`Pack ${r.orderNo}`} onClick={() => onPack(r.id)}>
+          <PackageOpen /> Pack
+        </Button>
+      )}
     </li>
   );
 }

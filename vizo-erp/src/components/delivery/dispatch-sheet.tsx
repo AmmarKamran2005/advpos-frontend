@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import {
-  Send, Truck, Store, PackageCheck, Hash, Info, AlertTriangle, X, Calendar, Loader2, Banknote,
+  Send, Truck, Store, PackageCheck, Hash, Info, AlertTriangle, X, Calendar, Loader2, Banknote, Save,
 } from "lucide-react";
 import axios from "axios";
 import { Button } from "@/components/ui/button";
@@ -32,6 +32,23 @@ import { cn } from "@/lib/utils";
  * zero totals and `moneyHidden`; the form then shows no total and no COD box,
  * says only whether cash is to be collected at the door, and the API works the
  * COD out itself when the desk books.
+ *
+ * THREE WAYS IN, ONE FORM (the owner, 2 Oct -- "the How is it going form is
+ * fine, change none of its fields"):
+ *
+ *   book      (default) -- /dispatch and the Delivery screen: the order is
+ *             already dispatched, the button books the courier.
+ *   dispatch  (`dispatchFirst` given) -- the Packing page's Next. The order is
+ *             NOT dispatched yet, and opening or cancelling this form must
+ *             leave it that way. The Dispatch button first runs dispatchFirst
+ *             (the page's PATCH to DISPATCHED: stock off the shelf), then books
+ *             the courier. If the booking half fails, the order HAS left the
+ *             shelf: the form stays open with the reason, and pressing Dispatch
+ *             again only retries the booking -- the stock is never taken twice.
+ *   edit      (`existing` given) -- the Packing page's Edit on a dispatched
+ *             order. Filled in from the booked delivery; Save changes PUTs
+ *             /dispatch/deliveries/{id}: no status change, no stock, no second
+ *             delivery.
  */
 
 /* GET /dispatch -> { waiting, late, moneyHidden, items } */
@@ -69,6 +86,38 @@ export type DispatchOrder = {
 };
 
 export type DispatchResponse = { waiting: number; late: number; moneyHidden: boolean; items: DispatchOrder[] };
+
+/* The delivery already booked against an order -- GET /dispatch/orders/{id}
+   -> delivery. codAmount and bookingCharge are 0 for the order desk. */
+export type BookedDelivery = {
+  id: number;
+  deliveryNo: string;
+  channelId: number;
+  courierId: number | null;
+  trackingNo: string | null;
+  bookedDate: string;
+  expectedDate: string | null;
+  deliveredDate: string | null;
+  parcels: number;
+  weightKg: number;
+  codAmount: number;
+  isCodSettled: boolean;
+  bookingCharge: number;
+  notes: string | null;
+  statusKey: string;
+  statusName: string;
+  /** False once delivered, returned to sender or its COD settled -- the API refuses an edit then. */
+  editable: boolean;
+};
+
+/* GET /dispatch/orders/{id} -- one order in the queue's own shape, any status,
+   with the delivery booked against it (if any). */
+export type DispatchOrderDetail = DispatchOrder & {
+  status: string;
+  statusName: string;
+  moneyHidden: boolean;
+  delivery: BookedDelivery | null;
+};
 
 /* GET /dispatch/lookups -> the DeliveryChannel rows with the couriers each allows. */
 export type Carrier = {
@@ -113,7 +162,7 @@ function apiMessage(e: unknown, fallback: string) {
 }
 
 export function DispatchSheet({
-  order, channels, moneyHidden, open, onOpenChange, onDispatched,
+  order, channels, moneyHidden, open, onOpenChange, onDispatched, dispatchFirst, existing,
 }: {
   order: DispatchOrder;
   channels: Channel[];
@@ -121,11 +170,24 @@ export function DispatchSheet({
   open: boolean;
   onOpenChange: (v: boolean) => void;
   onDispatched: (deliveryId: number | null) => void;
+  /**
+   * Dispatch mode: takes the order off the shelf (status -> DISPATCHED) before
+   * the courier is booked. Resolves true once the order is dispatched; false
+   * when it was refused, in which case the caller has already said why and
+   * nothing has moved. Called at most once per opening of the form.
+   */
+  dispatchFirst?: () => Promise<boolean>;
+  /** Edit mode: the delivery already booked, to fill the form from and update in place. */
+  existing?: BookedDelivery | null;
 }) {
+  const editing = !!existing;
+
   /* The API's suggestion first (DispatchController.SuggestChannels). Without
      one, a Karachi address almost always goes out by hand -- start on the
-     local channel when there is one, otherwise cargo, otherwise the first. */
+     local channel when there is one, otherwise cargo, otherwise the first.
+     Editing starts on the channel that was booked, of course. */
   const initial =
+    (existing ? channels.find((c) => c.id === existing.channelId) : undefined) ??
     channels.find((c) => c.id === order.suggestedChannelId) ??
     (order.city.startsWith("Karachi") ? channels.find((c) => c.key === "local") : undefined) ??
     channels.find((c) => c.key === "cargo") ??
@@ -134,18 +196,28 @@ export function DispatchSheet({
   const [channelId, setChannelId] = React.useState<number>(initial?.id ?? 0);
   const channel = channels.find((c) => c.id === channelId) ?? initial;
 
-  const [carrierId, setCarrierId] = React.useState<number | null>(initial?.carriers[0]?.id ?? null);
-  const [tracking, setTracking] = React.useState("");
+  const [carrierId, setCarrierId] = React.useState<number | null>(
+    existing ? existing.courierId : initial?.carriers[0]?.id ?? null);
+  const [tracking, setTracking] = React.useState(existing?.trackingNo ?? "");
   const [expected, setExpected] = React.useState(() =>
-    addDaysISO(todayISO(), Math.max(1, initial?.remindAfterDays ?? 2)));
-  const [parcels, setParcels] = React.useState("1");
-  const [weightKg, setWeightKg] = React.useState("0");
+    existing ? existing.expectedDate ?? "" : addDaysISO(todayISO(), Math.max(1, initial?.remindAfterDays ?? 2)));
+  const [parcels, setParcels] = React.useState(existing ? String(existing.parcels) : "1");
+  const [weightKg, setWeightKg] = React.useState(existing ? String(existing.weightKg) : "0");
   /* COD only means anything when the order is not already paid; the API works
-     the suggestion out and this form just offers it. */
-  const [cod, setCod] = React.useState(String(order.suggestedCod ?? 0));
-  const [notes, setNotes] = React.useState("");
+     the suggestion out and this form just offers it. Editing shows what was
+     booked (0 for the order desk, which neither sees nor changes it). */
+  const [cod, setCod] = React.useState(String(existing ? existing.codAmount : order.suggestedCod ?? 0));
+  const [notes, setNotes] = React.useState(existing?.notes ?? "");
   const [touchedCarrier, setTouchedCarrier] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
+
+  /* Dispatch mode: true once dispatchFirst has succeeded, so a retry after a
+     failed booking books only -- it never sends the order out a second time. */
+  const [stockOut, setStockOut] = React.useState(false);
+  /* Why the last booking failed, kept on the form (not only in a toast) when
+     the goods have already left -- the one state nobody should walk away
+     from without understanding. */
+  const [bookError, setBookError] = React.useState<string | null>(null);
 
   /* Follow the channel unless the user has picked a carrier themselves. */
   const [lastChannel, setLastChannel] = React.useState<number>(channelId);
@@ -168,41 +240,85 @@ export function DispatchSheet({
       });
       return;
     }
+    /* The API's own two other refusals, asked here first: in dispatch mode a
+       booking refused AFTER the stock has gone out is exactly the half-done
+       state this form tries hard not to produce, so whatever the browser can
+       catch is caught before dispatchFirst runs. */
+    if (parcels.trim() !== "" && Number(parcels) < 1) {
+      toast.error("At least one parcel", { description: "A dispatch needs at least one parcel." });
+      return;
+    }
+    if (!moneyHidden && Number(cod) < 0) {
+      toast.error("COD cannot be negative");
+      return;
+    }
+
+    const body = {
+      channelId: channel.id,
+      courierId: carrierId,
+      trackingNo: tracking.trim() || null,
+      /* Editing keeps the day it was booked -- the API ignores it on an update anyway. */
+      bookedDate: existing ? existing.bookedDate : todayISO(),
+      expectedDate: expected || null,
+      parcels: Number(parcels) || 1,
+      weightKg: Number(weightKg) || 0,
+      /* Ignored by the API for the order desk, which works it out itself when
+         booking and keeps what is already on the delivery when editing. */
+      codAmount: moneyHidden ? 0 : Number(cod) || 0,
+      /* The courier's own booking charge, so the delivery row carries what
+         it actually cost rather than a figure typed from memory. */
+      bookingCharge: carrier?.bookingCharge ?? 0,
+      notes: notes.trim() || null,
+    };
+
     setSaving(true);
+    setBookError(null);
+    let leftTheShelf = stockOut;
     try {
+      if (existing) {
+        const res = await axios.put<{ message: string; deliveryId?: number }>(
+          `${API_BASE_URL}/dispatch/deliveries/${existing.id}`, body, { headers: authHeader() });
+        toast.success("Delivery updated", { description: res.data.message });
+        onDispatched(res.data.deliveryId ?? existing.id);
+        return;
+      }
+
+      if (dispatchFirst && !stockOut) {
+        /* Stock and status first -- a shortage, or an order the desk may not
+           send yet, is refused there with nothing moved and nothing booked. */
+        const ok = await dispatchFirst();
+        if (!ok) return;
+        leftTheShelf = true;
+        setStockOut(true);
+      }
+
       const res = await axios.post<{ message: string; deliveryId?: number }>(
-        `${API_BASE_URL}/dispatch/${order.id}/dispatch`,
-        {
-          channelId: channel.id,
-          courierId: carrierId,
-          trackingNo: tracking.trim() || null,
-          bookedDate: todayISO(),
-          expectedDate: expected || null,
-          parcels: Number(parcels) || 1,
-          weightKg: Number(weightKg) || 0,
-          /* Ignored by the API for the order desk, which works it out itself. */
-          codAmount: moneyHidden ? 0 : Number(cod) || 0,
-          /* The courier's own booking charge, so the delivery row carries what
-             it actually cost rather than a figure typed from memory. */
-          bookingCharge: carrier?.bookingCharge ?? 0,
-          notes: notes.trim() || null,
-        },
-        { headers: authHeader() }
-      );
-      toast.success("Courier booked", { description: res.data.message });
+        `${API_BASE_URL}/dispatch/${order.id}/dispatch`, body, { headers: authHeader() });
+      toast.success(dispatchFirst ? `${order.orderNo} dispatched` : "Courier booked", { description: res.data.message });
       onDispatched(res.data.deliveryId ?? null);
     } catch (e) {
-      toast.error("Not booked", { description: apiMessage(e, "Please try again.") });
+      const why = apiMessage(e, "Please try again.");
+      if (leftTheShelf) {
+        setBookError(why);
+        toast.error("Dispatched, but the courier is not booked yet", { description: why });
+      } else {
+        toast.error(editing ? "Not saved" : "Not booked", { description: why });
+      }
     } finally {
       setSaving(false);
     }
   }
 
+  const title = editing ? "Edit delivery" : dispatchFirst ? "Dispatch" : "Book delivery";
+
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
+    /* Not closable while a save is running (Esc, the overlay): closing between
+       the dispatch and the booking would hide the one moment the form has to
+       be able to report. */
+    <Sheet open={open} onOpenChange={(v) => { if (!v && saving) return; onOpenChange(v); }}>
       <SheetContent side="right" width="md">
         <SheetHeader>
-          <SheetTitle>Book delivery · {order.orderNo}</SheetTitle>
+          <SheetTitle>{title} · {order.orderNo}</SheetTitle>
           <SheetDescription>
             {order.customerName} · {order.city}
             {!moneyHidden && <> · {formatMoney(order.total)}</>}
@@ -361,6 +477,16 @@ export function DispatchSheet({
             </div>
           )}
 
+          {bookError && (
+            <div className="flex items-start gap-2.5 mt-3 p-3 rounded-lg bg-danger/5 border border-danger/25">
+              <AlertTriangle className="size-4 text-danger flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-danger-dark dark:text-danger-light">
+                {order.orderNo} has left the shelf, but the courier was not booked: {bookError} Fix the
+                details and press Dispatch again -- only the booking is retried, the stock is not taken twice.
+              </p>
+            </div>
+          )}
+
           {missingRef && (
             <div className="flex items-start gap-2.5 mt-3 p-3 rounded-lg bg-danger/5 border border-danger/25">
               <AlertTriangle className="size-4 text-danger flex-shrink-0 mt-0.5" />
@@ -376,7 +502,13 @@ export function DispatchSheet({
             <X /> Cancel
           </Button>
           <Button type="button" variant="accent" className="gap-1.5" onClick={() => void dispatch()} disabled={saving || !channel}>
-            {saving ? <><Loader2 className="size-4 animate-spin" /> Booking…</> : <><Send /> Book courier</>}
+            {saving
+              ? <><Loader2 className="size-4 animate-spin" /> {editing ? "Saving…" : dispatchFirst && !stockOut ? "Dispatching…" : "Booking…"}</>
+              : editing
+                ? <><Save /> Save changes</>
+                : dispatchFirst
+                  ? <><Send /> Dispatch</>
+                  : <><Send /> Book courier</>}
           </Button>
         </SheetFooter>
       </SheetContent>

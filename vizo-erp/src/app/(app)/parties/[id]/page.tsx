@@ -428,14 +428,21 @@ export default function PartyDetailPage() {
 
             <Card>
               <CardBody>
-                <h3 className="text-base font-semibold text-navy-900 dark:text-white mb-4">Tax &amp; Registration</h3>
+                {/* A CUSTOMER'S box is "Registration" and shows the CNIC only (the
+                    owner, 2 Oct: NTN and STRN are not needed for customers). A
+                    supplier keeps all three tax numbers -- its bills carry them. */}
+                <h3 className="text-base font-semibold text-navy-900 dark:text-white mb-4">
+                  {party.type === "SUPPLIER" ? "Tax & Registration" : "Registration"}
+                </h3>
                 <dl className="space-y-3 text-sm">
                   {/* A Chinese supplier's numbers are not an NTN and an STRN and
                       a CNIC, so they are not labelled as such. Same three
                       columns, different three names -- the words come from the
                       one place that holds them, so this screen and the form
                       that filled it in cannot drift apart. */}
-                  {PARTY_TAX[partyOrigin(party.country)].map((t) => (
+                  {PARTY_TAX[partyOrigin(party.country)]
+                    .filter((t) => party.type === "SUPPLIER" || t.key === "cnic")
+                    .map((t) => (
                     <Row key={t.key} icon={Receipt} label={t.label} value={party[t.key] ?? "—"} />
                   ))}
                   <Row icon={FileText} label="Opened" value={formatDate(party.createdAt)} />

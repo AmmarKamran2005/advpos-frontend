@@ -6,7 +6,7 @@ import { useParams } from "next/navigation";
 import axios from "axios";
 import {
   MoreHorizontal, AlertCircle, CheckCircle2,
-  FileText, Clock, MapPin, Phone, AlertTriangle, ArrowRight, Printer,
+  FileText, Clock, MapPin, Phone, AlertTriangle, ArrowRight, Printer, ReceiptText,
   MessageCircle, Download, RefreshCw, ShieldCheck, XCircle, Loader2, User as UserIcon,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
@@ -114,7 +114,7 @@ const humanAction = (a: string) => a.toLowerCase().replace(/_/g, " ");
 export default function OrderDetailPage() {
   const params = useParams<{ id: string }>();
   const id = parseInt(params.id ?? "", 10);
-  const { can } = useSession();
+  const { can, role } = useSession();
 
   const [order, setOrder] = React.useState<OrderDetail | null>(null);
   const [workflow, setWorkflow] = React.useState<Workflow | null>(null);
@@ -234,6 +234,23 @@ export default function OrderDetailPage() {
     if (!ok) toast.error("Could not open the bill", { description: "Try again in a moment." });
   }
 
+  /* THE TILL SLIP (2 Oct). The owner: the A4 print above stays exactly as it
+     was but is now labelled "Print invoice"; "Print bill" is the 80 mm
+     thermal receipt a POS printer feeds out -- see Documents/ReceiptPdf.cs.
+     Rebuilt by the API on every click and printed through the same hidden
+     frame as the invoice, so the browser's print dialog lets the counter pick
+     the thermal printer.
+
+     Not offered to the order desk: a receipt is nothing but money, and the
+     order desk sees none. The API refuses them too; hiding the button just
+     saves them a 403. */
+  const mayPrintReceipt = role !== "order-dept";
+  async function printReceipt() {
+    if (!order?.invoiceId) return;
+    const ok = await printPdf(`/sales/invoices/${order.invoiceId}/receipt`);
+    if (!ok) toast.error("Could not print the bill", { description: "Try again in a moment." });
+  }
+
   if (loading) {
     return (
       <div className="space-y-4">
@@ -298,8 +315,14 @@ export default function OrderDetailPage() {
           <>
             <Button variant="ghost" size="md" className="gap-1.5" onClick={() => void openBill(false)} disabled={!order.invoiceId}>
               <Printer />
-              <span className="hidden sm:inline">Print bill</span>
+              <span className="hidden sm:inline">Print invoice</span>
             </Button>
+            {mayPrintReceipt && (
+              <Button variant="ghost" size="md" className="gap-1.5" onClick={() => void printReceipt()} disabled={!order.invoiceId}>
+                <ReceiptText />
+                <span className="hidden sm:inline">Print bill</span>
+              </Button>
+            )}
 
             {isCreditHold && runsTheFloor ? (
               <Button variant="accent" size="md" className="gap-1.5" onClick={() => setOverride(true)} disabled={busy}>
@@ -634,8 +657,13 @@ export default function OrderDetailPage() {
               <h3 className="text-sm font-semibold text-navy-900 dark:text-white mb-3">Quick Actions</h3>
               <div className="space-y-2">
                 <Button variant="secondary" size="md" className="w-full justify-start gap-2" onClick={() => void openBill(false)} disabled={!order.invoiceId}>
-                  <Printer />Print bill
+                  <Printer />Print invoice
                 </Button>
+                {mayPrintReceipt && (
+                  <Button variant="secondary" size="md" className="w-full justify-start gap-2" onClick={() => void printReceipt()} disabled={!order.invoiceId}>
+                    <ReceiptText />Print bill
+                  </Button>
+                )}
                 <Button variant="secondary" size="md" className="w-full justify-start gap-2" onClick={() => void openBill(true)} disabled={!order.invoiceId}>
                   <Download />Download bill
                 </Button>

@@ -142,6 +142,52 @@ post the history — **changa.txt §G, in that order.**
 
 ---
 
+## LATEST — 2 Oct: packing waits for release; form-first dispatch; thermal bill; courier categories; collections into any Cash & Bank account
+
+The owner's 2 Oct list. Built on `main`/`master` and tested on `advpos_main` (the
+30 Sep live dump plus migrations 42 and 43). **Not pushed yet**: migration 43
+must run on live before the API, and the owner approves the receipt design first.
+
+- **Packing waits for release.** The order desk may pack or dispatch only an
+  order the admin or accountant has set to "Processing in Order Dept".
+  - An INVOICED order gets *"This order has not been moved to Processing in
+    Order Dept by super admin or accountant"*.
+  - The desk can no longer take an order up itself, or dispatch straight from
+    INVOICED.
+- **Next no longer dispatches.**
+  - It opens the "How is it going" booking form. **Dispatch** in that form takes
+    the stock out and books the delivery, as two calls; a failed booking keeps
+    the form open to retry without moving stock twice.
+  - A dispatched order shows **Edit** instead of Pack. Edit reopens the form
+    filled from the delivery and saves via `PUT /api/dispatch/deliveries/{id}`;
+    the status stays DISPATCHED.
+  - New: `GET /api/dispatch/orders/{id}`.
+- **Delivery:** the order desk can never mark a delivery delivered (API and
+  button). The three channels whose confirmer was the order desk (Online, Local
+  cargo, Heavy logistics) are confirmed by the accountant now; the Super Admin
+  can confirm any.
+- **Order page:** "Print Bill" (A4) is renamed **Print invoice**, unchanged. A
+  new **Print bill** prints an 80 mm thermal receipt via
+  `GET /api/sales/invoices/{id}/receipt` (`Documents/ReceiptPdf.cs`,
+  `ReceiptController`). The order desk gets 403.
+- **Setup → Couriers:** every courier has one required **parent category** (the
+  four DeliveryChannels), saved in `ChannelCarrier`; the list is grouped by
+  category. The dispatch form lists only the couriers under the chosen category.
+- **Confirm Collections:** "Received into" lists every active **Cash & Bank**
+  account from the chart. The receipt posts there (`Collection.DepositAccountId`,
+  migration 43); the method is worked out from the account; "Paid by cheque" is
+  a tick.
+- **Customer page:** the box is "Registration", with CNIC only (suppliers keep
+  NTN/STRN).
+- **Log Visit:**
+  - "Go back on" is removed, and the API no longer demands it for Follow-up.
+  - When = now, and the location is requested on open.
+  - The form order is Location, then Rep, then Notes last.
+- **Tests:** 32/32 checks on the local copy (`flow02.py` in the scratchpad).
+  Browser checks: Pack → Next → form → Dispatch, Edit → Save changes, order page
+  buttons, Registration box, Log Visit, Collect accounts. Backend 0 errors;
+  `tsc`/`eslint` clean.
+
 ## LATEST — 30 Sep: the accountant runs the orders; out of the ledger on cancel; badges; credit limit
 
 The owner's list (Roman Urdu, 30 Sep), all built on `main`/`master` and tested

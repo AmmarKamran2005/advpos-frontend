@@ -42,6 +42,8 @@ type Detail = {
   receipts: { id: number; receiptNo: string; date: string; amount: number; method: string; status: string; statusName: string; collectedBy: string; voucherNo: string | null; reference: string | null }[];
   account: { code: string; name: string; opening: number; billed: number; paid: number; balance: number; creditLimit: number };
   methods: { id: number; key: string; name: string; account: string; needsReference: boolean; isCheque: boolean }[];
+  /** Every active Cash & Bank account in the chart (2 Oct) -- what money is received INTO. */
+  accounts: { id: number; code: string; name: string; isCash: boolean }[];
   collectors: { id: number; name: string; role: string }[];
   defaultCollectorId: number | null;
 };
@@ -57,7 +59,8 @@ export function CollectDialog({ orderId, open, onOpenChange, onDone }: {
   const [d, setD] = React.useState<Detail | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [amount, setAmount] = React.useState("");
-  const [methodId, setMethodId] = React.useState("");
+  const [accountId, setAccountId] = React.useState("");
+  const [byCheque, setByCheque] = React.useState(false);
   const [date, setDate] = React.useState(todayISO());
   const [collector, setCollector] = React.useState("");
   const [reference, setReference] = React.useState("");
@@ -70,21 +73,28 @@ export function CollectDialog({ orderId, open, onOpenChange, onDone }: {
     if (!open || !orderId) return;
     let alive = true;
     /* eslint-disable react-hooks/set-state-in-effect -- load-on-open, axios in the component, as everywhere here. */
-    setD(null); setError(null); setReference(""); setBank(""); setChequeDate(""); setNote(""); setDate(todayISO());
+    setD(null); setError(null); setReference(""); setBank(""); setChequeDate(""); setNote(""); setDate(todayISO()); setByCheque(false);
     /* eslint-enable react-hooks/set-state-in-effect */
     axios.get<Detail>(`${API_BASE_URL}/accounting/collections/orders/${orderId}`, { headers: authHeader() })
       .then((r) => {
         if (!alive) return;
         setD(r.data);
         setAmount(String(r.data.order.balance));
-        setMethodId(String(r.data.methods[0]?.id ?? ""));
+        setAccountId(String(r.data.accounts[0]?.id ?? ""));
         setCollector(String(r.data.defaultCollectorId ?? r.data.collectors[0]?.id ?? ""));
       })
       .catch((e) => alive && setError(apiMessage(e, "Could not load this order.")));
     return () => { alive = false; };
   }, [open, orderId]);
 
-  const method = d?.methods.find((m) => String(m.id) === methodId);
+  /* RECEIVED INTO AN ACCOUNT FROM THE CHART (the owner, 2 Oct). The list used
+     to be a fixed set of payment methods (Cash, Bank, Easypaisa, JazzCash ...);
+     it is now every Cash & Bank account on the Account List, so a bank added
+     there can be picked here at once. A non-cash account needs a reference;
+     a cheque is a tick, not a separate "method". */
+  const account = d?.accounts.find((a) => String(a.id) === accountId);
+  const needsReference = Boolean(account && !account.isCash);
+  const isCheque = needsReference && byCheque;
   const amt = parseFloat(amount) || 0;
   const left = d ? Math.max(0, d.order.balance - amt) : 0;
   const pctPaid = d && d.order.total > 0 ? Math.min(100, ((d.order.received + amt) / d.order.total) * 100) : 0;
@@ -93,8 +103,8 @@ export function CollectDialog({ orderId, open, onOpenChange, onDone }: {
     !d ? null
     : amt <= 0 ? "Enter the amount received."
     : amt > d.order.balance + 0.001 ? `This order only owes ${formatMoney(d.order.balance)}.`
-    : !method ? "Pick how the money came in."
-    : method.needsReference && !reference.trim() ? `${method.name} needs its reference number.`
+    : !account ? "Pick the account the money went into."
+    : needsReference && !reference.trim() ? `Money into ${account.name} needs its reference number.`
     : date > todayISO() ? "The date cannot be in the future."
     : null;
 
@@ -103,10 +113,10 @@ export function CollectDialog({ orderId, open, onOpenChange, onDone }: {
     setSaving(true);
     try {
       const r = await axios.post<{ message: string; balance: number }>(`${API_BASE_URL}/accounting/collections/collect`, {
-        orderId: d.order.id, amount: amt, methodId: Number(methodId), collectedOn: date,
+        orderId: d.order.id, amount: amt, depositAccountId: Number(accountId), byCheque: isCheque, collectedOn: date,
         collectedByUserId: collector ? Number(collector) : null,
         referenceNo: reference.trim() || null, bankName: bank.trim() || null,
-        chequeDate: method?.isCheque && chequeDate ? chequeDate : null, note: note.trim() || null,
+        chequeDate: isCheque && chequeDate ? chequeDate : null, note: note.trim() || null,
       }, { headers: authHeader() });
       toast.success("Collection confirmed", { description: r.data.message });
       onOpenChange(false);
@@ -179,27 +189,34 @@ export function CollectDialog({ orderId, open, onOpenChange, onDone }: {
                   </div>
                 </div>
                 <div>
-                  <Label className="mb-1.5 block">How it came in <span className="text-danger">*</span></Label>
-                  <SelectNative value={methodId} onChange={(e) => setMethodId(e.target.value)}>
-                    {d.methods.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+                  <Label className="mb-1.5 block">Received into <span className="text-danger">*</span></Label>
+                  <SelectNative value={accountId} onChange={(e) => setAccountId(e.target.value)}>
+                    {d.accounts.length === 0 && <option value="">No Cash &amp; Bank account in the chart</option>}
+                    {d.accounts.map((a) => <option key={a.id} value={a.id}>{a.code} · {a.name}</option>)}
                   </SelectNative>
-                  {method && <p className="mt-1 text-2xs text-slate-500">Goes into {method.account}</p>}
+                  {account && !account.isCash && (
+                    <label className="mt-1.5 flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
+                      <input type="checkbox" className="size-4 accent-brand-yellow" checked={byCheque}
+                        onChange={(e) => setByCheque(e.target.checked)} />
+                      Paid by cheque
+                    </label>
+                  )}
                 </div>
                 <div>
                   <Label className="mb-1.5 block">Received on</Label>
                   <Input type="date" value={date} max={todayISO()} onChange={(e) => setDate(e.target.value)} />
                 </div>
-                {method?.needsReference && (
+                {needsReference && (
                   <>
                     <div>
-                      <Label className="mb-1.5 block">{method.isCheque ? "Cheque no." : "Transaction / slip no."} <span className="text-danger">*</span></Label>
+                      <Label className="mb-1.5 block">{isCheque ? "Cheque no." : "Transaction / slip no."} <span className="text-danger">*</span></Label>
                       <Input value={reference} maxLength={50} onChange={(e) => setReference(e.target.value)} />
                     </div>
                     <div>
                       <Label className="mb-1.5 block">Bank / wallet name</Label>
                       <Input value={bank} maxLength={60} onChange={(e) => setBank(e.target.value)} placeholder="Optional" />
                     </div>
-                    {method.isCheque && (
+                    {isCheque && (
                       <div>
                         <Label className="mb-1.5 block">Cheque date</Label>
                         <Input type="date" value={chequeDate} onChange={(e) => setChequeDate(e.target.value)} />

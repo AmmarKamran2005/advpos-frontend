@@ -48,12 +48,13 @@ function nowLocal(): string {
  *
  *   · the outcome is four big buttons from the VisitOutcome table, not a
  *     dropdown -- one tap, standing at the counter;
- *   · the time defaults to now and may go back a week (the API holds a rep to
- *     that; the Super Admin to nothing);
- *   · "Followup" asks for the day to go back -- the API refuses one without;
- *   · location is ONE tap and optional: a phone that refuses GPS must not stop
- *     the log. The accuracy the phone reports is kept with it, because a fix
- *     good to 2 km proves nothing about which shop.
+ *   · the time is filled with NOW each time the form opens, and may go back
+ *     a week (the API holds a rep to that; the Super Admin to nothing);
+ *   · no "Go back on" date any more (the owner, 2 Oct);
+ *   · the location is asked for AS THE FORM OPENS and sits above the notes
+ *     (the owner, 2 Oct). Still optional: a phone that refuses GPS must not
+ *     stop the log. The accuracy the phone reports is kept with it, because a
+ *     fix good to 2 km proves nothing about which shop.
  *
  * `customerId` fixes the customer (the customer's own page); without it the
  * rep picks from his own customers -- the only ones the API lets him log.
@@ -73,7 +74,6 @@ export function LogVisitSheet({
   const [outcomeId, setOutcomeId] = React.useState<number | null>(null);
   const [visitedAt, setVisitedAt] = React.useState(nowLocal);
   const [notes, setNotes] = React.useState("");
-  const [followUp, setFollowUp] = React.useState("");
   const [repId, setRepId] = React.useState<number | null>(null);
   const [fix, setFix] = React.useState<Fix | null>(null);
   const [locating, setLocating] = React.useState(false);
@@ -96,9 +96,6 @@ export function LogVisitSheet({
     if (open && !lk) void load();
   }, [open, lk, load]);
 
-  const outcome = lk?.outcomes.find((o) => o.id === outcomeId) ?? null;
-  const needsFollowUp = outcome?.key === "FOLLOWUP";
-  const visitDay = visitedAt.slice(0, 10);
   const minVisit = lk?.backdateDays != null ? `${addDaysISO(todayISO(), -lk.backdateDays)}T00:00` : undefined;
 
   const customers = React.useMemo(() => {
@@ -110,13 +107,24 @@ export function LogVisitSheet({
   const chosen = lk?.customers.find((c) => c.id === customer) ?? null;
   const knownCustomer = customerId !== undefined;
   const ready = Boolean(customer && outcomeId && visitedAt) &&
-    (!needsFollowUp || Boolean(followUp)) &&
-    (!followUp || followUp >= visitDay) &&
     (!lk?.pickRep || Boolean(repId ?? chosen?.repId));
 
-  function locate() {
+  /* NOW AND HERE, AS THE FORM OPENS: the time is reset to this minute and
+     the phone is asked for its position straight away, so neither has to be
+     typed or tapped (the owner, 2 Oct). Quietly -- an automatic attempt that
+     fails only leaves the "Add my location" button to try again. */
+  const askedOnOpen = React.useRef(false);
+  React.useEffect(() => {
+    if (!open) { askedOnOpen.current = false; return; }
+    if (askedOnOpen.current) return;
+    askedOnOpen.current = true;
+    setVisitedAt(nowLocal());
+    locate(true);
+  }, [open]);
+
+  function locate(quiet = false) {
     if (!("geolocation" in navigator)) {
-      toast.error("This device cannot share its location");
+      if (!quiet) toast.error("This device cannot share its location");
       return;
     }
     setLocating(true);
@@ -127,6 +135,7 @@ export function LogVisitSheet({
       },
       (err) => {
         setLocating(false);
+        if (quiet) return;
         toast.error("Location not added", {
           description: err.code === err.PERMISSION_DENIED
             ? "Location permission was refused. The visit can still be saved without it."
@@ -150,7 +159,7 @@ export function LogVisitSheet({
              which is what the column stores (the API converts a "Z" value). */
           visitedAt: `${visitedAt}:00`,
           notes: notes.trim() || null,
-          nextFollowUpDate: followUp || null,
+          nextFollowUpDate: null,
           latitude: fix ? Number(fix.lat.toFixed(6)) : null,
           longitude: fix ? Number(fix.lng.toFixed(6)) : null,
           gpsAccuracyM: fix ? Math.round(fix.accuracy) : null,
@@ -243,23 +252,24 @@ export function LogVisitSheet({
               </div>
 
               <div>
-                <Label htmlFor="v-next" required={needsFollowUp}>Go back on</Label>
-                {/* A plain date input: its floor is the visit's own day. */}
-                <Input id="v-next" type="date" className="mt-1.5" value={followUp} min={visitDay}
-                  onChange={(e) => setFollowUp(e.target.value)} />
-                {needsFollowUp && !followUp && (
-                  <p className="text-2xs text-warning mt-1">A follow-up needs the day you will go back.</p>
+                <Label>Location</Label>
+                {fix ? (
+                  <div className="mt-1.5 flex items-center justify-between gap-2 rounded-lg border border-success/40 bg-success/5 px-3 py-2.5">
+                    <div className="min-w-0 text-xs text-slate-700 dark:text-slate-200">
+                      <div className="tabular truncate">{fix.lat.toFixed(5)}, {fix.lng.toFixed(5)}</div>
+                      <div className={cn("text-2xs", fix.accuracy > 200 ? "text-warning" : "text-slate-500 dark:text-slate-400")}>
+                        accurate to about {Math.round(fix.accuracy)} m{fix.accuracy > 200 ? " — too rough to prove the shop" : ""}
+                      </div>
+                    </div>
+                    <Button size="sm" variant="ghost" onClick={() => setFix(null)} aria-label="Remove location"><X className="size-4" /></Button>
+                  </div>
+                ) : (
+                  <Button variant="secondary" className="w-full mt-1.5 gap-1.5" onClick={() => locate()} disabled={locating}>
+                    {locating ? <Loader2 className="size-4 animate-spin" /> : <LocateFixed className="size-4" />}
+                    {locating ? "Finding you…" : "Add my location"}
+                  </Button>
                 )}
               </div>
-
-              <div>
-                <Label htmlFor="v-notes">Notes</Label>
-                <Textarea id="v-notes" className="mt-1.5" rows={3} maxLength={300} value={notes}
-                  placeholder="What was discussed, what they want, who you met"
-                  onChange={(e) => setNotes(e.target.value)} />
-                <div className="text-2xs text-slate-400 text-right mt-0.5">{notes.length}/300</div>
-              </div>
-
               {lk.pickRep && lk.reps && (
                 <div>
                   <Label htmlFor="v-rep" required>Rep who visited</Label>
@@ -273,24 +283,13 @@ export function LogVisitSheet({
               )}
 
               <div>
-                <Label>Location</Label>
-                {fix ? (
-                  <div className="mt-1.5 flex items-center justify-between gap-2 rounded-lg border border-success/40 bg-success/5 px-3 py-2.5">
-                    <div className="min-w-0 text-xs text-slate-700 dark:text-slate-200">
-                      <div className="tabular truncate">{fix.lat.toFixed(5)}, {fix.lng.toFixed(5)}</div>
-                      <div className={cn("text-2xs", fix.accuracy > 200 ? "text-warning" : "text-slate-500 dark:text-slate-400")}>
-                        accurate to about {Math.round(fix.accuracy)} m{fix.accuracy > 200 ? " — too rough to prove the shop" : ""}
-                      </div>
-                    </div>
-                    <Button size="sm" variant="ghost" onClick={() => setFix(null)} aria-label="Remove location"><X className="size-4" /></Button>
-                  </div>
-                ) : (
-                  <Button variant="secondary" className="w-full mt-1.5 gap-1.5" onClick={locate} disabled={locating}>
-                    {locating ? <Loader2 className="size-4 animate-spin" /> : <LocateFixed className="size-4" />}
-                    {locating ? "Finding you…" : "Add my location"}
-                  </Button>
-                )}
+                <Label htmlFor="v-notes">Notes</Label>
+                <Textarea id="v-notes" className="mt-1.5" rows={3} maxLength={300} value={notes}
+                  placeholder="What was discussed, what they want, who you met"
+                  onChange={(e) => setNotes(e.target.value)} />
+                <div className="text-2xs text-slate-400 text-right mt-0.5">{notes.length}/300</div>
               </div>
+
             </>
           )}
         </SheetBody>
