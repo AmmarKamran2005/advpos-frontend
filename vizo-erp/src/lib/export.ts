@@ -36,7 +36,6 @@ export async function downloadXlsx(
   const disposition = String(res.headers["content-disposition"] ?? "");
   const match = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(disposition);
   const name = match ? decodeURIComponent(match[1]) : fallbackName;
-
   const url = URL.createObjectURL(res.data);
   const a = document.createElement("a");
   a.href = url;

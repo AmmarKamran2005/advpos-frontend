@@ -56,9 +56,6 @@ import { statusLabel } from "@/lib/labels";
 
 export default function GRNsPage() {
   const [rows, setRows] = React.useState<GRN[]>([]);
-  /* The four cards above the table used to have their numbers typed straight
-     into the markup. They come from the API now, computed across the whole
-     filter rather than the rows on screen. */
   const [summary, setSummary] = React.useState<GrnSummary | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
