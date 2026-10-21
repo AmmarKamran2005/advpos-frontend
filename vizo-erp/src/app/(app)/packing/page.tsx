@@ -25,6 +25,7 @@ import { ProductImage } from "@/components/products/product-image";
 import { RecentOrders, statusVariant } from "@/components/packing/recent-orders";
 import { formatMoney, formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { fetchOrderStock, qtyAt, shortAt, type OrderStock } from "@/components/sales/order-stock";
 
 /* ───────────────────────────────────────────────────────────────────────────
    THE ORDER DEPARTMENT'S HOME PAGE, since 23 September (Role.HomePath -- no
@@ -219,6 +220,12 @@ export default function PackingPage() {
   const [orderLoading, setOrderLoading] = React.useState(false);
   const [shortages, setShortages] = React.useState<Shortage[]>([]);
 
+  /* WHAT EACH PLACE HOLDS OF THIS ORDER (the owner, 21 Oct: "show stock item
+     quantity while order department is dispatching an order"). Read with the
+     order, and again whenever it is opened, so the line under every item says
+     how many the "Sending from" place has before Next is pressed. */
+  const [stock, setStock] = React.useState<OrderStock | null>(null);
+
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -308,10 +315,17 @@ export default function PackingPage() {
     const seq = ++loadSeq.current;
     setOrderLoading(true);
     setShortages([]);
+    setStock(null);
     try {
-      const res = await axios.get<OrderDetail>(`${API_BASE_URL}/packing/orders/${id}`, { headers: authHeader() });
+      const [res, held] = await Promise.all([
+        axios.get<OrderDetail>(`${API_BASE_URL}/packing/orders/${id}`, { headers: authHeader() }),
+        /* The stock is a help, not a gate: if it cannot be read the order still
+           opens, and the API checks the shelf at Dispatch regardless. */
+        fetchOrderStock(id).catch(() => null),
+      ]);
       if (seq !== loadSeq.current) return;
       setOrder(res.data);
+      setStock(held);
       /* Picking an order sets both boxes above it -- the reverse of the
          reverse flow, and the one case that always has an unambiguous answer:
          an order has exactly one customer and one credited rep. */
@@ -424,6 +438,21 @@ export default function PackingPage() {
     }
     if (!dispatchLocationId) { toast.error("Say which place it is going out of."); return; }
 
+    /* NOT ENOUGH THERE: SAID NOW, NOT AFTER THE FORM (the owner, 21 Oct). The
+       stock is read again first -- the screen may have sat open -- and if the
+       place cannot cover every item the form does not open at all. */
+    const fresh = await fetchOrderStock(order.id).catch(() => null);
+    if (fresh) setStock(fresh);
+    const short = fresh ? shortAt(fresh, dispatchLocationId) : [];
+    if (short.length > 0) {
+      setShortages(short);
+      const place = places.find((p) => p.id === dispatchLocationId)?.name ?? "this place";
+      toast.error(`Cannot dispatch from ${place}`, {
+        description: `There is not enough stock there for ${short.length} ${short.length === 1 ? "item" : "items"}. Pick another place, or move the stock there first.`,
+      });
+      return;
+    }
+
     setShortages([]);
     const detail = await loadForm(order.id);
     if (!detail) return;
@@ -525,6 +554,7 @@ export default function PackingPage() {
 
   function reset() {
     setOrder(null);
+    setStock(null);
     setShortages([]);
     setRecentKey((k) => k + 1);
     void loadLookups();
@@ -715,7 +745,7 @@ export default function PackingPage() {
                   {order.status !== "DISPATCHED" && (
                     <div className="mt-2">
                       <Label>Sending from</Label>
-                      <SelectNative value={dispatchLocationId || ""} onChange={(e) => setDispatchLocationId(Number(e.target.value))}>
+                      <SelectNative value={dispatchLocationId || ""} onChange={(e) => { setDispatchLocationId(Number(e.target.value)); setShortages([]); }}>
                         {places.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
                       </SelectNative>
                     </div>
@@ -737,6 +767,8 @@ export default function PackingPage() {
                   <div className="space-y-2">
                     {order.lines.map((l) => {
                       const short = shortages.find((s) => s.sku === l.sku);
+                      const held = stock?.lines.find((x) => x.productId === l.productId) ?? null;
+                      const here = held ? qtyAt(held, dispatchLocationId) : null;
                       return (
                         <div key={l.orderItemId} className={cn(
                           "flex items-center gap-3 p-2.5 rounded-lg border",
@@ -748,6 +780,23 @@ export default function PackingPage() {
                             <div className="text-2xs tabular text-slate-500 dark:text-slate-400 mt-0.5">
                               {l.sku}{!noMoney && <> · {formatMoney(l.price)} each</>}
                             </div>
+                            {/* Stock at the place it is going out of, and at the
+                                others in small print -- so the desk can see at
+                                once where else it could go from. */}
+                            {held && order.status !== "DISPATCHED" && (
+                              <div className="text-2xs tabular mt-1">
+                                <span className={cn("font-semibold", here !== null && here < l.qty ? "text-danger" : "text-success")}>
+                                  {here} in stock at {places.find((p) => p.id === dispatchLocationId)?.name ?? "this place"}
+                                </span>
+                                {stock && stock.places.filter((p) => p.id !== dispatchLocationId).length > 0 && (
+                                  <span className="text-slate-400">
+                                    {" · "}
+                                    {stock.places.filter((p) => p.id !== dispatchLocationId)
+                                      .map((p) => `${p.name} ${qtyAt(held, p.id)}`).join(" · ")}
+                                  </span>
+                                )}
+                              </div>
+                            )}
                             {short && (
                               <div className="text-2xs text-danger mt-1">
                                 Only {short.onHand} on the shelf -- short by {short.shortBy}.

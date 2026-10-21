@@ -1,5 +1,6 @@
 "use client";
 
+import { usePageRefresh } from "@/lib/page-refresh";
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -67,7 +68,9 @@ type LookupCustomer = {
 type LookupProduct = {
   id: number; sku: string; name: string; packing: number;
   salePrice: number; costPrice: number; dutyPrice: number;
-  taxRatePercent: number; totalStock: number; imageUrl: string | null;
+  /* Null for a salesperson: they are shown the most they may order, never the
+     stock (the owner, 21 Oct). */
+  taxRatePercent: number; totalStock: number | null; imageUrl: string | null;
 };
 
 type Method = { id: number; key: string; name: string; kind: string };
@@ -78,6 +81,8 @@ type Lookups = {
   customers: LookupCustomer[];
   products: LookupProduct[];
   defaultTaxPercent: number;
+  /** ProductId -> the most that may still be ordered, in pieces. */
+  maxOrderable?: Record<string, number>;
 };
 
 /* THE RATE IS FIXED; THE MARGIN IS WHAT A SALESPERSON ADDS.
@@ -115,7 +120,9 @@ type Line = {
   cost: number;
   duty: number;
   taxPercent: number;
-  stock: number;
+  stock: number | null;
+  /** The most of this item that may be ordered, or null when this person is not held to it. */
+  maxQty: number | null;
   qty: number;
   /** The selling price set by the Super Admin. Fixed for the life of the line. */
   base: number;
@@ -157,6 +164,20 @@ export default function NewOrderPage() {
   /* Only a salesperson is held to the margin cap -- see MAX_SALES_MARGIN_PERCENT. */
   const marginCapped = role === "sales";
 
+  /* NO MORE THAN CAN BE ORDERED (the owner, 21 Oct). A salesperson -- and the
+     order desk keying an order in for one -- may order up to the most that is
+     still available of an item, and is told that number in pieces when they
+     try for more. Never the stock itself. The API holds the same line
+     (SalesController.ValidateOrderRequest); the Super Admin and the accountant
+     are not held to it. */
+  const qtyCapped = role === "sales" || role === "order-dept";
+  const maxFor = (productId: number) =>
+    qtyCapped ? Math.max(0, lookups?.maxOrderable?.[String(productId)] ?? 0) : null;
+  const tellMax = (name: string, most: number) =>
+    toast.error(most <= 0 ? `${name} cannot be ordered right now` : `Not enough ${name}`, {
+      description: `You can order at most ${most} PCS.`,
+    });
+
   const [lookups, setLookups] = React.useState<Lookups | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
@@ -190,6 +211,8 @@ export default function NewOrderPage() {
     }
   }, []);
 
+  usePageRefresh(load);   // the top bar's Refresh button -- lib/page-refresh.ts
+
   React.useEffect(() => {
     /* eslint-disable-next-line react-hooks/set-state-in-effect --
        axios inside the page is the brief for this project. */
@@ -214,6 +237,9 @@ export default function NewOrderPage() {
 
   function addProduct(p: LookupProduct) {
     setPickProduct(false);
+    const most = maxFor(p.id);
+    const already = lines.find((l) => l.productId === p.id)?.qty ?? 0;
+    if (most !== null && already + 1 > most) { tellMax(p.name, most); return; }
     setLines((prev) => {
       const at = prev.findIndex((l) => l.productId === p.id);
       if (at >= 0) {
@@ -227,7 +253,7 @@ export default function NewOrderPage() {
         productId: p.id, name: p.name, sku: p.sku, imageUrl: p.imageUrl,
         cost: p.costPrice, duty: p.dutyPrice,
         taxPercent: p.taxRatePercent ?? lookups?.defaultTaxPercent ?? 0,
-        stock: p.totalStock, qty: 1,
+        stock: p.totalStock, maxQty: maxFor(p.id), qty: 1,
         base: p.salePrice, rate: p.salePrice,
         marginPrice: 0, marginPercent: 0, marginPriceText: "", marginPercentText: "",
       }];
@@ -236,6 +262,11 @@ export default function NewOrderPage() {
 
   /** A quantity changed. */
   function setLine(idx: number, patch: Partial<Line>) {
+    const line = lines[idx];
+    if (line && patch.qty !== undefined && line.maxQty !== null && patch.qty > line.maxQty) {
+      tellMax(line.name, line.maxQty);
+      patch = { ...patch, qty: line.maxQty };
+    }
     setLines((prev) => prev.map((l, i) => (i === idx ? { ...l, ...patch } : l)));
   }
 
@@ -471,7 +502,7 @@ export default function NewOrderPage() {
                                   {p.name}
                                 </div>
                                 <div className="text-xs tabular text-slate-500 dark:text-slate-400 mt-1">
-                                  {p.sku} · {p.totalStock} in stock
+                                  {p.sku}{p.totalStock !== null && <> · {p.totalStock} in stock</>}
                                 </div>
                               </div>
                               <span className="tabular text-base font-bold text-navy-900 dark:text-white shrink-0">
@@ -652,7 +683,7 @@ function LineCard({
         <div className="flex-1 min-w-0">
           <div className="text-sm font-semibold text-navy-900 dark:text-white line-clamp-2">{line.name}</div>
           <div className="text-2xs tabular text-slate-500 dark:text-slate-400 mt-0.5">
-            {line.sku} · {line.stock} in stock
+            {line.sku}{line.stock !== null && <> · {line.stock} in stock</>}
             {landed > 0 && <> · lands at {formatMoney(landed)}</>}
           </div>
         </div>

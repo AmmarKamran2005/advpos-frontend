@@ -24,6 +24,7 @@ import {
   Clock,
   Database,
   Send,
+  RefreshCw,
 } from "lucide-react";
 import { appHref } from "@/lib/app-url";
 import { Button } from "@/components/ui/button";
@@ -47,6 +48,7 @@ import {
   authHeader,
 } from "@/components/providers/session-provider";
 import { useLiveNotifications } from "@/lib/use-live-notifications";
+import { runPageRefresh } from "@/lib/page-refresh";
 import { cn } from "@/lib/utils";
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -86,7 +88,14 @@ type Notification = {
   url: string | null;
 };
 
-export function TopBar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
+export function TopBar({
+  onOpenSidebar,
+  onRemount,
+}: {
+  onOpenSidebar: () => void;
+  /** Remounts the page on screen -- used when it registered no reload of its own. */
+  onRemount: () => void;
+}) {
   const { user, can, logout } = useSession();
 
   const [notifications, setNotifications] = React.useState<Notification[]>([]);
@@ -109,6 +118,28 @@ export function TopBar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
       /* The bell is not worth an error banner across the whole app. */
     }
   }, []);
+
+  /* THE REFRESH BUTTON. Fetches the page's data again from the database
+     without reloading the browser tab -- see lib/page-refresh.ts for why one
+     button here rather than one per page. The bell and the sidebar badges come
+     along too, since "refresh" to the person pressing it means everything they
+     can see. The spin lasts at least a moment so a fast answer still reads as
+     "it did something". */
+  const [refreshing, setRefreshing] = React.useState(false);
+  async function refreshAll() {
+    if (refreshing) return;
+    setRefreshing(true);
+    const started = Date.now();
+    try {
+      const handled = await runPageRefresh();
+      if (!handled) onRemount();
+      window.dispatchEvent(new Event("advpos:notification"));
+      void loadNotifications();
+    } finally {
+      const left = 500 - (Date.now() - started);
+      window.setTimeout(() => setRefreshing(false), Math.max(0, left));
+    }
+  }
 
   React.useEffect(() => {
     if (!user) return;
@@ -199,6 +230,19 @@ export function TopBar({ onOpenSidebar }: { onOpenSidebar: () => void }) {
 
       {/* Action cluster */}
       <div className="flex items-center gap-1 ml-auto">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => { void refreshAll(); }}
+          disabled={refreshing}
+          title="Refresh this page's data"
+          aria-label="Refresh this page's data"
+          className="gap-1.5"
+        >
+          <RefreshCw className={cn(refreshing && "animate-spin")} />
+          <span className="hidden sm:inline">Refresh</span>
+        </Button>
+
         {/* Quick Create -- hidden altogether for somebody who may create nothing,
             rather than opening onto an empty menu. */}
         {visibleQuickCreate.length > 0 && (

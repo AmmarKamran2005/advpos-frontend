@@ -1,5 +1,6 @@
 "use client";
 
+import { usePageRefresh } from "@/lib/page-refresh";
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -83,6 +84,8 @@ export default function StaffLedgersPage() {
       setLookups(res.data);
     } catch { /* the list still works */ }
   }, []);
+
+  usePageRefresh(load);   // the top bar's Refresh button -- lib/page-refresh.ts
 
   React.useEffect(() => {
     /* eslint-disable-next-line react-hooks/set-state-in-effect --

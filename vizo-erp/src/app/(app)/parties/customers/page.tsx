@@ -1,5 +1,6 @@
 "use client";
 
+import { usePageRefresh } from "@/lib/page-refresh";
 import * as React from "react";
 import Link from "next/link";
 import { Plus, Phone, MapPin, AlertTriangle , FileText } from "lucide-react";
@@ -95,6 +96,8 @@ export default function CustomersPage() {
       setLoading(false);
     }
   }, []);
+
+  usePageRefresh(load);   // the top bar's Refresh button -- lib/page-refresh.ts
 
   React.useEffect(() => {
     /* eslint-disable-next-line react-hooks/set-state-in-effect --

@@ -1,5 +1,6 @@
 "use client";
 
+import { usePageRefresh } from "@/lib/page-refresh";
 import * as React from "react";
 import axios from "axios";
 import { AlertTriangle, Package, AlertCircle } from "lucide-react";
@@ -75,6 +76,8 @@ export default function SlowMovingPage() {
       setLoading(false);
     }
   }, [days, minCover]);
+
+  usePageRefresh(load);   // the top bar's Refresh button -- lib/page-refresh.ts
 
   React.useEffect(() => {
     /* eslint-disable-next-line react-hooks/set-state-in-effect --

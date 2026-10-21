@@ -142,7 +142,40 @@ post the history — **changa.txt §G, in that order.**
 
 ---
 
-## LATEST — 2 Oct: packing waits for release; form-first dispatch; thermal bill; courier categories; collections into any Cash & Bank account
+## LATEST — 21 Oct: accountant moves orders anywhere; stock at confirm and dispatch; rep's max quantity; one Refresh button; voucher clean-up
+
+The owner's 21 Oct list. No migration — nothing in the database changed shape.
+Tested on a fresh restore of live (taken 21 Oct) on a throwaway Postgres:
+27/27 API checks (`flow21.py` in the session scratchpad) plus browser checks as
+the accountant, the order desk and a rep. Backend 0 errors; `tsc` clean;
+`eslint` 0 errors. **Railway was down** ("Application not found") on 21 Oct —
+the owner said to leave it for now; nothing here is live until it is back.
+
+- **Accountant = Super Admin on the chain.** `OrderWorkflow.MayMoveAnywhere`:
+  any of the seven steps, forward or backward, from the order page's "Set
+  status" ("Move it anywhere"). Off-chain moves (decline/cancel/hold) keep their
+  old limits (never after the goods left). 🔴 Backward from Dispatched still
+  does not return stock — convey.txt 21 Oct.
+- **Confirm shows the stock.** New `GET /api/sales/orders/{id}/stock` (not for
+  sales): each line at Shop 2, Karachi Warehouse, Karachi Order Department.
+  The Confirm button opens a dialog with that table; Confirm is disabled and
+  the API refuses (`shortages`) unless the **order department** covers every
+  line — also when jumping past Confirmed. `Services/StockAvailability.cs`.
+- **Rep's maximum.** `/sales/lookups` sends `maxOrderable` (per product, PCS)
+  and `totalStock: null` to the sales role. The order form refuses to add an
+  item with 0 left and clamps a typed quantity, with a toast "You can order at
+  most N PCS"; `ValidateOrderRequest` enforces it (sales + order desk). Max =
+  sellable stock − open orders' quantities.
+- **Dispatch.** Packing shows every line's stock at the "Sending from" place
+  (and the others); Next refuses with "Cannot dispatch from <place>" before the
+  form opens. The order page's dispatch dialog shows the same table.
+- **Refresh.** One button in the top bar on every page (`lib/page-refresh.ts`):
+  92 pages register their own `load` (filters and typed text kept); the rest
+  are remounted. Also refreshes the bell and sidebar badges.
+- **Vouchers.** Wallet Receipt/Payment gone from New Voucher and the edit form;
+  Cash Receipt has no Credit/Credit Note. API refuses both (create and update).
+
+## 2 Oct: packing waits for release; form-first dispatch; thermal bill; courier categories; collections into any Cash & Bank account
 
 The owner's 2 Oct list. Built on `main`/`master` and tested on `advpos_main` (the
 30 Sep live dump plus migrations 42 and 43). **Not pushed yet**: migration 43

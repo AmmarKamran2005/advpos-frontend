@@ -1,5 +1,6 @@
 "use client";
 
+import { usePageRefresh } from "@/lib/page-refresh";
 import * as React from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -7,7 +8,7 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import axios from "axios";
 import {
-  Save, ArrowLeft, Loader2, Banknote, Landmark, Smartphone, ArrowDownToLine,
+  Save, ArrowLeft, Loader2, Banknote, Landmark, ArrowDownToLine,
   ArrowUpFromLine, FileText, Search, AlertCircle, CheckCircle2,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
@@ -74,9 +75,15 @@ function apiMessage(e: unknown, fallback: string) {
 const TYPE_ICON: Record<string, typeof Banknote> = {
   CR: ArrowDownToLine, CP: ArrowUpFromLine,
   BR: Landmark, BP: Landmark,
-  WR: Smartphone, WP: Smartphone,
   JV: FileText,
 };
+
+/* WALLET RECEIPT AND WALLET PAYMENT ARE GONE FROM THIS FORM (the owner, 21 Oct:
+   "remove the options of wallet receipts and wallet payments completely").
+   The two types stay in the database because two old wallet receipts point at
+   them and must still open; nothing new can be written as one, here or through
+   the API (AccountingController.CreateVoucher). */
+const RETIRED_TYPES = ["WR", "WP"];
 
 function initialsOf(name: string) {
   return name.split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase() ?? "").join("");
@@ -149,9 +156,10 @@ export default function NewVoucherPage() {
       const wantReceipt = search.get("type") === "receipt";
       const wantParty = Number(search.get("partyId") ?? 0);
 
+      const offered = res.data.voucherTypes.filter((t) => !RETIRED_TYPES.includes(t.code));
       const firstType = wantReceipt
-        ? res.data.voucherTypes.find((t) => t.isReceipt) ?? res.data.voucherTypes[0]
-        : res.data.voucherTypes[0];
+        ? offered.find((t) => t.isReceipt) ?? offered[0]
+        : offered[0];
       const cash = res.data.accounts.find((a) => !a.isGroup && a.type === "Cash & Bank");
       const methodList = res.data.receivingMethods?.length ? res.data.receivingMethods : res.data.paymentMethods;
       const cashMethod = methodList.find((m) => m.key === "CASH");
@@ -172,6 +180,8 @@ export default function NewVoucherPage() {
     }
   }, [reset, search]);
 
+  usePageRefresh(load);   // the top bar's Refresh button -- lib/page-refresh.ts
+
   React.useEffect(() => {
     void load();
   }, [load]);
@@ -185,6 +195,33 @@ export default function NewVoucherPage() {
   const isReceipt = type?.isReceipt ?? true;
   const isJournalVoucher = type?.code === "JV";
   const method = lookups?.paymentMethods.find((m) => m.id === methodId) ?? null;
+
+  /* The types this form offers -- every one but the two wallet vouchers. */
+  const voucherTypeChoices = React.useMemo(
+    () => (lookups?.voucherTypes ?? []).filter((t) => !RETIRED_TYPES.includes(t.code)),
+    [lookups]
+  );
+
+  /* The methods for this type. Money in is limited to the receiving methods;
+     a CASH RECEIPT drops "Credit" as well (the owner, 21 Oct) -- cash that has
+     been received is not credit, and a cash receipt marked Credit posts money
+     into the cash account that never arrived. The API refuses it too. */
+  const methodChoices = React.useMemo(() => {
+    const base = isReceipt && lookups?.receivingMethods?.length
+      ? lookups.receivingMethods
+      : lookups?.paymentMethods ?? [];
+    return type?.code === "CR" ? base.filter((m) => m.kind !== "credit") : base;
+  }, [lookups, isReceipt, type]);
+
+  /* Switching type can take the chosen method off the list (Credit, on moving
+     to Cash Receipt). Fall back to Cash, or the first one left, rather than
+     post with a method the dropdown no longer shows. */
+  React.useEffect(() => {
+    if (!lookups || methodChoices.length === 0) return;
+    if (!methodChoices.some((m) => m.id === methodId)) {
+      setValue("methodId", (methodChoices.find((m) => m.key === "CASH") ?? methodChoices[0]).id);
+    }
+  }, [methodChoices, methodId, lookups, setValue]);
   const party = lookups?.parties.find((p) => p.id === partyId) ?? null;
   const cashBankAccounts = React.useMemo(
     () => (lookups?.accounts ?? []).filter((a) => !a.isGroup && a.type === "Cash & Bank"),
@@ -376,7 +413,7 @@ export default function NewVoucherPage() {
                 <FormField control={form.control} name="voucherTypeId" render={({ field }) => (
                   <FormItem>
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                      {lookups?.voucherTypes.map((v) => {
+                      {voucherTypeChoices.map((v) => {
                         const Icon = TYPE_ICON[v.code] ?? Banknote;
                         const active = Number(field.value) === v.id;
                         return (
@@ -471,10 +508,7 @@ export default function NewVoucherPage() {
                   <FormField control={form.control} name="methodId" render={({ field }) => (
                     <FormItem><FormLabel required>Method</FormLabel><FormControl>
                       <SelectNative {...field}>
-                        {(isReceipt && lookups?.receivingMethods?.length
-                            ? lookups.receivingMethods
-                            : lookups?.paymentMethods ?? []
-                         ).map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+                        {methodChoices.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
                       </SelectNative>
                     </FormControl><FormMessage /></FormItem>
                   )} />

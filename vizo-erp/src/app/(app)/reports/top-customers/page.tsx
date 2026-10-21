@@ -1,5 +1,6 @@
 "use client";
 
+import { usePageRefresh } from "@/lib/page-refresh";
 import * as React from "react";
 import axios from "axios";
 import { Trophy, AlertCircle } from "lucide-react";
@@ -76,6 +77,8 @@ export default function TopCustomersPage() {
       setLoading(false);
     }
   }, [from, to]);
+
+  usePageRefresh(load);   // the top bar's Refresh button -- lib/page-refresh.ts
 
   React.useEffect(() => {
     /* eslint-disable-next-line react-hooks/set-state-in-effect --

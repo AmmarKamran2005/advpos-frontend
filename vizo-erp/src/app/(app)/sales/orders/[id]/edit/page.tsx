@@ -1,5 +1,6 @@
 "use client";
 
+import { usePageRefresh } from "@/lib/page-refresh";
 import * as React from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -64,7 +65,7 @@ import {
 
 type LookupProduct = {
   id: number; sku: string; name: string; imageUrl?: string | null; packing: number;
-  salePrice: number; costPrice: number; taxRatePercent: number; totalStock: number;
+  salePrice: number; costPrice: number; taxRatePercent: number; totalStock: number | null;
 };
 
 type Lookups = {
@@ -184,6 +185,8 @@ export default function EditOrderPage() {
       setLoading(false);
     }
   }, [id, form]);
+
+  usePageRefresh(load);   // the top bar's Refresh button -- lib/page-refresh.ts
 
   React.useEffect(() => {
     /* eslint-disable-next-line react-hooks/set-state-in-effect --
@@ -476,7 +479,7 @@ export default function EditOrderPage() {
                     products={lookups.products}
                     align="end"
                     onPick={(p) => addProduct(p)}
-                    detail={(p) => `${p.sku} · ${p.totalStock} in stock`}
+                    detail={(p) => (p.totalStock === null ? p.sku : `${p.sku} · ${p.totalStock} in stock`)}
                     right={(p) => formatMoney(p.salePrice)}
                     trigger={
                       <Button type="button" variant="accent" size="sm" className="gap-1.5 shrink-0">
