@@ -17,6 +17,7 @@ import { Badge, StatusPill } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { formatMoney, formatDate } from "@/lib/format";
 import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
+import { JournalLink } from "@/components/accounting/journal-link";
 
 /**
  * ONE EXPENSE, READ-ONLY -- kept for history.
@@ -209,13 +210,13 @@ export default function ExpenseDetailPage() {
           <CardBody>
             <h3 className="text-sm font-semibold text-navy-900 dark:text-white mb-3">Linked Journal Entry</h3>
             {e.entryId && e.entryNo ? (
-              <Link
-                href={`/accounting/journal-entries/${e.entryId}`}
+              <JournalLink
+                entryId={e.entryId}
                 className="block p-3 border border-slate-200 dark:border-navy-700 rounded-lg hover:bg-slate-50 dark:hover:bg-navy-700"
               >
                 <div className="tabular text-sm font-semibold text-navy-900 dark:text-white">{e.entryNo}</div>
                 <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">{e.categoryName} — {e.vendorName}</div>
-              </Link>
+              </JournalLink>
             ) : (
               <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
                 No entry yet. The ledger is written when the day sheet is approved.

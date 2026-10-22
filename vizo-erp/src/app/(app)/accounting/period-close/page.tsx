@@ -13,7 +13,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogBody, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "@/components/ui/toaster";
-import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
+import { API_BASE_URL, authHeader, useSession } from "@/components/providers/session-provider";
 import { formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -43,6 +43,7 @@ function apiMessage(e: unknown, fallback: string) {
 }
 
 export default function PeriodClosePage() {
+  const { role } = useSession();
   const [periods, setPeriods] = React.useState<Period[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
@@ -203,11 +204,14 @@ export default function PeriodClosePage() {
                   </div>
 
                   <div className="flex items-center gap-2 flex-shrink-0">
-                    <Button variant="ghost" size="sm" className="gap-1.5" asChild>
-                      <Link href={`/accounting/journal-entries?periodId=${p.id}`}>
-                        <Eye className="size-3.5" /> Entries
-                      </Link>
-                    </Button>
+                    {/* The journal is the Super Admin's (22 Oct). */}
+                    {role === "super-admin" && (
+                      <Button variant="ghost" size="sm" className="gap-1.5" asChild>
+                        <Link href={`/accounting/journal-entries?periodId=${p.id}`}>
+                          <Eye className="size-3.5" /> Entries
+                        </Link>
+                      </Button>
+                    )}
                     {p.isClosed ? (
                       <Button variant="ghost" size="sm" className="gap-1.5 text-warning"
                         onClick={() => setReopenTarget(p)} disabled={busy}>

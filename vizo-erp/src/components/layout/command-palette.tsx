@@ -236,7 +236,9 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
     { label: "Balance Sheet",     icon: BarChart3,       href: "/accounting/balance-sheet",      perm: "statements.view" },
     { label: "Reports",           icon: BarChart3,       href: "/reports",                       perm: "reports.view" },
     { label: "Settings",          icon: Settings,        href: "/admin/settings",                perm: "setup.manage" },
-  ] as (Action & { perm: string | null })[]).filter((a) => (a.perm === null || can(a.perm)) && matches(a, query));
+  ] as (Action & { perm: string | null })[]).filter((a) => (a.perm === null || can(a.perm)) && matches(a, query)
+    /* The journal is the Super Admin's (22 Oct), whatever rights a role holds. */
+    && (a.href !== "/accounting/journal-entries" || user?.role === "super-admin"));
 
   /* The question box first, because Ctrl+K is where people already go when
      they do not know which screen holds the answer. Then Quick Create, from

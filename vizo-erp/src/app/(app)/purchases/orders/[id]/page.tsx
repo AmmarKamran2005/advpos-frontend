@@ -18,6 +18,7 @@ import { ProductImage } from "@/components/products/product-image";
 import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
 import { formatMoney, formatDate, formatNumber } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { JournalLink } from "@/components/accounting/journal-link";
 
 /* GET /purchases/orders/{id}.
 
@@ -253,7 +254,7 @@ export default function PODetailPage() {
               ) : (
                 <div className="space-y-2">
                   {po.vouchers.map((v) => (
-                    <Link key={v.id} href={`/accounting/journal-entries/${v.id}`}
+                    <JournalLink key={v.id} entryId={v.id}
                       className="flex items-center gap-3 rounded-lg border border-slate-200 p-3 hover:bg-slate-50 dark:border-navy-700 dark:hover:bg-navy-700">
                       <FileText className="size-4 text-slate-400 shrink-0" />
                       <div className="min-w-0 flex-1">
@@ -262,7 +263,7 @@ export default function PODetailPage() {
                       </div>
                       <Badge variant={v.component === "GOODS" ? "info" : "accent"}>{PART_NAME[v.component] ?? v.component}</Badge>
                       <span className="tabular text-sm font-semibold w-28 text-right">{formatMoney(v.amount)}</span>
-                    </Link>
+                    </JournalLink>
                   ))}
                 </div>
               )}

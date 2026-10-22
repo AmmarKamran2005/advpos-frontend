@@ -212,7 +212,9 @@ export const navigation: NavNode[] = [
       { label: "Staff Ledgers",    href: "/ledgers/staff",              match: "accounting.staff-ledgers",    perms: ["ledger.view"] },
       { label: "Account List",     href: "/accounting/coa",             match: "accounting.coa",      perms: ["ledger.view"] },
       { label: "Ledgers",          href: "/accounting/ledgers",         match: "accounting.ledgers",  perms: ["ledger.view"] },
-      { label: "Manual Entries",   href: "/accounting/journal-entries", match: "accounting.je",       perms: ["ledger.manage"] },
+      /* The Super Admin's alone since 22 Oct -- the accountant holds
+         ledger.manage for the ledgers, not for the journal. */
+      { label: "Manual Entries",   href: "/accounting/journal-entries", match: "accounting.je",       perms: ["ledger.manage"], hideForRoles: ["accountant", "order-dept", "sales"] },
       /* It existed only as a link on a voucher; it is on the menu now that a
          statement can actually be started and loaded from it (E3, 27 Sep). */
       { label: "Bank Reconciliation", href: "/accounting/reconciliation", match: "accounting.recon", perms: ["ledger.manage"] },

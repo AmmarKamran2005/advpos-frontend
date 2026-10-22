@@ -66,6 +66,10 @@ const PUBLIC_PATHS = [
 const ROUTE_RULES: { prefix: string; pattern?: RegExp; roles: RoleKey[]; perm?: string }[] = [
   { prefix: "/admin", roles: ["super-admin"] },
 
+  /* The journal is the Super Admin's (the owner, 22 Oct: hidden from the
+     accountant "so they can't see JVs anywhere"). Listed before /accounting,
+     which would otherwise let the accountant in. The API refuses too. */
+  { prefix: "/accounting/journal-entries", roles: ["super-admin"] },
   { prefix: "/accounting", roles: ["super-admin", "accountant"] },
   /* Customer and Staff Ledgers -- money, by role, no permission escape hatch:
      the API refuses every other role on /ledgers (CustomerLedgerController,

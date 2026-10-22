@@ -30,6 +30,7 @@ import { formatMoney, formatDate } from "@/lib/format";
 import { toast } from "@/components/ui/toaster";
 import { cn } from "@/lib/utils";
 import { API_BASE_URL, authHeader, Can, useSession } from "@/components/providers/session-provider";
+import { JournalLink } from "@/components/accounting/journal-link";
 
 /* GET /accounting/vouchers/{id} */
 type Allocation = {
@@ -555,8 +556,8 @@ export default function VoucherDetailPage() {
                 <h3 className="text-base font-semibold text-navy-900 dark:text-white">Linked Journal Entry</h3>
               </div>
               {v.entryId && v.entryNo ? (
-                <Link
-                  href={`/accounting/journal-entries/${v.entryId}`}
+                <JournalLink
+                  entryId={v.entryId}
                   className="block p-3 border border-slate-200 dark:border-navy-700 rounded-lg hover:bg-slate-50 dark:hover:bg-navy-700"
                 >
                   <div className="flex items-center justify-between gap-2">
@@ -570,7 +571,7 @@ export default function VoucherDetailPage() {
                       {v.reversalEntryNo ? "Reversed" : "Posted"}
                     </Badge>
                   </div>
-                </Link>
+                </JournalLink>
               ) : (
                 <p className="text-xs text-slate-500 dark:text-slate-400">
                   No entry yet. The ledger is written when the voucher is posted —

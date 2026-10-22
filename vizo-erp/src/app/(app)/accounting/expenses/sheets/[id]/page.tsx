@@ -25,6 +25,7 @@ import {
   ExpenseGrid, isBlank, newRowKey, parseAmount, validateRow,
   type GridRow, type Head, type Method, type PaidFromAccount, type RowErrors, type Field,
 } from "../../_components/expense-grid";
+import { JournalLink } from "@/components/accounting/journal-link";
 
 /* GET /expense-sheets/{id} */
 type Line = {
@@ -710,21 +711,21 @@ function LedgerCard({ sheet: s, total }: { sheet: Sheet; total: number }) {
   if (s.entryId && s.entryNo) {
     return (
       <div className="space-y-2">
-        <Link
-          href={`/accounting/journal-entries/${s.entryId}`}
+        <JournalLink
+          entryId={s.entryId}
           className="flex items-center justify-between gap-2 p-3 rounded-lg border border-slate-200 dark:border-navy-700 hover:bg-slate-50 dark:hover:bg-navy-700"
         >
           <span className="tabular text-sm font-semibold text-navy-900 dark:text-white">{s.entryNo}</span>
           <span className="text-xs text-slate-500">one entry for the day</span>
-        </Link>
+        </JournalLink>
         {s.reversalEntryNo && s.reversalEntryId && (
-          <Link
-            href={`/accounting/journal-entries/${s.reversalEntryId}`}
+          <JournalLink
+            entryId={s.reversalEntryId}
             className="flex items-center justify-between gap-2 p-3 rounded-lg border border-danger/30 bg-danger/5 hover:bg-danger/10"
           >
             <span className="tabular text-sm font-semibold text-navy-900 dark:text-white">{s.reversalEntryNo}</span>
             <span className="text-xs text-danger">reversal</span>
-          </Link>
+          </JournalLink>
         )}
       </div>
     );
@@ -737,9 +738,9 @@ function LedgerCard({ sheet: s, total }: { sheet: Sheet; total: number }) {
         </p>
         <div className="flex flex-wrap gap-2">
           {s.perLineEntries.map((e) => (
-            <Link key={e.id} href={`/accounting/journal-entries/${e.id}`} className="tabular text-xs font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-navy-700 hover:bg-slate-50 dark:hover:bg-navy-700 text-navy-900 dark:text-white">
+            <JournalLink key={e.id} entryId={e.id} className="tabular text-xs font-semibold px-2 py-1 rounded-md border border-slate-200 dark:border-navy-700 hover:bg-slate-50 dark:hover:bg-navy-700 text-navy-900 dark:text-white">
               {e.no}{e.reversed && <span className="ml-1 font-normal text-danger">reversed</span>}
-            </Link>
+            </JournalLink>
           ))}
         </div>
       </div>
