@@ -29,7 +29,7 @@ import { ConfirmDialog } from "@/components/dialogs/confirm-dialog";
 import { formatMoney, formatDate } from "@/lib/format";
 import { toast } from "@/components/ui/toaster";
 import { cn } from "@/lib/utils";
-import { API_BASE_URL, authHeader, Can } from "@/components/providers/session-provider";
+import { API_BASE_URL, authHeader, Can, useSession } from "@/components/providers/session-provider";
 
 /* GET /accounting/vouchers/{id} */
 type Allocation = {
@@ -111,6 +111,7 @@ const STATUS_VARIANT: Record<string, "success" | "muted" | "warning" | "danger" 
 
 export default function VoucherDetailPage() {
   const params = useParams<{ id: string }>();
+  const { role } = useSession();
   const router = useRouter();
   const id = Number.parseInt(params.id ?? "", 10);
 
@@ -386,6 +387,8 @@ export default function VoucherDetailPage() {
                           {/* No wallet types, the same as the New Voucher form (the owner, 21 Oct). */}
                           {lookups?.voucherTypes
                             .filter((t) => t.code !== "WR" && t.code !== "WP")
+                            /* Receipts only, except for the Super Admin. */
+                            .filter((t) => role === "super-admin" || t.isReceipt)
                             .map((t) => <option key={t.id} value={t.id}>{t.code} — {t.name}</option>)}
                         </SelectNative>
                       </FormControl><FormMessage /></FormItem>

@@ -6,7 +6,7 @@ import Link from "next/link";
 import axios from "axios";
 import {
   Plus, Wallet, Landmark, Smartphone, ArrowDownToLine, ArrowUpFromLine,
-  FileText, AlertCircle, FileDown, Loader2,
+  FileText, AlertCircle, FileDown, Loader2, Table2,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
@@ -21,7 +21,7 @@ import { Pager } from "@/components/ui/pager";
 import { toast } from "@/components/ui/toaster";
 import { formatMoney, formatDate, formatCompact } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
+import { API_BASE_URL, authHeader, useSession } from "@/components/providers/session-provider";
 
 /* GET /accounting/vouchers
    -> { count, total, receiptTotal, paymentTotal, draftCount, page, pageSize,
@@ -134,6 +134,11 @@ export default function VouchersPage() {
   const [page, setPage] = React.useState(1);
   const [lookups, setLookups] = React.useState<VoucherLookups | null>(null);
 
+  /* Payments and journal vouchers are the Super Admin's (the owner, 22 Oct).
+     The API already lists only receipts for anybody else; the tabs follow. */
+  const { role } = useSession();
+  const seesPayments = role === "super-admin";
+
   React.useEffect(() => {
     /* Once, beside the list and never in front of it: until it answers the
        tabs show "All" alone and the list is already usable. */
@@ -143,8 +148,10 @@ export default function VouchersPage() {
   }, []);
 
   const types = React.useMemo(
-    () => [{ key: "", label: "All" }, ...(lookups?.voucherTypes ?? []).map((t) => ({ key: t.code, label: t.name }))],
-    [lookups]
+    () => [{ key: "", label: "All" }, ...(lookups?.voucherTypes ?? [])
+      .filter((t) => seesPayments || t.isReceipt)
+      .map((t) => ({ key: t.code, label: t.name }))],
+    [lookups, seesPayments]
   );
   const statusName = (key: string) => lookups?.postingStatuses.find((s) => s.key === key)?.name ?? key;
 
@@ -289,6 +296,11 @@ export default function VouchersPage() {
             <Button variant="secondary" size="md" className="gap-1.5" onClick={() => void exportXlsx()} disabled={exporting || data.count === 0}>
               {exporting ? <Loader2 className="size-4 animate-spin" /> : <FileDown />}
               <span>Export</span>
+            </Button>
+            {/* Many entries for one date, in a table -- the client's old
+                "Receipt Vouchers Book" (the owner, 22 Oct). */}
+            <Button variant="secondary" size="md" className="gap-1.5" asChild>
+              <Link href="/accounting/vouchers/table"><Table2 /><span>Table Entry</span></Link>
             </Button>
             <Button variant="accent" size="md" className="gap-1.5" asChild>
               <Link href="/accounting/vouchers/new"><Plus /><span>New Voucher</span></Link>
