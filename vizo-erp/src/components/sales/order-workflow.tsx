@@ -19,6 +19,14 @@ import {
 import { API_BASE_URL, authHeader, useSession } from "@/components/providers/session-provider";
 import { toast } from "@/components/ui/toaster";
 import { cn } from "@/lib/utils";
+import { fetchOrderStock, OrderStockTable, shortAt, type OrderStock } from "./order-stock";
+
+/* The steps that put an order on the confirmed part of the chain, and the ones
+   it is already there from. Moving into the first from anywhere outside the
+   second is a CONFIRMATION, and asks the stock question first (the owner,
+   21 Oct) -- the API asks it too (SalesController.SetOrderStatus). */
+const CONFIRMING_STEPS = ["CONFIRMED", "INVOICED", "AT_ORDER_DEPT"];
+const ALREADY_CONFIRMED = [...CONFIRMING_STEPS, "DISPATCHED", "DELIVERED"];
 
 /* ───────────────────────────────────────────────────────────────────────────
    THE ORDER'S JOURNEY, AND WHO MAY MOVE IT
@@ -174,6 +182,25 @@ export function OrderWorkflowActions({
   const [placeId, setPlaceId] = React.useState(0);
   const [shortages, setShortages] = React.useState<Shortage[]>([]);
 
+  /* CONFIRM SHOWS THE STOCK FIRST (the owner, 21 Oct): each item's quantity at
+     Shop 2, the Warehouse and the Order Department beside what was ordered.
+     Accounts reads it and then confirms; the Order Department must cover the
+     order, because that is where it is packed from -- if it does not, the stock
+     is moved there first. `confirmFor` is the step being moved to. */
+  const [confirmFor, setConfirmFor] = React.useState<{ key: string; name: string } | null>(null);
+  const [stock, setStock] = React.useState<OrderStock | null>(null);
+  const [stockError, setStockError] = React.useState<string | null>(null);
+
+  const loadStock = React.useCallback(async () => {
+    setStock(null);
+    setStockError(null);
+    try {
+      setStock(await fetchOrderStock(orderId));
+    } catch (e) {
+      setStockError(apiMessage(e, "Could not read the stock."));
+    }
+  }, [orderId]);
+
   const move = React.useCallback(
     async (statusKey: string, reason?: string, locationId?: number) => {
       setWorking(true);
@@ -185,6 +212,7 @@ export function OrderWorkflowActions({
         );
         toast.success("Order updated", { description: res.data.message });
         setDispatchOpen(false);
+        setConfirmFor(null);
         setShortages([]);
         await onChanged();
       } catch (e) {
@@ -210,6 +238,9 @@ export function OrderWorkflowActions({
   const openDispatch = React.useCallback(async () => {
     setShortages([]);
     setDispatchOpen(true);
+    /* What each place holds, so the desk sees it before sending (the owner,
+       21 Oct). Read fresh on every opening -- stock moves. */
+    void loadStock();
     if (places) return;
     try {
       const res = await axios.get<{ locations: Place[] }>(
@@ -220,7 +251,37 @@ export function OrderWorkflowActions({
     } catch (e) {
       toast.error("Could not load the places", { description: apiMessage(e, "Please try again.") });
     }
-  }, [places]);
+  }, [places, loadStock]);
+
+  /** Any step, pressed from the button or the menu. */
+  const go = React.useCallback((key: string, name: string) => {
+    if (key === "DISPATCHED") { void openDispatch(); return; }
+    if (workflow && CONFIRMING_STEPS.includes(key) && !ALREADY_CONFIRMED.includes(workflow.current)) {
+      setShortages([]);
+      setConfirmFor({ key, name });
+      void loadStock();
+      return;
+    }
+    void move(key);
+  }, [workflow, openDispatch, loadStock, move]);
+
+  /* "There is not enough there" is said BEFORE anything is sent: the stock
+     table already knows, so the desk is told at once which place cannot do it
+     and by how much. The API still checks, in case the shelf moved meanwhile. */
+  function dispatchFromHere() {
+    if (stock) {
+      const short = shortAt(stock, placeId);
+      if (short.length > 0) {
+        setShortages(short);
+        const place = places?.find((p) => p.id === placeId)?.name ?? "this place";
+        toast.error(`Cannot dispatch from ${place}`, {
+          description: `There is not enough stock there for ${short.length} ${short.length === 1 ? "item" : "items"} on ${orderNo}.`,
+        });
+        return;
+      }
+    }
+    void move("DISPATCHED", undefined, placeId);
+  }
 
   async function destroy() {
     setWorking(true);
@@ -254,7 +315,7 @@ export function OrderWorkflowActions({
           variant="accent"
           size="md"
           className="gap-1.5"
-          onClick={() => (workflow.next === "DISPATCHED" ? void openDispatch() : void move(workflow.next!))}
+          onClick={() => go(workflow.next!, workflow.nextName ?? workflow.next!)}
           disabled={disabled}
         >
           {disabled ? <Loader2 className="size-4 animate-spin" />
@@ -289,7 +350,7 @@ export function OrderWorkflowActions({
               .filter((a) => a.key !== "DECLINED")
               .map((a) => (
                 <DropdownMenuItem key={a.key}
-                  onClick={() => (a.key === "DISPATCHED" ? void openDispatch() : void move(a.key))}>
+                  onClick={() => go(a.key, a.name)}>
                   <span
                     className={cn(
                       "inline-flex size-5 rounded-full items-center justify-center text-2xs font-bold",
@@ -411,6 +472,19 @@ export function OrderWorkflowActions({
               </div>
             )}
 
+            {/* What each place holds of every item -- the column for the place
+                picked above is the one that must cover the order. */}
+            {places && places.length > 0 && (
+              <div className="mt-3">
+                <div className="text-2xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
+                  Stock of each item
+                </div>
+                {stock ? <OrderStockTable stock={stock} watch={[placeId]} />
+                  : stockError ? <p className="text-xs text-danger">{stockError}</p>
+                  : <div className="h-20 rounded-lg bg-slate-100 dark:bg-navy-800 animate-pulse" />}
+              </div>
+            )}
+
             {shortages.length > 0 && (
               <div className="mt-3 rounded-lg border border-danger/40 bg-danger/5 p-3">
                 <div className="flex items-center gap-2 text-sm font-semibold text-danger">
@@ -434,9 +508,81 @@ export function OrderWorkflowActions({
           <DialogFooter>
             <Button variant="ghost" onClick={() => setDispatchOpen(false)}>Cancel</Button>
             <Button variant="accent" className="gap-1.5" disabled={working || !placeId}
-              onClick={() => void move("DISPATCHED", undefined, placeId)}>
+              onClick={dispatchFromHere}>
               {working ? <Loader2 className="size-4 animate-spin" /> : <Truck />}
               Dispatch from here
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* CONFIRM, WITH THE STOCK IN FRONT OF YOU. */}
+      <Dialog open={confirmFor !== null} onOpenChange={(o) => { if (!o) { setConfirmFor(null); setShortages([]); } }}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>
+              {confirmFor?.key === "CONFIRMED" ? `Confirm ${orderNo}?` : `Move ${orderNo} to ${confirmFor?.name}?`}
+            </DialogTitle>
+            <DialogDescription>
+              Each item&apos;s stock at every place, beside what was ordered. The order department must
+              have enough of every item &mdash; it is packed from there. If it is short, move the stock
+              there first, then confirm.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="px-5 pb-1 space-y-3">
+            {stock ? (
+              <>
+                <OrderStockTable stock={stock}
+                  watch={stock.places.filter((p) => p.kind === "department").map((p) => p.id)} />
+                {stock.orderDeptCovers ? (
+                  <p className="text-xs text-success flex items-center gap-1.5">
+                    <CheckCircle2 className="size-4" /> The order department has enough of every item.
+                  </p>
+                ) : (
+                  <div className="rounded-lg border border-danger/40 bg-danger/5 p-3">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-danger">
+                      <AlertCircle className="size-4" />
+                      The order department is short
+                    </div>
+                    <ul className="mt-1.5 space-y-0.5">
+                      {stock.lines.filter((l) => l.orderDeptShort > 0).map((l) => (
+                        <li key={l.productId} className="text-2xs tabular text-danger-dark dark:text-danger-light">
+                          {l.name}: ordered {l.ordered}, order department has {l.orderDept} &mdash; short {l.orderDeptShort}
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="text-2xs text-slate-500 dark:text-slate-400 mt-2">
+                      Transfer the stock to the order department, then confirm.
+                    </p>
+                  </div>
+                )}
+              </>
+            ) : stockError ? (
+              <p className="text-sm text-danger">{stockError}</p>
+            ) : (
+              <div className="space-y-2">
+                <div className="h-10 rounded-lg bg-slate-100 dark:bg-navy-800 animate-pulse" />
+                <div className="h-10 rounded-lg bg-slate-100 dark:bg-navy-800 animate-pulse" />
+              </div>
+            )}
+
+            {/* The API's own refusal, if the shelf moved while this was open. */}
+            {shortages.length > 0 && stock?.orderDeptCovers && (
+              <p className="text-xs text-danger">
+                The stock changed while this was open. {shortages.map((sh) => `${sh.name}: short ${sh.shortBy}`).join("; ")}.
+              </p>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setConfirmFor(null)}>Cancel</Button>
+            <Button variant="ghost" onClick={() => void loadStock()} disabled={working}>Refresh stock</Button>
+            <Button variant="accent" className="gap-1.5"
+              disabled={working || !stock || !stock.orderDeptCovers}
+              onClick={() => confirmFor && void move(confirmFor.key)}>
+              {working ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 />}
+              {confirmFor?.key === "CONFIRMED" ? "Confirm order" : `Move to ${confirmFor?.name}`}
             </Button>
           </DialogFooter>
         </DialogContent>

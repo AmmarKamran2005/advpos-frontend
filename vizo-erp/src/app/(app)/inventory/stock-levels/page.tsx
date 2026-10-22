@@ -1,5 +1,6 @@
 "use client";
 
+import { usePageRefresh } from "@/lib/page-refresh";
 import * as React from "react";
 import Link from "next/link";
 import axios from "axios";
@@ -31,7 +32,8 @@ type StockRow = {
   packing: number;
   minQty: number;
   maxQty: number;
-  costPrice: number;
+  /** Super Admin only (26 Sep); null for everyone else. */
+  costPrice: number | null;
   locationId: number;
   locationCode: string;
   locationName: string;
@@ -49,6 +51,9 @@ type CityStock = { cityId: number; city: string; units: number; value: number; l
 
 type StockResponse = {
   totalValue: number;
+  /** "cost" for the Super Admin; "sale" (selling price) for everyone else. */
+  /** "none" for the order desk, which is shown no money at all. */
+  valuedAt?: "cost" | "sale" | "none";
   totalUnits: number;
   byCity: CityStock[];
   items: StockRow[];
@@ -67,7 +72,7 @@ type PivotRow = {
   sku: string;
   name: string;
   minQty: number;
-  costPrice: number;
+  costPrice: number | null;
   totalStock: number;
   value: number;
   status: "out" | "low" | "over" | "ok";
@@ -102,6 +107,7 @@ export default function StockLevelsPage() {
   const [locations, setLocations] = React.useState<LocationRef[]>([]);
   const [byCity, setByCity] = React.useState<CityStock[]>([]);
   const [totals, setTotals] = React.useState({ totalValue: 0, totalUnits: 0 });
+  const [valuedAt, setValuedAt] = React.useState<"cost" | "sale" | "none">("cost");
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [search, setSearch] = React.useState("");
@@ -123,6 +129,7 @@ export default function StockLevelsPage() {
       ]);
       setRows(stock.data.items);
       setTotals({ totalValue: stock.data.totalValue, totalUnits: stock.data.totalUnits });
+      setValuedAt(stock.data.valuedAt ?? "cost");
       setByCity(stock.data.byCity ?? []);
       setLocations(lookups.data.locations);
       setError(null);
@@ -132,6 +139,8 @@ export default function StockLevelsPage() {
       setLoading(false);
     }
   }, [cityId]);
+
+  usePageRefresh(load);   // the top bar's Refresh button -- lib/page-refresh.ts
 
   React.useEffect(() => {
     /* eslint-disable-next-line react-hooks/set-state-in-effect --
@@ -161,7 +170,10 @@ export default function StockLevelsPage() {
     for (const p of byProduct.values()) {
       p.status = p.totalStock <= 0 ? "out" : p.totalStock <= p.minQty ? "low" : "ok";
     }
-    return [...byProduct.values()].sort((a, b) => a.name.localeCompare(b.name));
+    /* Newest product first (ids are identity, so a higher id was created
+       later). The API returns name order because the transfer and adjustment
+       pickers read the same endpoint; this screen is a table, not a picker. */
+    return [...byProduct.values()].sort((a, b) => b.productId - a.productId);
   }, [rows]);
 
   const filtered = React.useMemo(() => {
@@ -247,13 +259,14 @@ export default function StockLevelsPage() {
       align: "right",
       cell: (r) => <span className="tabular text-xs text-slate-500 dark:text-slate-400">{r.minQty}</span>,
     },
-    {
+    /* No value column for the order desk: it is shown no money (valuedAt "none"). */
+    ...(valuedAt === "none" ? [] : [{
       key: "value",
       header: "Value",
-      align: "right",
+      align: "right" as const,
       sortable: true,
-      cell: (r) => <span className="tabular text-sm text-slate-600 dark:text-slate-300">{formatMoney(r.value)}</span>,
-    },
+      cell: (r: (typeof pivot)[number]) => <span className="tabular text-sm text-slate-600 dark:text-slate-300">{formatMoney(r.value)}</span>,
+    }]),
   ];
 
   return (
@@ -304,7 +317,9 @@ export default function StockLevelsPage() {
           loading={loading}
           value={totals.totalUnits.toLocaleString()}
         />
-        <Stat label="Stock value" loading={loading} value={formatCompact(totals.totalValue)} />
+        {valuedAt !== "none" && (
+          <Stat label={valuedAt === "sale" ? "Stock value (at sale price)" : "Stock value (at cost)"} loading={loading} value={formatCompact(totals.totalValue)} />
+        )}
         <Stat label="Low / Out" loading={loading} value={`${lowCount} / ${outCount}`} tone={outCount > 0 ? "text-danger" : "text-warning"} />
       </div>
 
@@ -327,7 +342,7 @@ export default function StockLevelsPage() {
             >
               <span className="font-semibold">{c.city}</span>
               <span className="tabular opacity-70"> &middot; {c.units.toLocaleString()} units</span>
-              <span className="tabular opacity-70"> &middot; {formatCompact(c.value)}</span>
+              {valuedAt !== "none" && <span className="tabular opacity-70"> &middot; {formatCompact(c.value)}</span>}
             </button>
           ))}
         </div>

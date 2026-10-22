@@ -1,5 +1,6 @@
 "use client";
 
+import { usePageRefresh } from "@/lib/page-refresh";
 import * as React from "react";
 import Link from "next/link";
 import { Plus, Phone, MapPin, AlertTriangle , FileText } from "lucide-react";
@@ -69,6 +70,13 @@ export default function CustomersPage() {
      than a filter on the list below. */
   const [tab, setTab] = React.useState<Tab>("all");
 
+  /* The order desk opens and reads customers but sees no money on them (the
+     owner, 26 September): no receivable, no limits, no statements, and not
+     the "at risk" view, which is built on what they owe. The API zeroes the
+     same figures for the role; this keeps the empty boxes off the screen. */
+  const { role } = useSession();
+  const noMoney = role === "order-dept";
+
   const [search, setSearch] = React.useState("");
   const [rows, setRows] = React.useState<Party[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -88,6 +96,8 @@ export default function CustomersPage() {
       setLoading(false);
     }
   }, []);
+
+  usePageRefresh(load);   // the top bar's Refresh button -- lib/page-refresh.ts
 
   React.useEffect(() => {
     /* eslint-disable-next-line react-hooks/set-state-in-effect --
@@ -113,7 +123,7 @@ export default function CustomersPage() {
   const totalAR = rows.reduce((s, p) => s + p.currentBalance, 0);
   const overLimit = rows.filter((p) => p.creditLimit > 0 && p.currentBalance > p.creditLimit);
 
-  const columns: Column<Party>[] = [
+  const allColumns: Column<Party>[] = [
     {
       key: "legalName",
       header: "Customer",
@@ -180,6 +190,9 @@ export default function CustomersPage() {
       ),
     },
   ];
+  const columns = noMoney
+    ? allColumns.filter((c) => c.key !== "currentBalance" && c.key !== "statement")
+    : allColumns;
 
   return (
     <>
@@ -213,7 +226,7 @@ export default function CustomersPage() {
       <div className="flex items-center gap-1 mb-5 border-b border-slate-200 dark:border-navy-700">
         {([
           { key: "all", label: "All customers" },
-          { key: "at-risk", label: "At risk" },
+          ...(noMoney ? [] : [{ key: "at-risk", label: "At risk" }]),
         ] as { key: Tab; label: string }[]).map((t) => (
           <button
             key={t.key}
@@ -246,6 +259,7 @@ export default function CustomersPage() {
             {rows.filter((p) => p.isActive).length}
           </div>
         </Card>
+        {!noMoney && <>
         <Card className="p-4">
           <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">
             Total Receivable
@@ -276,6 +290,7 @@ export default function CustomersPage() {
             <AlertTriangle className="size-5 text-warning" />
           </div>
         </Card>
+        </>}
       </div>
 
       <FilterBar

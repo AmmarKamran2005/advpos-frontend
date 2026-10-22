@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Calendar, Download, Printer, MapPin, Check, CloudUpload, Loader2 } from "lucide-react";
+import { Calendar, Download, Printer, MapPin, Check, CloudUpload, Loader2, FileSpreadsheet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Input } from "@/components/ui/input";
@@ -10,6 +10,8 @@ import axios from "axios";
 import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
 import { toast } from "@/components/ui/toaster";
 import { formatDate } from "@/lib/format";
+import { printPdf, downloadPdf } from "@/lib/documents";
+import { downloadXlsx, exportError } from "@/lib/export";
 import { cn } from "@/lib/utils";
 
 /* GET /parties/lookups -> locations. The list used to come from
@@ -52,6 +54,11 @@ export interface ReportToolbarProps {
   doc?: ReportDoc;
   /** Extra query the report needs -- days, minCoverDays, limit, accountId. */
   docParams?: Record<string, string | number | undefined | null>;
+  /**
+   * The report's .xlsx export, as an API path ("reports/sales-by-rep/export").
+   * Shows an Excel button; the file carries the same filters as the PDF.
+   */
+  exportPath?: string;
 }
 
 const PRESETS = [
@@ -86,11 +93,12 @@ function applyPreset(preset: typeof PRESETS[number]): { from: string; to: string
 
 export function ReportToolbar({
   mode, reportName, asOfDate, onAsOfChange, fromDate, toDate, onRangeChange, locationId, onLocationChange,
-  doc, docParams,
+  doc, docParams, exportPath,
 }: ReportToolbarProps) {
   const [datePickerOpen, setDatePickerOpen] = React.useState(false);
   const [locationOpen, setLocationOpen] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
+  const [busy, setBusy] = React.useState<"print" | "pdf" | "xlsx" | null>(null);
   const [storedUrl, setStoredUrl] = React.useState<string | null>(null);
   const [locations, setLocations] = React.useState<ToolbarLocation[]>([]);
 
@@ -157,16 +165,52 @@ export function ReportToolbar({
     return p.toString();
   }
 
-  function pdfUrl() {
+  /** The PDF's API path, without the base URL -- what printPdf/downloadPdf take. */
+  function pdfPath() {
     const base = doc!.family === "report" ? "reports" : "accounting";
     const q = query();
-    return `${API_BASE_URL}/${base}/${doc!.key}/pdf${q ? `?${q}` : ""}`;
+    return `/${base}/${doc!.key}/pdf${q ? `?${q}` : ""}`;
   }
 
-  /** Opens the real A4 document the API renders, not the web page. */
-  function openPdf() {
+  function pdfUrl() {
+    return `${API_BASE_URL}${pdfPath()}`;
+  }
+
+  /* PRINT AND PDF FETCH THE FILE WITH THE AUTH HEADER (27 Sep, round E).
+     Both used to window.open() the API URL -- a plain navigation, which
+     carries cookies but no bearer token, so every report opened a 401 page
+     (HANDOFF trap 14). printPdf/downloadPdf in lib/documents.ts fetch it as a
+     blob first, the way every document screen already does. */
+  async function printReport() {
     if (!doc) { window.print(); return; }
-    window.open(pdfUrl(), "_blank", "noopener,noreferrer");
+    setBusy("print");
+    const ok = await printPdf(pdfPath());
+    setBusy(null);
+    if (!ok) toast.error("Could not open the report for printing", { description: "Please try again." });
+  }
+
+  async function downloadReport() {
+    if (!doc) return;
+    setBusy("pdf");
+    const stamp = mode === "asOf" ? asOfDate ?? "" : `${fromDate ?? ""}-to-${toDate ?? ""}`;
+    const name = `${reportName.toLowerCase().replace(/[^a-z0-9]+/g, "-")}${stamp ? `-${stamp}` : ""}.pdf`;
+    const ok = await downloadPdf(pdfPath(), name);
+    setBusy(null);
+    if (!ok) toast.error("Could not download the report", { description: "Please try again." });
+  }
+
+  async function exportSheet() {
+    if (!exportPath) return;
+    setBusy("xlsx");
+    try {
+      const params: Record<string, string> = {};
+      new URLSearchParams(query()).forEach((v, k) => { params[k] = v; });
+      await downloadXlsx(exportPath, params, `${reportName}.xlsx`);
+    } catch (e) {
+      toast.error("Could not export", { description: await exportError(e) });
+    } finally {
+      setBusy(null);
+    }
   }
 
   /** Renders it and pushes it to the documents Cloudinary account. */
@@ -283,15 +327,22 @@ export function ReportToolbar({
       )}
 
       {/* Print — the A4 document the API renders, with the filters applied */}
-      <Button variant="secondary" size="md" className="gap-1.5" onClick={openPdf}>
-        <Printer />
+      <Button variant="secondary" size="md" className="gap-1.5" onClick={() => void printReport()} disabled={busy === "print"}>
+        {busy === "print" ? <Loader2 className="size-4 animate-spin" /> : <Printer />}
         <span className="hidden sm:inline">Print</span>
       </Button>
 
+      {exportPath && (
+        <Button variant="secondary" size="md" className="gap-1.5" onClick={() => void exportSheet()} disabled={busy === "xlsx"}>
+          {busy === "xlsx" ? <Loader2 className="size-4 animate-spin" /> : <FileSpreadsheet />}
+          <span className="hidden sm:inline">Excel</span>
+        </Button>
+      )}
+
       {doc && (
         <>
-          <Button variant="secondary" size="md" className="gap-1.5" onClick={openPdf}>
-            <Download />
+          <Button variant="secondary" size="md" className="gap-1.5" onClick={() => void downloadReport()} disabled={busy === "pdf"}>
+            {busy === "pdf" ? <Loader2 className="size-4 animate-spin" /> : <Download />}
             <span className="hidden sm:inline">PDF</span>
           </Button>
 

@@ -1,5 +1,6 @@
 "use client";
 
+import { usePageRefresh } from "@/lib/page-refresh";
 import * as React from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -24,7 +25,11 @@ import { cn } from "@/lib/utils";
    lines. `delta` and `costPrice` are computed by the API. */
 type AdjLine = {
   id: number; lineNo: number; productId: number; sku: string; name: string;
-  currentQty: number; newQty: number; delta: number; costPrice: number;
+  currentQty: number; newQty: number; delta: number;
+  /* Cost reaches the Super Admin only (26 Sep); unitValue is the price the
+     change is valued at for whoever is looking -- cost for him, the selling
+     price for everyone else. */
+  costPrice: number | null; unitValue: number;
 };
 
 type Adjustment = {
@@ -73,6 +78,8 @@ export default function AdjustmentDetailPage() {
     }
   }, [id]);
 
+  usePageRefresh(load);   // the top bar's Refresh button -- lib/page-refresh.ts
+
   React.useEffect(() => {
     /* eslint-disable-next-line react-hooks/set-state-in-effect --
        The brief for this project is axios inside the page driven by
@@ -118,7 +125,7 @@ export default function AdjustmentDetailPage() {
   const netDelta = adj.lines.reduce((s, l) => s + l.delta, 0);
   const added = adj.lines.filter((l) => l.delta > 0).reduce((s, l) => s + l.delta, 0);
   const removed = adj.lines.filter((l) => l.delta < 0).reduce((s, l) => s + Math.abs(l.delta), 0);
-  const valueDelta = adj.lines.reduce((s, l) => s + l.delta * l.costPrice, 0);
+  const valueDelta = adj.lines.reduce((s, l) => s + l.delta * l.unitValue, 0);
 
   return (
     <>
@@ -198,7 +205,7 @@ export default function AdjustmentDetailPage() {
                       </span>
                     </td>
                     <td className={cn("px-4 py-3 text-right tabular text-sm", l.delta >= 0 ? "text-slate-600 dark:text-slate-300" : "text-danger")}>
-                      {formatMoney(l.delta * l.costPrice)}
+                      {formatMoney(l.delta * l.unitValue)}
                     </td>
                   </tr>
                 ))}

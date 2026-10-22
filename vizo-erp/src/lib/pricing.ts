@@ -1,38 +1,40 @@
 /**
  * ─────────────────────────────────────────────────────────────────────────────
- * Product pricing: cost + duty + margin = sale
+ * Product pricing: five boxes, added up
  * ─────────────────────────────────────────────────────────────────────────────
  *
- *   cost price  +  duty       =  landed cost
- *   landed cost +  margin     =  sale price
- *   margin %    =  margin / landed cost × 100
+ *   Cost  +  Duty  +  Fi Sabilillah  +  Margin 1  +  Margin 2  =  Sale price
  *
- * The margin PERCENTAGE is on the landed cost — cost AND duty — never on the
- * sale price. Enter cost 200, duty 50, margin 20 %: the margin is 50, the sale
- * price 300. That is the rule as it was given, and the API computes the same
- * figure (InventoryController.MarginPercent), so the number on the product
- * list and the number the person typed are always the same number.
+ * The owner's rule (26 Sep 2026): "yeh tamam ke tamam prices ... plus honge aur
+ * ek Sale Price nikal ke aayegi". No percentage anywhere -- the Margin % box
+ * was removed on the same day. Every part is an amount in PKR per unit, never
+ * negative, and the sale price is only ever their sum: the API works it out
+ * again on save (InventoryController, PurchasesController) and does not take
+ * one from the browser.
  *
- * WHICH FIELD LEADS. The person can type the margin as an amount, as a
- * percentage, or type the sale price outright. Whichever they typed last is
- * held still when cost or duty changes, and the other two follow:
- *
- *   typed the amount      -> cost goes up, the amount stays, % and sale move
- *   typed the percentage  -> cost goes up, the % stays, amount and sale move
- *   typed the sale price  -> cost goes up, the sale stays, the margin shrinks
- *
- * which is what a shopkeeper means by each of the three.
+ * The same five parts live on every purchase-order line and on every stock lot,
+ * which is what lets a new purchase be averaged against what is left of the old
+ * ones -- see weightedAverage() below and PurchasesController.CreatePurchaseOrder,
+ * which does the identical arithmetic when the order is saved.
  */
 
-export type PricingLead = "price" | "percent" | "sale";
-
-export type Pricing = {
+export type PriceParts = {
   cost: number;
   duty: number;
-  marginPrice: number;
-  marginPercent: number;
-  sale: number;
+  fs: number;
+  margin1: number;
+  margin2: number;
 };
+
+export const PART_LABELS: Record<keyof PriceParts, string> = {
+  cost: "Cost price",
+  duty: "Duty",
+  fs: "Fi Sabilillah",
+  margin1: "Margin 1",
+  margin2: "Margin 2",
+};
+
+export const PART_KEYS: (keyof PriceParts)[] = ["cost", "duty", "fs", "margin1", "margin2"];
 
 /** Money to the paisa, half away from zero — the way the API rounds. */
 export function round2(n: number): number {
@@ -41,49 +43,34 @@ export function round2(n: number): number {
   return (sign * Math.round(Math.abs(n) * 100 + Number.EPSILON)) / 100;
 }
 
-const num = (v: unknown) => {
+export const num = (v: unknown) => {
   const n = typeof v === "number" ? v : parseFloat(String(v ?? ""));
   return Number.isFinite(n) ? n : 0;
 };
 
+/** Cost plus duty: what one unit really costs to have on the shelf. */
 export function landedCost(cost: unknown, duty: unknown): number {
   return round2(num(cost) + num(duty));
 }
 
-/** Margin as a percentage of landed cost; 0 when there is no cost to measure against. */
-export function marginPercentOf(cost: unknown, duty: unknown, marginPrice: unknown): number {
-  const base = landedCost(cost, duty);
-  return base > 0 ? round2((num(marginPrice) / base) * 100) : 0;
+/** The sale price a set of parts adds up to. */
+export function saleOf(p: Partial<Record<keyof PriceParts, unknown>>): number {
+  return round2(PART_KEYS.reduce((s, k) => s + num(p[k]), 0));
 }
 
 /**
- * Re-derive the two fields that did NOT lead from the one that did.
- * Everything comes back rounded to the paisa.
+ * The quantity-weighted average of several lots, part by part. The owner's
+ * example: 10 left at 1,400 and 50 new at 2,000 average to 1,900 —
+ * (10 × 1,400 + 50 × 2,000) / 60. A lot with nothing left weighs nothing.
  */
-export function reprice(
-  input: { cost: unknown; duty: unknown; marginPrice: unknown; marginPercent: unknown; sale: unknown },
-  lead: PricingLead,
-): Pricing {
-  const cost = round2(num(input.cost));
-  const duty = round2(num(input.duty));
-  const base = round2(cost + duty);
-
-  if (lead === "percent") {
-    const marginPercent = round2(num(input.marginPercent));
-    const marginPrice = round2((base * marginPercent) / 100);
-    return { cost, duty, marginPrice, marginPercent, sale: round2(base + marginPrice) };
-  }
-
-  if (lead === "sale") {
-    const sale = round2(num(input.sale));
-    const marginPrice = round2(sale - base);
-    return { cost, duty, marginPrice, marginPercent: marginPercentOf(cost, duty, marginPrice), sale };
-  }
-
-  const marginPrice = round2(num(input.marginPrice));
-  return {
-    cost, duty, marginPrice,
-    marginPercent: marginPercentOf(cost, duty, marginPrice),
-    sale: round2(base + marginPrice),
-  };
+export function weightedAverage(lots: { qty: number; parts: PriceParts }[]): PriceParts & { units: number; sale: number } {
+  const counted = lots.filter((l) => l.qty > 0);
+  const units = counted.reduce((s, l) => s + l.qty, 0);
+  const avg = (k: keyof PriceParts) =>
+    units > 0 ? round2(counted.reduce((s, l) => s + l.qty * l.parts[k], 0) / units) : 0;
+  const parts = { cost: avg("cost"), duty: avg("duty"), fs: avg("fs"), margin1: avg("margin1"), margin2: avg("margin2") };
+  /* The average SALE is taken whole (1,900), not as the sum of the rounded
+     parts (1,899.99); Margin 1 absorbs the paisa, exactly as the API does. */
+  const sale = units > 0 ? round2(counted.reduce((s, l) => s + l.qty * saleOf(l.parts), 0) / units) : 0;
+  return { ...parts, margin1: round2(parts.margin1 + sale - saleOf(parts)), units, sale };
 }

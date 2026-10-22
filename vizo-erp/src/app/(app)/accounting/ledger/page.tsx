@@ -266,7 +266,6 @@ export default function LedgerPage() {
             <span className="text-slate-500 dark:text-slate-400">Other reports:</span>
             <div className="flex items-center gap-3 flex-wrap">
               <Link href="/accounting/ledgers" className="text-brand-yellow hover:underline">All ledgers</Link>
-              <Link href="/accounting/trial-balance" className="text-brand-yellow hover:underline">Trial Balance</Link>
               <Link href="/accounting/profit-loss" className="text-brand-yellow hover:underline">P&amp;L</Link>
               <Link href="/accounting/balance-sheet" className="text-brand-yellow hover:underline">Balance Sheet</Link>
               <Link href="/accounting/cash-flow" className="text-brand-yellow hover:underline">Cash Flow</Link>

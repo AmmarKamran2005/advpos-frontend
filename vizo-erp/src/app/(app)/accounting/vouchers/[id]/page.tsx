@@ -1,5 +1,6 @@
 "use client";
 
+import { usePageRefresh } from "@/lib/page-refresh";
 import * as React from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -165,6 +166,8 @@ export default function VoucherDetailPage() {
       setLoading(false);
     }
   }, [id, reset]);
+
+  usePageRefresh(load);   // the top bar's Refresh button -- lib/page-refresh.ts
 
   React.useEffect(() => {
     /* eslint-disable-next-line react-hooks/set-state-in-effect --
@@ -380,7 +383,10 @@ export default function VoucherDetailPage() {
                     <FormField control={form.control} name="voucherTypeId" render={({ field }) => (
                       <FormItem><FormLabel required>Type</FormLabel><FormControl>
                         <SelectNative {...field}>
-                          {lookups?.voucherTypes.map((t) => <option key={t.id} value={t.id}>{t.code} — {t.name}</option>)}
+                          {/* No wallet types, the same as the New Voucher form (the owner, 21 Oct). */}
+                          {lookups?.voucherTypes
+                            .filter((t) => t.code !== "WR" && t.code !== "WP")
+                            .map((t) => <option key={t.id} value={t.id}>{t.code} — {t.name}</option>)}
                         </SelectNative>
                       </FormControl><FormMessage /></FormItem>
                     )} />
@@ -407,7 +413,11 @@ export default function VoucherDetailPage() {
                     <FormField control={form.control} name="methodId" render={({ field }) => (
                       <FormItem><FormLabel required>Method</FormLabel><FormControl>
                         <SelectNative {...field}>
-                          {lookups?.paymentMethods.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+                          {/* A cash receipt never takes "Credit" -- the API refuses it too. */}
+                          {lookups?.paymentMethods
+                            .filter((m) => !(m.kind === "credit" &&
+                              lookups.voucherTypes.find((t) => t.id === Number(form.watch("voucherTypeId")))?.code === "CR"))
+                            .map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
                         </SelectNative>
                       </FormControl><FormMessage /></FormItem>
                     )} />

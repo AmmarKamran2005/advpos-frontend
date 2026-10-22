@@ -67,6 +67,10 @@ const ROUTE_RULES: { prefix: string; pattern?: RegExp; roles: RoleKey[]; perm?: 
   { prefix: "/admin", roles: ["super-admin"] },
 
   { prefix: "/accounting", roles: ["super-admin", "accountant"] },
+  /* Customer and Staff Ledgers -- money, by role, no permission escape hatch:
+     the API refuses every other role on /ledgers (CustomerLedgerController,
+     StaffLedgerController), and the order desk must see no money at all. */
+  { prefix: "/ledgers", roles: ["super-admin", "accountant"] },
 
   { prefix: "/sales/credit-holds", roles: ["super-admin", "accountant"] },
   { prefix: "/sales/direct", roles: ["super-admin", "order-dept"] },
@@ -95,9 +99,13 @@ const ROUTE_RULES: { prefix: string; pattern?: RegExp; roles: RoleKey[]; perm?: 
      on purpose: the API refuses the order-dept role on every purchases endpoint
      (PurchasesController), so ticking a permission for them in Setup would open
      a screen whose every call answers 403. "Never" is a rule about the job. */
+  /* ...AND, SINCE 26 SEP, NOT THE ACCOUNTANT'S. The owner: "koi bhi
+     purchases ki koi bhi cheez, koi bhi item kitne mein khareeda hai ...
+     kisi bhi role ko nahi dikhni chahiye". The Super Admin alone; the
+     accountant keeps what suppliers are owed on the Suppliers screen. */
   {
     prefix: "/purchases",
-    roles: ["super-admin", "accountant"],
+    roles: ["super-admin"],
   },
 
   /* THE ITEM CATALOGUE, CATEGORIES AND BRANDS -- not the order desk's either.
@@ -151,6 +159,15 @@ const ROUTE_RULES: { prefix: string; pattern?: RegExp; roles: RoleKey[]; perm?: 
   { prefix: "/parties/suppliers", roles: ["super-admin", "accountant"] },
   { prefix: "/parties", roles: ALL },
 
+  /* The reports built on 27 Sep (round E). By role, no permission escape
+     hatch -- the API refuses everybody else on each of them: Purchase Summary
+     is purchase prices (the Super Admin's alone, 26 Sep), the Supplier Ledger
+     is what suppliers are billed and paid (Super Admin and accountant), and the
+     two sales reports are money the order desk does not see. */
+  { prefix: "/reports/purchase-summary", roles: ["super-admin"] },
+  { prefix: "/reports/supplier-ledger", roles: ["super-admin", "accountant"] },
+  { prefix: "/reports/sales-by-rep", roles: ["super-admin", "accountant", "sales"] },
+  { prefix: "/reports/sales-by-product", roles: ["super-admin", "accountant", "sales"] },
   { prefix: "/reports", roles: ALL },
   { prefix: "/dashboard", roles: ALL },
   { prefix: "/profile", roles: ALL },

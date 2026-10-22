@@ -3,7 +3,7 @@
 import * as React from "react";
 import { Sidebar } from "./sidebar";
 import { TopBar } from "./top-bar";
-import { CommandPalette } from "./command-palette";
+import { GlobalShortcuts } from "./global-shortcuts";
 import { ShortcutSheet } from "./shortcut-sheet";
 import { SessionProvider, useSession } from "@/components/providers/session-provider";
 import { Toaster } from "@/components/ui/toaster";
@@ -79,15 +79,27 @@ function ShellBody({
   setMobileOpen: (open: boolean) => void;
   children: React.ReactNode;
 }) {
-  const { user, status } = useSession();
+  const { user, status, mustChangePassword } = useSession();
 
-  if (!user) {
+  /* Bumped by the top bar's Refresh button when the page on screen has no
+     reload of its own registered: a new key remounts the page, so all of its
+     fetches run again. See lib/page-refresh.ts. Kept here, the nearest common
+     parent of the button and the page, and it changes only on that click. */
+  const [refreshKey, setRefreshKey] = React.useState(0);
+
+  /* A temporary password is being replaced first (SessionProvider has already
+     sent the router to /setup) -- do not paint the app behind it. */
+  if (!user || mustChangePassword) {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-navy-900 flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
           <div className="size-8 border-2 border-slate-300 dark:border-navy-700 border-t-brand-yellow rounded-full animate-spin" />
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            {status === "unauthenticated" ? "Taking you to sign in…" : "Loading your workspace…"}
+            {status === "unauthenticated"
+              ? "Taking you to sign in…"
+              : mustChangePassword
+              ? "Taking you to choose your password…"
+              : "Loading your workspace…"}
           </p>
         </div>
       </div>
@@ -103,12 +115,17 @@ function ShellBody({
         onCloseMobile={() => setMobileOpen(false)}
       />
       <div className="flex-1 flex flex-col min-w-0">
-        <TopBar onOpenSidebar={() => setMobileOpen(true)} />
+        <TopBar
+          onOpenSidebar={() => setMobileOpen(true)}
+          onRemount={() => setRefreshKey((k) => k + 1)}
+        />
         <main className="flex-1 overflow-y-auto">
-          <div className="p-4 sm:p-6 max-w-[1600px] mx-auto w-full">{children}</div>
+          <div className="p-4 sm:p-6 max-w-[1600px] mx-auto w-full">
+            <React.Fragment key={refreshKey}>{children}</React.Fragment>
+          </div>
         </main>
       </div>
-      <CommandPalette />
+      <GlobalShortcuts />
       <ShortcutSheet />
       <Toaster />
     </div>

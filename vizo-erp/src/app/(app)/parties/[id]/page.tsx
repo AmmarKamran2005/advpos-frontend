@@ -1,5 +1,6 @@
 "use client";
 
+import { usePageRefresh } from "@/lib/page-refresh";
 import * as React from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -23,6 +24,8 @@ import { formatMoney, formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { PARTY_TAX, partyOrigin } from "@/lib/party-tax";
 import { openDocument, asAttachment } from "@/lib/documents";
+import { LogVisitSheet, VisitMapLink } from "@/components/parties/log-visit-sheet";
+import { CreditLimitDialog } from "@/components/parties/credit-limit-dialog";
 
 /* GET /parties/{id}. The whole page ran off getParty() in src/data/parties
    before, so a customer created on /parties/new opened a "not found" screen. */
@@ -68,9 +71,14 @@ type Statement = {
 
 type OrderRow = { id: number; orderNo: string; orderDate: string; statusName: string; total: number };
 type InvoiceRow = { id: number; invoiceNo: string; invoiceDate: string; statusName: string; total: number };
+/* GET /visits?customerId= (VisitsController) -- this customer's visits only,
+   and only if the caller may see them (a rep: his own customers). It used to
+   read every visit in the system and filter them here. */
 type VisitRow = {
   id: number; customerId: number; visitedAt: string;
   salesPerson: string | null; outcomeName: string | null; note: string | null;
+  nextFollowUp: string | null; followUpDue: boolean;
+  latitude: number | null; longitude: number | null; gpsAccuracyM: number | null;
 };
 
 const TYPE_LABEL: Record<Party["type"], { label: string; variant: "info" | "warning" | "accent" }> = {
@@ -90,18 +98,26 @@ export default function PartyDetailPage() {
   const params = useParams<{ id: string }>();
   const partyId = parseInt(params.id ?? "0", 10);
 
-  const { can } = useSession();
+  const { can, role } = useSession();
+  /* The order desk opens customers and reads their details -- and sees no
+     money on them (the owner, 26 September): no balance, limit, ledger or
+     statement. The API zeroes those figures for the role too. */
+  const noMoney = role === "order-dept";
+  const backOffice = role === "super-admin" || role === "accountant";
 
   const [party, setParty] = React.useState<Party | null>(null);
   const [statement, setStatement] = React.useState<Statement | null>(null);
   const [orders, setOrders] = React.useState<OrderRow[]>([]);
   const [invoices, setInvoices] = React.useState<InvoiceRow[]>([]);
   const [visits, setVisits] = React.useState<VisitRow[]>([]);
+  const [mayLogVisit, setMayLogVisit] = React.useState(false);
+  const [loggingVisit, setLoggingVisit] = React.useState(false);
   const [loading, setLoading] = React.useState(true);
   const [notFound, setNotFound] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [toggling, setToggling] = React.useState(false);
   const [rebuilding, setRebuilding] = React.useState(false);
+  const [settingLimit, setSettingLimit] = React.useState(false);
 
   const load = React.useCallback(async () => {
     if (!partyId) { setNotFound(true); setLoading(false); return; }
@@ -114,10 +130,13 @@ export default function PartyDetailPage() {
       /* The tabs are secondary: if one of them fails the header should still
          render, so they are settled separately from the party itself. */
       const [st, ord, inv, vis] = await Promise.allSettled([
-        axios.get<Statement>(`${API_BASE_URL}/parties/${partyId}/statement`, { headers: authHeader() }),
+        /* Not asked for at all by the order desk -- the API refuses it. */
+        noMoney
+          ? Promise.reject(new Error("no statement for the order desk"))
+          : axios.get<Statement>(`${API_BASE_URL}/parties/${partyId}/statement`, { headers: authHeader() }),
         axios.get<{ items: OrderRow[] } | OrderRow[]>(`${API_BASE_URL}/sales/orders`, { params: { customerId: partyId, pageSize: 100 }, headers: authHeader() }),
         axios.get<{ items: InvoiceRow[] } | InvoiceRow[]>(`${API_BASE_URL}/sales/invoices`, { params: { customerId: partyId, pageSize: 100 }, headers: authHeader() }),
-        axios.get<VisitRow[] | { items: VisitRow[] }>(`${API_BASE_URL}/parties/visits`, { headers: authHeader() }),
+        axios.get<{ items: VisitRow[]; mayLog: boolean }>(`${API_BASE_URL}/visits`, { params: { customerId: partyId, pageSize: 100 }, headers: authHeader() }),
       ]);
 
       if (st.status === "fulfilled") setStatement(st.value.data);
@@ -130,9 +149,8 @@ export default function PartyDetailPage() {
         setInvoices(Array.isArray(d) ? d : d.items);
       }
       if (vis.status === "fulfilled") {
-        const d = vis.value.data;
-        const rows = Array.isArray(d) ? d : d.items;
-        setVisits(rows.filter((v) => v.customerId === partyId));
+        setVisits(vis.value.data.items);
+        setMayLogVisit(vis.value.data.mayLog);
       }
     } catch (e) {
       if (axios.isAxiosError(e) && e.response?.status === 404) setNotFound(true);
@@ -140,7 +158,7 @@ export default function PartyDetailPage() {
     } finally {
       setLoading(false);
     }
-  }, [partyId]);
+  }, [partyId, noMoney]);
 
   /* Bind whatever photographs this customer has into one PDF again. Used when
      a picture was added from the edit screen after the account was opened --
@@ -162,6 +180,8 @@ export default function PartyDetailPage() {
     }
   }, [partyId, load]);
 
+
+  usePageRefresh(load);   // the top bar's Refresh button -- lib/page-refresh.ts
 
   React.useEffect(() => {
     /* eslint-disable-next-line react-hooks/set-state-in-effect --
@@ -298,9 +318,15 @@ export default function PartyDetailPage() {
         actions={
           <>
             <Button variant="ghost" className="gap-1.5" onClick={() => void load()}><RefreshCw className="size-4" />Refresh</Button>
-            <Button variant="secondary" className="gap-1.5" asChild>
-              <Link href={`/parties/${party.id}/statement`}><FileText />Statement</Link>
-            </Button>
+            {backOffice && party.type !== "SUPPLIER" ? (
+              <Button variant="secondary" className="gap-1.5" asChild>
+                <Link href={`/ledgers/customers/${party.id}`}><FileText />Ledger</Link>
+              </Button>
+            ) : !noMoney && (
+              <Button variant="secondary" className="gap-1.5" asChild>
+                <Link href={`/parties/${party.id}/statement`}><FileText />Statement</Link>
+              </Button>
+            )}
 
             {/* THE CUSTOMER'S OWN PAPERS, as one file.
 
@@ -342,6 +368,7 @@ export default function PartyDetailPage() {
       />
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        {!noMoney && <>
         <Card className="p-4">
           <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Balance</div>
           <div className={cn("text-2xl tabular font-bold mt-1", overLimit ? "text-danger" : "text-navy-900 dark:text-white")}>
@@ -351,11 +378,21 @@ export default function PartyDetailPage() {
         </Card>
         <Card className="p-4">
           <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Credit Limit</div>
-          <div className="text-2xl tabular font-bold text-navy-900 dark:text-white mt-1">{formatMoney(party.creditLimit)}</div>
+          <div className="text-2xl tabular font-bold text-navy-900 dark:text-white mt-1">
+            {party.creditLimit > 0 ? formatMoney(party.creditLimit) : <span className="text-base text-slate-500">No limit</span>}
+          </div>
           <div className="w-full h-1 bg-slate-100 dark:bg-navy-700 rounded-full overflow-hidden mt-2">
             <div className={cn("h-full", overLimit ? "bg-danger" : "bg-success")} style={{ width: `${usedPercent}%` }} />
           </div>
+          {/* Setting the limit is the Super Admin's and the accountant's alone
+              (the owner, 30 Sep); the API refuses anybody else. */}
+          {backOffice && party.type !== "SUPPLIER" && (
+            <Button variant="secondary" size="sm" className="mt-3 w-full" onClick={() => setSettingLimit(true)}>
+              Set credit limit
+            </Button>
+          )}
         </Card>
+        </>}
         <Card className="p-4">
           <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Orders</div>
           <div className="text-2xl tabular font-bold text-navy-900 dark:text-white mt-1">{party.orderCount}</div>
@@ -369,11 +406,11 @@ export default function PartyDetailPage() {
       <Tabs defaultValue="overview" className="w-full">
         <TabsList className="overflow-x-auto scrollbar-thin flex-nowrap">
           <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="ledger">Ledger ({statement?.lines.length ?? 0})</TabsTrigger>
+          {!noMoney && <TabsTrigger value="ledger">Ledger ({statement?.lines.length ?? 0})</TabsTrigger>}
           <TabsTrigger value="orders">Orders ({orders.length})</TabsTrigger>
           <TabsTrigger value="invoices">Invoices ({invoices.length})</TabsTrigger>
           {party.type !== "SUPPLIER" && <TabsTrigger value="visits">Visits ({visits.length})</TabsTrigger>}
-          {party.type !== "SUPPLIER" && <TabsTrigger value="credit">Credit</TabsTrigger>}
+          {party.type !== "SUPPLIER" && !noMoney && <TabsTrigger value="credit">Credit</TabsTrigger>}
         </TabsList>
 
         <TabsContent value="overview">
@@ -394,18 +431,25 @@ export default function PartyDetailPage() {
 
             <Card>
               <CardBody>
-                <h3 className="text-base font-semibold text-navy-900 dark:text-white mb-4">Tax &amp; Registration</h3>
+                {/* A CUSTOMER'S box is "Registration" and shows the CNIC only (the
+                    owner, 2 Oct: NTN and STRN are not needed for customers). A
+                    supplier keeps all three tax numbers -- its bills carry them. */}
+                <h3 className="text-base font-semibold text-navy-900 dark:text-white mb-4">
+                  {party.type === "SUPPLIER" ? "Tax & Registration" : "Registration"}
+                </h3>
                 <dl className="space-y-3 text-sm">
                   {/* A Chinese supplier's numbers are not an NTN and an STRN and
                       a CNIC, so they are not labelled as such. Same three
                       columns, different three names -- the words come from the
                       one place that holds them, so this screen and the form
                       that filled it in cannot drift apart. */}
-                  {PARTY_TAX[partyOrigin(party.country)].map((t) => (
+                  {PARTY_TAX[partyOrigin(party.country)]
+                    .filter((t) => party.type === "SUPPLIER" || t.key === "cnic")
+                    .map((t) => (
                     <Row key={t.key} icon={Receipt} label={t.label} value={party[t.key] ?? "—"} />
                   ))}
                   <Row icon={FileText} label="Opened" value={formatDate(party.createdAt)} />
-                  <Row icon={FileText} label="Opening balance" value={formatMoney(party.openingBalance)} />
+                  {!noMoney && <Row icon={FileText} label="Opening balance" value={formatMoney(party.openingBalance)} />}
                 </dl>
                 {party.notes && (
                   <p className="mt-4 pt-4 border-t border-slate-100 dark:border-navy-700 text-xs text-slate-600 dark:text-slate-300">
@@ -455,6 +499,13 @@ export default function PartyDetailPage() {
           <TabsContent value="visits">
             <Card>
               <CardBody>
+                {mayLogVisit && (
+                  <div className="flex justify-end mb-3">
+                    <Button variant="accent" size="sm" className="gap-1.5 w-full sm:w-auto" onClick={() => setLoggingVisit(true)}>
+                      <MapPin className="size-4" /> Log visit
+                    </Button>
+                  </div>
+                )}
                 {visits.length === 0 ? (
                   <EmptyState icon={MapPin} title="No visits recorded" description="No sales visit has been logged against this customer." />
                 ) : (
@@ -468,6 +519,18 @@ export default function PartyDetailPage() {
                             {v.outcomeName && <> · <span className="font-medium">{v.outcomeName}</span></>}
                           </div>
                           {v.note && <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{v.note}</div>}
+                          {(v.nextFollowUp || v.latitude != null) && (
+                            <div className="flex flex-wrap items-center gap-3 mt-1">
+                              {v.nextFollowUp && (
+                                <span className={cn("text-2xs", v.followUpDue ? "text-warning font-medium" : "text-slate-500 dark:text-slate-400")}>
+                                  back {formatDate(v.nextFollowUp)}
+                                </span>
+                              )}
+                              {v.latitude != null && v.longitude != null && (
+                                <VisitMapLink lat={v.latitude} lng={v.longitude} accuracy={v.gpsAccuracyM} />
+                              )}
+                            </div>
+                          )}
                         </div>
                         <div className="text-2xs text-slate-500 dark:text-slate-400 shrink-0">{formatDate(v.visitedAt)}</div>
                       </div>
@@ -477,6 +540,27 @@ export default function PartyDetailPage() {
               </CardBody>
             </Card>
           </TabsContent>
+        )}
+
+        {backOffice && (
+          <CreditLimitDialog
+            open={settingLimit}
+            onOpenChange={setSettingLimit}
+            partyId={party.id}
+            partyName={party.displayName || party.legalName}
+            current={party.creditLimit}
+            balance={party.currentBalance}
+            onSaved={() => void load()}
+          />
+        )}
+        {loggingVisit && party && (
+          <LogVisitSheet
+            open
+            onOpenChange={setLoggingVisit}
+            customerId={party.id}
+            customerName={party.displayName || party.legalName}
+            onLogged={() => { setLoggingVisit(false); void load(); }}
+          />
         )}
 
         {party.type !== "SUPPLIER" && (

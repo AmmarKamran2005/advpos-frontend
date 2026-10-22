@@ -1,5 +1,6 @@
 "use client";
 
+import { usePageRefresh } from "@/lib/page-refresh";
 import * as React from "react";
 import axios from "axios";
 import { Trophy, AlertCircle } from "lucide-react";
@@ -40,6 +41,8 @@ type TopResponse = {
   count: number;
   totalRevenue: number;
   totalMargin: number;
+  /* Margin is the Super Admin's alone (26 Sep); 0 with showsCost false otherwise. */
+  showsCost?: boolean;
   items: TopRow[];
 };
 
@@ -74,6 +77,8 @@ export default function TopCustomersPage() {
       setLoading(false);
     }
   }, [from, to]);
+
+  usePageRefresh(load);   // the top bar's Refresh button -- lib/page-refresh.ts
 
   React.useEffect(() => {
     /* eslint-disable-next-line react-hooks/set-state-in-effect --
@@ -123,9 +128,13 @@ export default function TopCustomersPage() {
                    : <div className="text-2xl tabular font-bold text-navy-900 dark:text-white mt-1">{formatCompact(data.totalRevenue)}</div>}
         </Card>
         <Card className="p-4">
-          <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Margin</div>
+          <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">
+            {data.showsCost ? "Margin" : "Avg per customer"}
+          </div>
           {loading ? <Skeleton className="h-8 w-24 mt-1" />
-                   : <div className="text-2xl tabular font-bold text-success mt-1">{formatCompact(data.totalMargin)}</div>}
+                   : <div className="text-2xl tabular font-bold text-success mt-1">
+                       {formatCompact(data.showsCost ? data.totalMargin : data.count ? data.totalRevenue / data.count : 0)}
+                     </div>}
         </Card>
       </div>
 
@@ -155,12 +164,14 @@ export default function TopCustomersPage() {
                     )}
                   </div>
                 </div>
-                <div className="text-right hidden sm:block">
-                  <Badge variant={c.marginPercent >= 20 ? "success" : c.marginPercent >= 10 ? "info" : "warning"}>
-                    {c.marginPercent}%
-                  </Badge>
-                  <div className="text-2xs text-slate-500 dark:text-slate-400 mt-0.5">{formatCompact(c.margin, false)} margin</div>
-                </div>
+                {data.showsCost && (
+                  <div className="text-right hidden sm:block">
+                    <Badge variant={c.marginPercent >= 20 ? "success" : c.marginPercent >= 10 ? "info" : "warning"}>
+                      {c.marginPercent}%
+                    </Badge>
+                    <div className="text-2xs text-slate-500 dark:text-slate-400 mt-0.5">{formatCompact(c.margin, false)} margin</div>
+                  </div>
+                )}
                 <div className="text-right w-28">
                   <div className="tabular text-sm font-bold text-navy-900 dark:text-white">{formatCompact(c.revenue, false)}</div>
                 </div>

@@ -1,5 +1,6 @@
 "use client";
 
+import { usePageRefresh } from "@/lib/page-refresh";
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -22,7 +23,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage, FormDescription } from "@/components/ui/form";
 import { toast } from "@/components/ui/toaster";
 import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
-import { PricingFields, EMPTY_PRICING, pricingProblem, type PricingDraft } from "@/components/inventory/pricing-fields";
+import { PricingFields, EMPTY_PRICING, pricingPayload, pricingProblem, type PricingDraft } from "@/components/inventory/pricing-fields";
 import { BarcodeFields, cleanBarcodes } from "@/components/inventory/barcode-fields";
 import { cn } from "@/lib/utils";
 
@@ -127,6 +128,8 @@ export default function NewProductPage() {
     }
   }, [form]);
 
+  usePageRefresh(load);   // the top bar's Refresh button -- lib/page-refresh.ts
+
   React.useEffect(() => {
     /* eslint-disable-next-line react-hooks/set-state-in-effect --
        The brief for this project is axios inside the page driven by
@@ -230,9 +233,8 @@ export default function NewProductPage() {
           packing: d.packing,
           minQty: d.minQty,
           maxQty: d.maxQty,
-          costPrice: parseFloat(pricing.cost),
-          dutyPrice: parseFloat(pricing.duty || "0") || 0,
-          salePrice: parseFloat(pricing.sale),
+          /* Five parts; the API adds them up for the sale price itself. */
+          ...pricingPayload(pricing),
           taxRatePercent: d.taxRatePercent,
           hideStock: d.hideStock,
           isActive: d.isActive,
@@ -413,9 +415,10 @@ export default function NewProductPage() {
 
               <Card>
                 <CardBody>
-                  <h3 className="text-sm font-semibold text-navy-900 dark:text-white">Pricing</h3>
+                  <h3 className="text-sm font-semibold text-navy-900 dark:text-white">Opening Pricing</h3>
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 mb-4">
-                    Type the margin as an amount <em>or</em> a percentage — the other one and the sale price follow.
+                    Cost, duty, Fi Sabilillah and the two margins, per unit — the sale price is all five added up.
+                    From the first purchase order on, each order sets the price.
                   </p>
                   <PricingFields value={pricing} onChange={(p) => { setPricing(p); setPricingError(null); }} error={pricingError} />
                 </CardBody>

@@ -1,5 +1,6 @@
 "use client";
 
+import { usePageRefresh } from "@/lib/page-refresh";
 import * as React from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -15,7 +16,7 @@ import { Avatar } from "@/components/ui/avatar";
 import { StatusPill, Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ConfirmDialog } from "@/components/dialogs";
+import { ConfirmDialog } from "@/components/dialogs/confirm-dialog";
 import { SelectNative } from "@/components/ui/select-native";
 import { Label } from "@/components/ui/label";
 import { toast } from "@/components/ui/toaster";
@@ -156,6 +157,8 @@ export default function ClaimDetailPage() {
       setLoading(false);
     }
   }, [id]);
+
+  usePageRefresh(load);   // the top bar's Refresh button -- lib/page-refresh.ts
 
   React.useEffect(() => {
     /* eslint-disable-next-line react-hooks/set-state-in-effect --

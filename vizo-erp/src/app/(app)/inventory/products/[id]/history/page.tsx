@@ -45,7 +45,7 @@ import {
 type Head = {
   id: number; sku: string; name: string; imageUrl: string | null;
   category: string; brand: string; packing: number;
-  costPrice: number; dutyPrice: number; marginPrice: number; salePrice: number;
+  costPrice?: number; dutyPrice?: number; marginPrice?: number; salePrice: number;
   createdAt: string; isActive: boolean;
 };
 

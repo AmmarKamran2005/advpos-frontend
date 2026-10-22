@@ -1,6 +1,6 @@
 # AdvPOS (VIZO) — Handoff
 
-**Updated 2026-09-22.** Newest first. Read **§0** and **§1** before anything
+**Updated 2026-09-27** (the 26 Sep parallel sessions A/B/C — see LATEST). Newest first. Read **§0** and **§1** before anything
 else; they are enough to carry on in a new chat. Everything below them is the
 dated history, then [What is left](#what-is-left) and
 [Standing facts](#standing-facts) at the bottom.
@@ -70,7 +70,9 @@ What the next session needs to know about **working** here:
    hand goes in `changa.txt`.** Both in `backend/database/`.
 8. **Style:** long explanatory comments saying *why*, matching the surrounding
    code. Commit messages explain the fault, not just the change, and end with
-   `Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>`.
+   `Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>` (the model in use
+   changes session to session — check the active system reminder rather than
+   trusting this line).
 9. **The owner** (Ammar Kamran, `kamran.ammar2005@gmail.com`) writes in English
    and Roman Urdu. Requests arrive as one long message with many linked items —
    read the whole thing before starting; items depend on each other.
@@ -81,14 +83,18 @@ What the next session needs to know about **working** here:
 
 | | |
 |---|---|
-| **Frontend** | `AmmarKamran2005/advpos-frontend` @ `main`. Last PUSHED = **`ef0e542`**. **Committed locally, NOT pushed:** the Order Department's Packing screen, Claims removed for that role |
-| **Backend** | `muhammadtalhabinsuhail/vizo-backend` @ `master`. Last PUSHED = **`24e83d3`**. **Committed locally, NOT pushed:** the Packing screen, partial dispatch, the invoice's dispatch-record page, Claims removed for the order desk |
-| **Database** | Neon PostgreSQL, Singapore. Migrations **15–18, 20–25** applied (23 = order-desk rights + tax 0%; 24 = warehouse role deleted; 25 = order-dept `HomePath` → `/packing`, Claims permissions removed, `SalesOrderItem.DispatchedQty` added). **19 section 1 applied; 19 section 2 (drop `OpeningCost`) NOT run** — waits for the new API to be deployed (changa.txt §A1) |
+| **Frontend** | `AmmarKamran2005/advpos-frontend` @ `main` = `11203c9` + a docs commit (all 23 Sep work pushed). **26 Sep work is on branches** `feat/a-purchases`, `feat/b-ledgers`, `feat/c-expenses` and merged in **`integration/2026-09-26`** — NOT on `main`: merging it deploys, and the database must be migrated first (changa.txt §G) |
+| **Backend** | `muhammadtalhabinsuhail/vizo-backend` @ `master` = `fb2e7c1` (all 23 Sep work pushed). **26 Sep work** on the same three branches + **`integration/2026-09-26`**, NOT on `master` (same reason) |
+| **Database** | Neon PostgreSQL, Singapore. Migrations **15–18, 20–25** applied (23 = order-desk rights + tax 0%; 24 = warehouse role deleted; 25 = order-dept `HomePath` → `/packing`, Claims permissions removed, `SalesOrderItem.DispatchedQty` added). **19 section 1 applied; 19 section 2 (drop `OpeningCost`) NOT run** — waits for the new API to be deployed (changa.txt §A1). **26 Sep: 26, 30–33, 35 written and tested on local copies only — NOT run on live** (order in changa.txt §G) |
 | **Stack** | Next.js 16 / React 19 / TypeScript / Tailwind 4 (Vercel) · ASP.NET Core 8 Web API + EF Core 8 + Npgsql · JWT with permission policies · SignalR · WebPush · Cloudinary · MailKit · Gemini Flash. Full list in `README.md` |
-| **Gate** | `npx tsc --noEmit` clean · `npx eslint src` **0 errors**, 64 warnings (old unused-vars) · `next build` **86 pages** (packing removed) · backend **0 errors**, 6 old warnings (4 `AuthController`, 2 `ProductHistoryController`) |
+| **Gate** (`integration/2026-09-26`) | `npx tsc --noEmit` clean · `npx eslint src` **0 errors**, 49 warnings (old) · `next build` passes · backend **0 errors**, 6 old warnings |
 | **Live site** | `https://advpos-frontend.vercel.app` |
 
 ### What the owner must still do (full text in `changa.txt`)
+
+**First — 26 Sep:** the purchases / ledgers / day-expenses work is on
+`integration/2026-09-26` and waits for you: snapshot, run migrations, deploy,
+post the history — **changa.txt §G, in that order.**
 
 **Two urgent ones first:**
 
@@ -130,13 +136,284 @@ What the next session needs to know about **working** here:
 | **D8** | **The reader is proved, the camera is not.** With the key in (22 Sep) sample documents read correctly through the real endpoint — name without the father's name, address off the card, city matched, a blurred card refused. But no REAL CNIC has been photographed with a REAL phone: the test browser has no camera | Put one real shop through the screen. If a field reads wrongly, `PartyDocumentsController.Prompt` is the one place to change |
 | **D3** | **Six more exports silently stop at 50 rows** (list action caps `pageSize`, export asks for 5000): orders (46 rows today), invoices, walk-in, parties, journal entries (44), vouchers, expenses. Fixed for products only | One-line change per list action; say the word |
 | **D4** | Ahmed Riaz (order-dept) points at **Karachi Warehouse**; should be a department | Fix at `/admin/users` (form now only offers departments) |
-| **D5** | 🔴 **Now blocking.** Customer pickers are rep-scoped since 21 Sep, so a rep with no accounts cannot raise an order: Imran and Ammar have **0**, Zara 1, Sara 7. Nine accounts belong to an order-desk clerk or the accountant, two to nobody | Assign reps on those parties |
-| **D6** | Old items still open: public credentials never rotated; `UpdateCategory` writes `ParentCategoryId = 0` (FK error when editing a category to top level — Talha's area); `NextNumber` is not atomic; VAPID key in `.env.example` does not match the server; warehouse panel missing on the login screen; trial balance opening balances 51,256,709 out | See [What is left](#what-is-left) |
-| **D7** | **Sale invoices never reach the ledger** — 39 invoices, 12 journal entries, and all 12 are seeded. Sales returns are consistent with that (they post nothing either). Aged receivables and the credit-limit check under-state by everything billed through the app; the customer statement is built from documents and is right | Decide the accounts and post both sides — a session of its own. convey.txt §R7.1 |
+| **D5** | 🔴 **Still blocking as of 26 Sep** (checked live): Imran Iqbal and Ammar Kamran still have **0** assigned customers and cannot raise an order; `sales@advpos.pk` has 1, Sara 7. Nothing has changed here since 21 Sep | Assign reps on those parties |
+| **D6** | Old items still open: public credentials never rotated; `UpdateCategory` writes `ParentCategoryId = 0` (FK error when editing a category to top level — Talha's area); `NextNumber` is not atomic; VAPID key in `.env.example` does not match the server; trial balance opening balances 51,256,709 out | See [What is left](#what-is-left) |
+| **D7** | **Sale invoices never reach the ledger** — checked live 26 Sep: **27 of 39** invoices still carry no `EntryId`. Sales returns are consistent with that (they post nothing either). Aged receivables and the credit-limit check under-state by everything billed through the app; the customer statement is built from documents and is right | Decide the accounts and post both sides — a session of its own. convey.txt §R7.1 |
 
 ---
 
-## LATEST — The Order Department's own panel: a Packing screen, and no Claims
+## LATEST — 21 Oct: accountant moves orders anywhere; stock at confirm and dispatch; rep's max quantity; one Refresh button; voucher clean-up
+
+The owner's 21 Oct list. No migration — nothing in the database changed shape.
+Tested on a fresh restore of live (taken 21 Oct) on a throwaway Postgres:
+27/27 API checks (`flow21.py` in the session scratchpad) plus browser checks as
+the accountant, the order desk and a rep. Backend 0 errors; `tsc` clean;
+`eslint` 0 errors. **Railway was down** ("Application not found") on 21 Oct —
+the owner said to leave it for now; nothing here is live until it is back.
+
+- **Accountant = Super Admin on the chain.** `OrderWorkflow.MayMoveAnywhere`:
+  any of the seven steps, forward or backward, from the order page's "Set
+  status" ("Move it anywhere"). Off-chain moves (decline/cancel/hold) keep their
+  old limits (never after the goods left). 🔴 Backward from Dispatched still
+  does not return stock — convey.txt 21 Oct.
+- **Confirm shows the stock.** New `GET /api/sales/orders/{id}/stock` (not for
+  sales): each line at Shop 2, Karachi Warehouse, Karachi Order Department.
+  The Confirm button opens a dialog with that table; Confirm is disabled and
+  the API refuses (`shortages`) unless the **order department** covers every
+  line — also when jumping past Confirmed. `Services/StockAvailability.cs`.
+- **Rep's maximum.** `/sales/lookups` sends `maxOrderable` (per product, PCS)
+  and `totalStock: null` to the sales role. The order form refuses to add an
+  item with 0 left and clamps a typed quantity, with a toast "You can order at
+  most N PCS"; `ValidateOrderRequest` enforces it (sales + order desk). Max =
+  sellable stock − open orders' quantities.
+- **Dispatch.** Packing shows every line's stock at the "Sending from" place
+  (and the others); Next refuses with "Cannot dispatch from <place>" before the
+  form opens. The order page's dispatch dialog shows the same table.
+- **Refresh.** One button in the top bar on every page (`lib/page-refresh.ts`):
+  92 pages register their own `load` (filters and typed text kept); the rest
+  are remounted. Also refreshes the bell and sidebar badges.
+- **Vouchers.** Wallet Receipt/Payment gone from New Voucher and the edit form;
+  Cash Receipt has no Credit/Credit Note. API refuses both (create and update).
+
+## 2 Oct: packing waits for release; form-first dispatch; thermal bill; courier categories; collections into any Cash & Bank account
+
+The owner's 2 Oct list. Built on `main`/`master` and tested on `advpos_main` (the
+30 Sep live dump plus migrations 42 and 43). **Not pushed yet**: migration 43
+must run on live before the API, and the owner approves the receipt design first.
+
+- **Packing waits for release.** The order desk may pack or dispatch only an
+  order the admin or accountant has set to "Processing in Order Dept".
+  - An INVOICED order gets *"This order has not been moved to Processing in
+    Order Dept by super admin or accountant"*.
+  - The desk can no longer take an order up itself, or dispatch straight from
+    INVOICED.
+- **Next no longer dispatches.**
+  - It opens the "How is it going" booking form. **Dispatch** in that form takes
+    the stock out and books the delivery, as two calls; a failed booking keeps
+    the form open to retry without moving stock twice.
+  - A dispatched order shows **Edit** instead of Pack. Edit reopens the form
+    filled from the delivery and saves via `PUT /api/dispatch/deliveries/{id}`;
+    the status stays DISPATCHED.
+  - New: `GET /api/dispatch/orders/{id}`.
+- **Delivery:** the order desk can never mark a delivery delivered (API and
+  button). The three channels whose confirmer was the order desk (Online, Local
+  cargo, Heavy logistics) are confirmed by the accountant now; the Super Admin
+  can confirm any.
+- **Order page:** "Print Bill" (A4) is renamed **Print invoice**, unchanged. A
+  new **Print bill** prints an 80 mm thermal receipt via
+  `GET /api/sales/invoices/{id}/receipt` (`Documents/ReceiptPdf.cs`,
+  `ReceiptController`). The order desk gets 403.
+- **Setup → Couriers:** every courier has one required **parent category** (the
+  four DeliveryChannels), saved in `ChannelCarrier`; the list is grouped by
+  category. The dispatch form lists only the couriers under the chosen category.
+- **Confirm Collections:** "Received into" lists every active **Cash & Bank**
+  account from the chart. The receipt posts there (`Collection.DepositAccountId`,
+  migration 43); the method is worked out from the account; "Paid by cheque" is
+  a tick.
+- **Customer page:** the box is "Registration", with CNIC only (suppliers keep
+  NTN/STRN).
+- **Log Visit:**
+  - "Go back on" is removed, and the API no longer demands it for Follow-up.
+  - When = now, and the location is requested on open.
+  - The form order is Location, then Rep, then Notes last.
+- **Tests:** 32/32 checks on the local copy (`flow02.py` in the scratchpad).
+  Browser checks: Pack → Next → form → Dispatch, Edit → Save changes, order page
+  buttons, Registration box, Log Visit, Collect accounts. Backend 0 errors;
+  `tsc`/`eslint` clean.
+
+## LATEST — 30 Sep: the accountant runs the orders; out of the ledger on cancel; badges; credit limit
+
+The owner's list (Roman Urdu, 30 Sep), all built on `main`/`master` and tested
+on `advpos_main` (a local restore of live taken 30 Sep 14:04, plus migration
+42). **Not pushed or deployed yet**; migration 42 must run on live BEFORE the API.
+
+- **Why Hassan Raza saw no orders:** `/sales/orders` treated anyone WITHOUT
+  `orders.approve` as a rep and filtered the list to "my orders", and the
+  accountant never held that right. Now only the `sales` role is a rep (the API
+  already scopes reps), and migration 42 grants the accountant `orders.approve`.
+- **Order workflow (`Services/OrderWorkflow.cs`):**
+  - The accountant may confirm, decline, cancel or hold (limit cross) any order
+    until it is dispatched, and may set "Processing in Order Dept".
+  - New orders notify the Super Admin and the accountants, with the amount. The
+    order desk gets its own copy without the amount.
+  - Processing in Order Dept notifies the desk ("Ready for packing").
+  - The desk sending out an un-invoiced order gets exactly *"This order is not
+    invoiced by super admin or accountant"*.
+  - The desk can no longer change quantities at dispatch.
+- **Out of the ledger:**
+  - Cancelled, declined or credit-hold before dispatch: the invoice goes
+    **VOID**, its journal entry and lines are deleted, and any receipt
+    allocations are released as customer credit (`SalesController.VoidOrderInvoice`).
+  - A global EF filter hides VOID invoices everywhere (`AppDbContext.Custom.cs`).
+  - Billing the order again brings back the **same** invoice number, rebuilt
+    and re-posted (`ReinstateOrderInvoice`; OrderId is unique).
+  - After dispatch it is still "raise a sales return".
+- **Order edit:**
+  - Lines are Quantity / Original price / Margin (Rs.) / Margin % / Final
+    price / Total. There is no tax or discount.
+  - Saving rebuilds the invoice and re-posts the ledger. Tested: 20 → 10
+    moved the invoice and the ledger to 15,400.
+  - `SalesOrderItem.BasePrice` (migration 42) keeps the original price, so the
+    rep's margin survives a product re-price.
+- **Packing:**
+  - The page lists every salesperson, customer and order, with their status.
+  - Each recent order has a **Pack** button that fills in the three boxes and
+    lists the items.
+  - "Ready for packing" group; quantities are read-only; the desk sees no
+    prices; the refusal toast is as above.
+- **Other changes:**
+  - Sidebar badges for new orders and new customers, per person, cleared on
+    opening the page (`SidebarBadgesController`, table `UserSeenMarker`).
+  - "Set credit limit" on `/parties/{id}`, for the Super Admin and accountant
+    only. Other roles' saves no longer change the limit.
+  - Customer Visits is off the sales menu.
+  - `/sales/orders` shows *customer (creator's name)*.
+  - About 20 list endpoints are now newest first (customers by id).
+  - No "Dispatching" page 2 on the invoice PDF.
+- **Tests:** 40/40 checks (`flow30.py` in the session scratchpad). Browser
+  checks as the accountant, the order desk and a rep. Backend 0 errors; `tsc`
+  clean; `eslint` 0 errors.
+
+> **27 Sep, 13:50 — DEPLOYED.** Everything below is on `master`/`main`, and every
+> migration listed (26 §1+§2, 30–33, 35, 36–39, 41) has been run on live Neon.
+> The backup from just before is `D:\Main\advpos-testdb\LIVE-BACKUP-before-migrations-2026-09-27_1346.dump`.
+> The owner's remaining steps are `changa.txt` §G5–G12. Railway now reads its secrets
+> (DB, JWT key, Cloudinary, email) from its own variables: Talha emptied them in
+> `appsettings.json` on master, and the JWT key changed, so tokens minted with the
+> old key get 401 on live.
+
+## LATEST — 26 Sep: purchase pricing, customer & staff ledgers, day expense sheets (three parallel sessions)
+
+The owner sent three linked requests at once and went to sleep ("no more
+questions — your recommendations are OK"). They were built **in parallel** in
+three git worktrees, each against its **own local copy of live** (Postgres 18
+on this machine, restored from a `pg_dump` taken 26 Sep — nothing ran on Neon),
+then merged into one branch and tested together.
+
+| Session | Branch (both repos) | Notes file | What |
+|---|---|---|---|
+| **A** | `feat/a-purchases` | `NOTES-a.md` | Purchase order = received + billed + posted at once; five price parts; stock lots; the price popup; logistics companies; purchases & cost for the Super Admin only |
+| **B** | `feat/b-ledgers` | `NOTES-b.md` | Order desk panel (week's orders, own order form, no money anywhere); sales posted to the books (D7 closed) with a backfill button; customer ledgers (SOA like the old system); staff ledgers; categories; Faysal Bank; Excel import |
+| **C** | `feat/c-expenses` | `NOTES-c.md` | One expense sheet per day and location, typed like a spreadsheet, approved and posted as one entry, printed as one invoice |
+| **merged** | `integration/2026-09-26` | this section | A + B + C, conflicts resolved, all migrations applied to a fresh copy, cross-checked |
+| **D** (27 Sep) | `feat/d-collections` → merged in | `NOTES-d.md` | Confirm Collections made live (collect on any invoiced order → receipt posted to the customer and his invoice; confirm a rep's collection for what arrived; bounce); animated sign-in page; migration 36 (COL series); Account List made real (add/edit/delete/switch off); Trial Balance screen removed; **Print now prints** (bills, invoices, returns, expense sheets — `printPdf`/`downloadPdf` in `lib/documents.ts`; the old `window.open(..., "noopener")` always returned null) |
+| **E1** (27 Sep) | `feat/e1-auth` → merged in | `NOTES-e1.md` | Sign-in and admin with nothing fake: forgot/reset password by email, temporary passwords + forced change (`/setup`), real backups (download), migrations 37–38 |
+| **E2** (27 Sep) | `feat/e2-ops` → merged in | `NOTES-e2.md` | Delivery (book from Delivery too, confirm arrival, settle COD), visits, reports from the DB; the desk no longer types COD (server sets it); migration 39 |
+| **E3** (27 Sep) | `feat/e3-shell` → merged in | `NOTES-e3.md` | App shell and lookups from the DB: company name in sidebar/login, Quick Create "N then letter", notifications, dispatch channel suggested by the API, bank statement import + Bank Reconciliation in the Money menu; migration 41 |
+
+**Read the three NOTES files** — each has an "OWNER MUST SEE" at the top, the
+full list of files, the decisions taken and the test evidence.
+
+### The owner's requests (paraphrased faithfully)
+
+1. **Products** — pricing card titled **"Opening Pricing"**: Cost, Duty,
+   **Fi Sabilillah (FS)**, **Margin 1**, **Margin 2**; the sale price is their
+   sum; Margin % removed.
+2. **Purchase orders** — no Claim Stock as receiving place; PO date defaults to
+   today, editable; **no Expected Delivery, no status, no GRN** — saving puts
+   the stock in the location and raises the purchase invoice. Each line opens
+   with the five boxes from the product, saved on the line as entered, with the
+   selling price shown. **Duty is paid to a logistics company**, which is an
+   account the admin can add/edit/delete right beside the duty box. Every price
+   part gets its own JV (plus an overall one), with the admin's reason for the
+   amount printed on it. **3NF.**
+3. **Average price** — never automatic: a popup shows every earlier purchase of
+   the item with its price and what is left of it; the admin ticks which to
+   average with the new one and sets the final selling price. Every unit must be
+   traceable to its purchase order wherever it sits.
+4. **Order desk** — Packing opens with the last 7 days' orders (rep, customer,
+   click → items); "Delivered" menu item removed; the desk can create customers
+   and orders; stock and transfers stay; **no money, accounts or purchases**.
+5. **Accountant** — no Purchases section; **nobody but the Super Admin sees
+   what an item cost**.
+6. **Customer ledgers** — every customer has an account built from the system's
+   own records from day one (like the old FoxPro statements in
+   `vizo-erp/refrence to ledger and etc/`, gitignored — real data); manual `+`
+   rows; category required, managed inline; printable. **Staff ledgers** the same.
+7. **Expenses** — one invoice per day, entered like a spreadsheet, with Print.
+
+### Decisions taken (owner said "recommended for all")
+
+Weighted average by what is left (claim locations not counted), Margin 1
+absorbs rounding · FIFO lots, OPENING lot for today's stock · the 9 never-received
+POs kept as history · PO date may be in the past · accountant keeps supplier
+balances/payments and sees purchase JVs in the ledger · the desk picks the
+salesperson on its orders (0–10 % margin) · staff ledger posts to the books
+(Salary Expense / 2140 Staff Payables) · customer categories = the existing
+list, staff categories new · expense sheet per date **per location**, approved
+by the accountant in one click · Faysal Bank added (1113).
+
+### Accounts added
+
+1113 Faysal Bank · 2140 Staff Payables · 2150 Logistics Companies (group; each
+company 2151…) · 2160 Fi Sabilillah Reserve · 2161 Margin 1 Reserve · 2162
+Margin 2 Reserve.
+
+### Migrations (all local only — NOT run on live)
+
+`26_purchase_pricing_and_batches.sql` (section 1 additive; **section 2 drops
+PO status/expected/approved after deploy**) · `30_ledger_accounts.sql` ·
+`31_staff_ledgers.sql` (**must run before the new API**) ·
+`32_ledger_entry_items.sql` · `33_order_desk_no_money.sql` ·
+`35_expense_sheets.sql` (run before AND after the deploy) · `36_collection_series.sql` (27 Sep) ·
+`37_must_change_password.sql` + `38_backup_files.sql` (**before the new API**) ·
+`39_visits_and_delivery_confirmation.sql` (**before the new API**) ·
+`41_bank_statement_import.sql`. Order: changa.txt §G (G2, and G12 for the owner's
+27 Sep items).
+
+### How it was verified together (`integration/2026-09-26` on `advpos_int`)
+
+Fresh live copy + 26 + 30–33 + 35. Backend 0 errors; `tsc` clean; `eslint` 0
+errors; `next build` passes. Smoke test (20 checks, all pass): B's backfill
+posted 32 old documents and the books still balance (6,047,431.60 both
+sides), a second run posted nothing; a purchase order of 20 × (500+50+25+75+10)
+moved the books by exactly 13,200 in five balanced vouchers and lots = shelves;
+expense sheets open for the accountant, 403 for the desk; accountant 403 on
+purchase orders but 200 on supplier payables; desk 200 on its week list, 403 on
+ledgers and payables; Stock in Hand valued at cost (Super Admin), sale price
+(accountant), nothing (desk); purchasing hidden from product history except
+for the Super Admin.
+
+**27 Sep, all rounds together** (A+B+C+D+E1+E2+E3 on a fresh `advpos_int` from
+`LIVE-BACKUP-before-deploy-2026-09-26_1849.dump` + 26 §1/§2, 30–33, 35–39, 41):
+backend 0 errors; `tsc` clean; `eslint` 0 errors; `next build` passes (89 pages).
+Smoke test 27/27: the 20 above plus collections (accountant 200, desk 403),
+Account List lookups, the dispatch queue carrying both E2's `collectsCash` and
+E3's `suggestedChannelId`, the desk's dispatch queue with every total and COD
+at 0, the company name read from the DB, and the books still balanced.
+
+### Merge notes
+
+27 Sep: `DispatchController` (E2 zeroes money for the desk and has the server
+set the COD; E3 suggests the channel from the data) — both kept. On the web the
+booking form lives in E2's shared `components/delivery/dispatch-sheet.tsx`, and
+E3's `suggestedChannelId` became its first choice (Karachi → local → cargo stays
+the fallback for the Delivery screen's own list). Login footer: E1's current
+year + E3's company name, no dead `#` links.
+
+
+One conflict (`InventoryController`, Stock in Hand / corrections / lookups):
+A hid cost from everyone but the Super Admin, B zeroed money for the desk —
+both kept (desk: `valuedAt: "none"`, no value column). B's `OrderDeskNoMoney`
+filter and A's `OkForRole` redaction both sit on `ProductHistoryController` and
+compose (A removes cost fields for non-admins, B zeroes the rest for the desk).
+
+### Working in parallel here — how it was set up (reuse it)
+
+- `D:\Main\wt\<name>\` = frontend worktree, `D:\Main\wt\<name>\backend\` =
+  backend worktree, same branch name. The outer repo tracks two files under
+  `backend/database`, so the folder is emptied before `git worktree add`.
+- Each gets a gitignored `appsettings.Development.json` pointing at its local DB
+  (`advpos_a/b/c/int`, `Host=127.0.0.1`, trust auth) and its own ports
+  (API 7181–7184, Next 3001–3004), Cloudinary test folders, nightly insights off.
+- **Cookies ignore ports**: each session browses on its own loopback host
+  (127.0.0.1 / .2 / .3 / .4) — Next 16 then needs `allowedDevOrigins`, added
+  locally and hidden with `git update-index --skip-worktree` (never commit it).
+- The dump is at `D:\Main\advpos-testdb\live-2026-09-26.dump`.
+
+---
+
+## 2026-09-23 (c) — The Order Department's own panel: a Packing screen, and no Claims
 
 ### What the owner asked for (paraphrased faithfully)
 
@@ -175,7 +452,7 @@ Strictly the Order Department panel; no other role changes.
 
 ---
 
-## LATEST — The warehouse role and its panel are deleted; purchase returns are removed
+## 2026-09-23 (b) — The warehouse role and its panel are deleted; purchase returns are removed
 
 ### What the owner asked for (paraphrased faithfully)
 
@@ -202,7 +479,7 @@ Strictly the Order Department panel; no other role changes.
 
 ---
 
-## LATEST — Big pictures, a 10% margin cap, an order desk without the catalogue, tax at 0%, a front/back check, and the AI reports repaired
+## 2026-09-23 (a) — Big pictures, a 10% margin cap, an order desk without the catalogue, tax at 0%, a front/back check, and the AI reports repaired
 
 ### What the owner asked for (paraphrased faithfully)
 

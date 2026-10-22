@@ -1,5 +1,6 @@
 "use client";
 
+import { usePageRefresh } from "@/lib/page-refresh";
 import * as React from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -15,7 +16,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ConfirmDialog } from "@/components/dialogs";
+import { ConfirmDialog } from "@/components/dialogs/confirm-dialog";
 import { toast } from "@/components/ui/toaster";
 import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
 
@@ -97,6 +98,8 @@ export default function RoleEditPage() {
       setLoading(false);
     }
   }, [id, isNew]);
+
+  usePageRefresh(load);   // the top bar's Refresh button -- lib/page-refresh.ts
 
   React.useEffect(() => {
     /* eslint-disable-next-line react-hooks/set-state-in-effect --

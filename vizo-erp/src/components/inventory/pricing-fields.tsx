@@ -1,170 +1,130 @@
 "use client";
 
 import * as React from "react";
+import { Lock } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { formatMoney } from "@/lib/format";
-import { cn } from "@/lib/utils";
-import { reprice, landedCost, type PricingLead } from "@/lib/pricing";
+import { PART_KEYS, num, saleOf, type PriceParts } from "@/lib/pricing";
 
 /* ───────────────────────────────────────────────────────────────────────────
-   COST · DUTY · MARGIN · MARGIN % · SALE
+   OPENING PRICING — COST · DUTY · FI SABILILLAH · MARGIN 1 · MARGIN 2 = SALE
 
-   Five boxes in the order a price is built. The person types whichever margin
-   they think in — an amount or a percentage — and the other one, and the sale
-   price, follow. They can also type the sale price itself (to round it to
-   1,999, say) and the margin follows that instead. See lib/pricing.ts for the
-   arithmetic and for which field is held still when cost or duty changes.
+   The five boxes in the order the owner listed them, and the sale price is
+   their sum, shown, never typed (26 Sep). The same five parts appear on every
+   purchase-order line (components/purchases/po-line-editor.tsx), so a price
+   set here is the one a first purchase order opens with.
 
    Strings, not numbers, all the way through: a number input that is re-set on
    every keystroke eats the decimal point the person is halfway through typing.
-   Only the fields the person is NOT typing in are rewritten.
    ─────────────────────────────────────────────────────────────────────────── */
 
-export type PricingDraft = {
-  cost: string;
-  duty: string;
-  marginPrice: string;
-  marginPercent: string;
-  sale: string;
-  lead: PricingLead;
-};
+export type PricingDraft = Record<keyof PriceParts, string>;
 
-export function pricingDraftFrom(p: { costPrice: number; dutyPrice: number; marginPrice: number; salePrice: number }): PricingDraft {
-  const r = reprice({ cost: p.costPrice, duty: p.dutyPrice, marginPrice: p.salePrice - p.costPrice - p.dutyPrice, marginPercent: 0, sale: p.salePrice }, "sale");
+export const EMPTY_PRICING: PricingDraft = { cost: "", duty: "0", fs: "0", margin1: "0", margin2: "0" };
+
+export function pricingDraftFrom(p: {
+  costPrice: number | null; dutyPrice: number | null; fsPrice?: number | null;
+  marginPrice: number | null; margin2Price?: number | null;
+}): PricingDraft {
+  const s = (n: number | null | undefined) => String(n ?? 0);
+  return { cost: s(p.costPrice), duty: s(p.dutyPrice), fs: s(p.fsPrice), margin1: s(p.marginPrice), margin2: s(p.margin2Price) };
+}
+
+/** The body fields the product API takes. */
+export function pricingPayload(d: PricingDraft) {
   return {
-    cost: String(r.cost), duty: String(r.duty),
-    marginPrice: String(r.marginPrice), marginPercent: String(r.marginPercent),
-    sale: String(r.sale), lead: "price",
+    costPrice: num(d.cost), dutyPrice: num(d.duty), fsPrice: num(d.fs),
+    margin1Price: num(d.margin1), margin2Price: num(d.margin2),
   };
 }
 
-export const EMPTY_PRICING: PricingDraft = {
-  cost: "", duty: "0", marginPrice: "", marginPercent: "", sale: "", lead: "percent",
-};
-
-/** The numbers to send to the API, or a message saying what is wrong. */
+/** What is wrong with the boxes, or null. */
 export function pricingProblem(d: PricingDraft): string | null {
   const cost = parseFloat(d.cost);
-  const duty = parseFloat(d.duty || "0");
-  const sale = parseFloat(d.sale);
   if (!Number.isFinite(cost) || cost <= 0) return "Enter a cost price above zero.";
-  if (!Number.isFinite(duty) || duty < 0) return "Duty cannot be negative.";
-  if (!Number.isFinite(sale) || sale <= 0) return "Enter a margin or a sale price.";
+  for (const k of PART_KEYS) {
+    const raw = d[k].trim();
+    if (raw === "") continue;
+    const v = parseFloat(raw);
+    if (!Number.isFinite(v) || v < 0) return "No price box can be negative.";
+  }
+  if (saleOf(d) <= 0) return "The sale price must be above zero.";
   return null;
 }
 
-const show = (n: number) => (Number.isFinite(n) ? String(n) : "");
+const BOXES: { key: keyof PriceParts; label: string; hint: string; placeholder: string }[] = [
+  { key: "cost", label: "Cost price", hint: "Supplier's price per unit", placeholder: "1000" },
+  { key: "duty", label: "Duty", hint: "Customs & clearing, per unit", placeholder: "100" },
+  { key: "fs", label: "Fi Sabilillah", hint: "FS price, per unit", placeholder: "100" },
+  { key: "margin1", label: "Margin 1", hint: "The ordinary margin", placeholder: "100" },
+  { key: "margin2", label: "Margin 2", hint: "Any further amount", placeholder: "100" },
+];
 
 export function PricingFields({
   value,
   onChange,
   error,
+  locked,
 }: {
   value: PricingDraft;
   onChange: (next: PricingDraft) => void;
   error?: string | null;
+  /** True once a purchase order has bought the item: its price is set there now. */
+  locked?: boolean;
 }) {
-  function set(field: keyof Omit<PricingDraft, "lead">, raw: string) {
-    const lead: PricingLead =
-      field === "marginPrice" ? "price" :
-      field === "marginPercent" ? "percent" :
-      field === "sale" ? "sale" : value.lead;
-
-    const next = { ...value, [field]: raw, lead };
-    const r = reprice(
-      { cost: next.cost, duty: next.duty, marginPrice: next.marginPrice, marginPercent: next.marginPercent, sale: next.sale },
-      lead,
-    );
-
-    onChange({
-      ...next,
-      /* Everything the person is not typing in is rewritten from the result. */
-      marginPrice: field === "marginPrice" ? raw : show(r.marginPrice),
-      marginPercent: field === "marginPercent" ? raw : show(r.marginPercent),
-      sale: field === "sale" ? raw : show(r.sale),
-    });
-  }
-
-  const landed = landedCost(value.cost, value.duty);
-  const margin = parseFloat(value.marginPrice) || 0;
-  const pct = parseFloat(value.marginPercent) || 0;
+  const sale = saleOf(value);
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4 items-start">
-        <Box label="Cost price" required hint="Supplier's price per unit">
-          <Input type="number" inputMode="decimal" step="0.01" min={0} placeholder="200"
-            value={value.cost} onChange={(e) => set("cost", e.target.value)} />
-        </Box>
-        <Box label="Duty price" hint="Customs, clearing, per unit">
-          <Input type="number" inputMode="decimal" step="0.01" min={0} placeholder="50"
-            value={value.duty} onChange={(e) => set("duty", e.target.value)} />
-        </Box>
-        <Box label="Margin price" hint="Added to cost + duty" active={value.lead === "price"}>
-          <Input type="number" inputMode="decimal" step="0.01" placeholder="50"
-            value={value.marginPrice} onChange={(e) => set("marginPrice", e.target.value)} />
-        </Box>
-        <Box label="Margin %" hint="Of cost + duty" active={value.lead === "percent"}>
-          <div className="relative">
-            <Input type="number" inputMode="decimal" step="0.01" placeholder="20" className="pr-7"
-              value={value.marginPercent} onChange={(e) => set("marginPercent", e.target.value)} />
-            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400">%</span>
+      {locked && (
+        <p className="flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 dark:border-navy-700 dark:bg-navy-900 dark:text-slate-300">
+          <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          This item has been bought through a purchase order, so its price is set by purchase orders now —
+          change it in the price popup of the next one.
+        </p>
+      )}
+
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4 items-start">
+        {BOXES.map((b) => (
+          <div key={b.key}>
+            <Label className="mb-1.5 flex items-center gap-1.5">
+              {b.label}
+              {b.key === "cost" && <span className="text-danger">*</span>}
+            </Label>
+            <Input
+              type="number" inputMode="decimal" step="0.01" min={0} placeholder={b.placeholder}
+              value={value[b.key]} disabled={locked}
+              onChange={(e) => onChange({ ...value, [b.key]: e.target.value })}
+            />
+            <p className="mt-1 text-2xs text-slate-500 dark:text-slate-400">{b.hint}</p>
           </div>
-        </Box>
-        <Box label="Sale price" required hint="What the customer pays, before tax" active={value.lead === "sale"}
-          className="col-span-2 lg:col-span-1">
-          <Input type="number" inputMode="decimal" step="0.01" min={0} placeholder="300"
-            className="font-semibold"
-            value={value.sale} onChange={(e) => set("sale", e.target.value)} />
-        </Box>
+        ))}
+
+        {/* The sum, never typed. */}
+        <div className="col-span-2 sm:col-span-1">
+          <Label className="mb-1.5 block">Sale price</Label>
+          <div className="flex h-10 items-center rounded-md border border-brand-yellow/60 bg-brand-yellow/10 px-3 tabular font-bold text-navy-900 dark:text-white">
+            {formatMoney(sale)}
+          </div>
+          <p className="mt-1 text-2xs text-slate-500 dark:text-slate-400">All five added up</p>
+        </div>
       </div>
 
       {/* The sum written out, so nobody has to trust the boxes. */}
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs dark:border-navy-700 dark:bg-navy-900">
-        <span className="text-slate-500 dark:text-slate-400">Landed cost</span>
-        <span className="tabular font-semibold text-navy-900 dark:text-white">{formatMoney(landed)}</span>
-        <span className="text-slate-400">+</span>
-        <span className="text-slate-500 dark:text-slate-400">margin</span>
-        <span className={cn("tabular font-semibold", margin < 0 ? "text-danger" : "text-navy-900 dark:text-white")}>
-          {formatMoney(margin)}
-        </span>
-        <span className={cn("tabular font-semibold",
-          pct <= 0 ? "text-danger" : pct < 15 ? "text-warning" : "text-success")}>
-          ({pct.toFixed(1)}%)
-        </span>
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs dark:border-navy-700 dark:bg-navy-900">
+        {BOXES.map((b, i) => (
+          <React.Fragment key={b.key}>
+            {i > 0 && <span className="text-slate-400">+</span>}
+            <span className="text-slate-500 dark:text-slate-400">{b.label}</span>
+            <span className="tabular font-semibold text-navy-900 dark:text-white">{formatMoney(num(value[b.key]))}</span>
+          </React.Fragment>
+        ))}
         <span className="text-slate-400">=</span>
-        <span className="text-slate-500 dark:text-slate-400">sale</span>
-        <span className="tabular font-bold text-navy-900 dark:text-white">{formatMoney(parseFloat(value.sale) || 0)}</span>
-        {margin < 0 && (
-          <span className="w-full text-danger">This sells below cost. It is allowed — make sure it is meant.</span>
-        )}
+        <span className="tabular font-bold text-navy-900 dark:text-white">{formatMoney(sale)}</span>
       </div>
 
       {error && <p className="text-xs font-medium text-danger">{error}</p>}
-    </div>
-  );
-}
-
-function Box({
-  label, hint, required, active, className, children,
-}: {
-  label: string; hint: string; required?: boolean; active?: boolean; className?: string; children: React.ReactNode;
-}) {
-  return (
-    <div className={className}>
-      <Label className="mb-1.5 flex items-center gap-1.5">
-        {label}
-        {required && <span className="text-danger">*</span>}
-        {active && (
-          <span className="rounded bg-brand-yellow/20 px-1 text-2xs font-semibold text-navy-900 dark:text-brand-yellow"
-            title="You typed this one; the others follow it">
-            set
-          </span>
-        )}
-      </Label>
-      {children}
-      <p className="mt-1 text-2xs text-slate-500 dark:text-slate-400">{hint}</p>
     </div>
   );
 }

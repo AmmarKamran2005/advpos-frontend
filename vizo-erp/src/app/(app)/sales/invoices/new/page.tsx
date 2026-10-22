@@ -1,5 +1,6 @@
 "use client";
 
+import { usePageRefresh } from "@/lib/page-refresh";
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -41,7 +42,7 @@ type LookupCustomer = {
 };
 type LookupProduct = {
   id: number; sku: string; name: string; imageUrl?: string | null; packing: number;
-  salePrice: number; taxRatePercent: number; totalStock: number;
+  salePrice: number; taxRatePercent: number; totalStock: number | null;
 };
 type Lookups = {
   locations: { id: number; code: string; name: string; kind: string; isSellable: boolean }[];
@@ -128,6 +129,8 @@ export default function NewInvoicePage() {
       setLoading(false);
     }
   }, [form]);
+
+  usePageRefresh(load);   // the top bar's Refresh button -- lib/page-refresh.ts
 
   React.useEffect(() => {
     void load();
@@ -339,7 +342,7 @@ export default function NewInvoicePage() {
                                 <ProductImage url={p.imageUrl} name={p.name} size="xl" zoom={false} />
                                 <div className="flex-1 min-w-0">
                                   <div className="text-base font-semibold text-navy-900 dark:text-white line-clamp-2">{p.name}</div>
-                                  <div className="text-xs tabular text-slate-500 dark:text-slate-400 mt-1">{p.sku} · stock {p.totalStock}</div>
+                                  <div className="text-xs tabular text-slate-500 dark:text-slate-400 mt-1">{p.sku}{p.totalStock !== null && <> · stock {p.totalStock}</>}</div>
                                 </div>
                                 <span className="tabular text-sm font-bold text-navy-900 dark:text-white">{formatMoney(p.salePrice)}</span>
                               </CommandItem>

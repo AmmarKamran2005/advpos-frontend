@@ -282,7 +282,7 @@ export function OrderDeptDashboard() {
               <div className="flex items-center justify-between mb-3">
                 <h2 className="text-base font-semibold text-navy-900 dark:text-white">Running out</h2>
                 <Button variant="ghost" size="sm" asChild>
-                  <Link href="/inventory/stock">Stock <ArrowRight /></Link>
+                  <Link href="/inventory/stock-levels">Stock <ArrowRight /></Link>
                 </Button>
               </div>
               {loading ? (

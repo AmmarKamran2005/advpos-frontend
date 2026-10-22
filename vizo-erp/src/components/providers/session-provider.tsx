@@ -22,6 +22,8 @@ import type { RoleKey } from "@/lib/app-config";
 export const TOKEN_COOKIE = process.env.NEXT_PUBLIC_TOKEN_COOKIE || "advpos_token";
 export const ROLE_COOKIE = process.env.NEXT_PUBLIC_ROLE_COOKIE || "advpos_role";
 const USER_STORAGE_KEY = "advpos-user";
+/** "0" when the person unticked "Keep me signed in"; anything else means keep. */
+const REMEMBER_KEY = "advpos-remember";
 
 export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL || "https://localhost:7177/api";
@@ -44,6 +46,8 @@ export type SessionUser = {
 
 type SessionValue = {
   user: SessionUser | null;
+  /** The account is still on a temporary password; the shell sends it to /setup. */
+  mustChangePassword: boolean;
   role: RoleKey;
   status: "loading" | "authenticated" | "unauthenticated";
   can: (permission: string) => boolean;
@@ -55,11 +59,26 @@ const SessionContext = React.createContext<SessionValue | null>(null);
 
 /* ───────────────────────── cookie plumbing ───────────────────────── */
 
-function writeCookie(name: string, value: string, days = 1) {
+/**
+ * `days` null writes a SESSION cookie -- no Expires, so the browser drops it
+ * when it closes. That is what an unticked "Keep me signed in" means.
+ */
+function writeCookie(name: string, value: string, days: number | null = 1) {
   if (typeof document === "undefined") return;
-  const expires = new Date(Date.now() + days * 86400000).toUTCString();
+  const expires = days === null ? "" : `; Expires=${new Date(Date.now() + days * 86400000).toUTCString()}`;
   const secure = window.location.protocol === "https:" ? "; Secure" : "";
-  document.cookie = `${name}=${encodeURIComponent(value)}; Path=/; Expires=${expires}; SameSite=Lax${secure}`;
+  document.cookie = `${name}=${encodeURIComponent(value)}; Path=/${expires}; SameSite=Lax${secure}`;
+}
+
+/* Whether this browser was asked to keep the session. Read again whenever a
+   cookie is re-written (the provider refreshes the role cookie after /auth/me),
+   or a session cookie would quietly be turned back into a persistent one. */
+function rememberDays(): number | null {
+  try {
+    return window.localStorage.getItem(REMEMBER_KEY) === "0" ? null : 1;
+  } catch {
+    return 1;
+  }
 }
 
 function deleteCookie(name: string) {
@@ -93,12 +112,38 @@ export function authHeader(): Record<string, string> {
 /**
  * Called by the login screen, which renders above the provider and so cannot
  * use the hook.
+ *
+ * `remember` is the "Keep me signed in" box. Ticked: the cookies last a day
+ * (the token itself expires sooner -- Jwt:ExpiryMinutes -- and the proxy checks
+ * that). Unticked: they are session cookies and go when the browser closes.
+ * Until 27 Sep the box was drawn and never read.
  */
-export function saveSession(token: string, user: SessionUser) {
-  writeCookie(TOKEN_COOKIE, token);
-  writeCookie(ROLE_COOKIE, user.role);
+export function saveSession(token: string, user: SessionUser, remember = true) {
+  if (typeof window !== "undefined") {
+    window.localStorage.setItem(REMEMBER_KEY, remember ? "1" : "0");
+  }
+  const days = remember ? 1 : null;
+  writeCookie(TOKEN_COOKIE, token, days);
+  writeCookie(ROLE_COOKIE, user.role, days);
   if (typeof window !== "undefined") {
     window.localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(user));
+  }
+}
+
+/**
+ * GET /account/status -- is this account still on a temporary password?
+ * The edge proxy has no database to ask, so the login screen calls this right
+ * after signing in and the provider calls it on every app load. A failure is
+ * treated as "no": this is a nudge to /setup, not the security boundary.
+ */
+export async function fetchMustChangePassword(token: string): Promise<boolean> {
+  try {
+    const res = await axios.get<{ mustChangePassword: boolean }>(`${API_BASE_URL}/account/status`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return res.data.mustChangePassword === true;
+  } catch {
+    return false;
   }
 }
 
@@ -126,6 +171,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [user, setUser] = React.useState<SessionUser | null>(null);
   const [status, setStatus] = React.useState<SessionValue["status"]>("loading");
+  const [mustChangePassword, setMustChangePassword] = React.useState(false);
 
   /* Hydrate from storage first so the shell paints immediately, then confirm
      with the server. If the token has been revoked or the account switched
@@ -160,7 +206,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         setUser(res.data);
         setStatus("authenticated");
         window.localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(res.data));
-        writeCookie(ROLE_COOKIE, res.data.role);
+        writeCookie(ROLE_COOKIE, res.data.role, rememberDays());
       })
       .catch(() => {
         if (cancelled) return;
@@ -169,6 +215,15 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         setStatus("unauthenticated");
         router.replace("/login");
       });
+
+    /* Somebody on a temporary password (a new account, or one the Super
+       Admin reset) goes to /setup before anything else -- including when they
+       type an app URL straight in, which the login screen's own check misses. */
+    void fetchMustChangePassword(token).then((must) => {
+      if (cancelled || !must) return;
+      setMustChangePassword(true);
+      router.replace("/setup");
+    });
 
     return () => {
       cancelled = true;
@@ -209,13 +264,14 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const value = React.useMemo<SessionValue>(
     () => ({
       user,
+      mustChangePassword,
       role: (user?.role ?? "sales") as RoleKey,
       status,
       can: (permission: string) => user?.permissions?.includes(permission) ?? false,
       logout,
       refresh,
     }),
-    [user, status, logout, refresh]
+    [user, mustChangePassword, status, logout, refresh]
   );
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;

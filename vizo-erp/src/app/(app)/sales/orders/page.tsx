@@ -1,5 +1,6 @@
 "use client";
 
+import { usePageRefresh } from "@/lib/page-refresh";
 import * as React from "react";
 import Link from "next/link";
 import { Plus, Download, Search, Send, Check, Truck, ChevronRight, Loader2, Printer } from "lucide-react";
@@ -17,8 +18,7 @@ import axios from "axios";
 import { AlertCircle } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
-import { getChannel, type ChannelKey } from "@/lib/app-config";
-import { openDocumentWhenReady, viewableUrl } from "@/lib/documents";
+import { printPdf } from "@/lib/documents";
 
 /* GET /sales/orders -> { total, page, pageSize, items }.
 
@@ -83,6 +83,8 @@ type Order = {
   location: string;
   locationCode: string;
   salesPerson: string | null;
+  /** Whoever keyed the order in, by their own name (rep, order desk or admin). */
+  createdBy: string | null;
   orderDate: string;
   deliveryDate: string | null;
   status: OrderStatus;
@@ -99,7 +101,13 @@ type Order = {
   notes: string | null;
   invoiceId: number | null;
   invoiceNo: string | null;
-  channel: ChannelKey | null;
+  /* All three from the order's latest Delivery and its DeliveryChannel row.
+     They used to be looked up in four channels hard-coded in lib/app-config.ts;
+     a channel renamed or added in the database never showed here. */
+  channel: string | null;
+  channelName: string | null;
+  /** Role key of whoever confirms this channel's deliveries ("sales" = the rep, by hand). */
+  channelConfirmedBy: string | null;
   carrier: string | null;
   trackingNo: string | null;
   deliveryState: DeliveryState | null;
@@ -142,7 +150,13 @@ export default function OrdersPage() {
   const me = user!;
 
 
-  const isRep = !can("orders.approve");
+  /* ONLY THE SALES ROLE IS A REP. This read `!can("orders.approve")`, and the
+     accountant does not hold that right -- so the accountant's list was
+     filtered down to orders where HE was the salesperson: none. Hassan Raza
+     saw an empty Orders screen while every rep's order sat waiting for him to
+     confirm and invoice (the owner, 30 Sep). The API already scopes a rep to
+     their own orders; this is only the subtitle and the convenience filter. */
+  const isRep = me.role === "sales";
 
   const [all, setAll] = React.useState<Order[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -163,6 +177,8 @@ export default function OrdersPage() {
     }
   }, []);
 
+  usePageRefresh(load);   // the top bar's Refresh button -- lib/page-refresh.ts
+
   React.useEffect(() => {
     /* eslint-disable-next-line react-hooks/set-state-in-effect --
        The brief for this project is axios inside the page driven by
@@ -172,12 +188,11 @@ export default function OrdersPage() {
     void load();
   }, [load]);
 
-  /* A rep sees only their own orders. This is a convenience filter, not a
-     security boundary -- the API is the boundary. */
-  const scope = React.useMemo(
-    () => (isRep ? all.filter((o) => o.salesPerson === me.fullName) : all),
-    [all, isRep, me.fullName]
-  );
+  /* The API already sends a rep only the orders they are the salesperson on OR
+     created (SalesController.GetOrders); filtering again here by salesperson
+     name dropped the ones a rep keyed in for a colleague. Everyone else gets
+     every order, the accountant included. */
+  const scope = all;
 
   const [search, setSearch] = React.useState("");
   const [tab, setTab] = React.useState<TabKey>("ALL");
@@ -191,6 +206,7 @@ export default function OrdersPage() {
       return (
         o.orderNo.toLowerCase().includes(q) ||
         o.customerName.toLowerCase().includes(q) ||
+        (o.createdBy ?? "").toLowerCase().includes(q) ||
         (o.trackingNo ?? "").toLowerCase().includes(q)
       );
     });
@@ -313,7 +329,6 @@ export default function OrdersPage() {
 }
 
 function OrderCard({ order, onDone }: { order: Order; onDone: () => void | Promise<void> }) {
-  const channel = order.channel ? getChannel(order.channel) : null;
   const balance = order.total - order.paidAmount;
   const paidPct = order.total > 0 ? Math.round((order.paidAmount / order.total) * 100) : 0;
 
@@ -327,6 +342,11 @@ function OrderCard({ order, onDone }: { order: Order; onDone: () => void | Promi
             <div className="min-w-0">
               <div className="text-sm font-semibold text-navy-900 dark:text-white truncate group-hover:text-brand-yellow transition-colors">
                 {order.customerName}
+                {/* Who created it, in brackets -- the person's name, never the
+                    role's (the owner, 30 Sep). */}
+                {order.createdBy && (
+                  <span className="font-normal text-slate-500 dark:text-slate-400"> ({order.createdBy})</span>
+                )}
               </div>
               <div className="tabular text-2xs text-slate-500 dark:text-slate-400">
                 {order.orderNo} · {formatDate(order.orderDate)} · {order.city}
@@ -344,9 +364,9 @@ function OrderCard({ order, onDone }: { order: Order; onDone: () => void | Promi
                 {statusLabel(order.deliveryState)}
               </StatusPill>
             )}
-            {channel && order.deliveryState && order.deliveryState !== "NOT_DISPATCHED" && (
+            {order.channel && order.deliveryState && order.deliveryState !== "NOT_DISPATCHED" && (
               <span className="text-2xs text-slate-500 dark:text-slate-400">
-                {order.carrier}
+                {[order.channelName, order.carrier].filter(Boolean).join(" · ")}
                 {order.trackingNo !== "—" && <span className="tabular"> · {order.trackingNo}</span>}
               </span>
             )}
@@ -421,20 +441,16 @@ function QuickAction({ order, onDone }: { order: Order; onDone: () => void | Pro
      be one that needs none -- and the raw Cloudinary URL is not it: PDF
      delivery is blocked on that account, so a stored link opens a 401. The API
      returns whichever link actually works. See lib/documents.ts. */
+  /* THE BILL (27 Sep). Print opens the browser's print dialog on the bill,
+     rebuilt from the database by the API and fetched with the sign-in header;
+     Download saves it. No popup, no dependence on the Cloudinary copy being
+     served -- the reason Print did nothing before is in lib/documents.ts. */
   async function printBill() {
     if (!order.invoiceId) return;
     setBusy(true);
     try {
-      const opened = await openDocumentWhenReady(async () => {
-        const res = await axios.post<{ pdfUrl: string | null; shareUrl?: string | null; viewUrl?: string | null }>(
-          `${API_BASE_URL}/sales/invoices/${order.invoiceId}/pdf`, {}, { headers: authHeader() });
-        return viewableUrl(res.data);
-      });
-      if (!opened) {
+      if (!(await printPdf(`/sales/invoices/${order.invoiceId}/pdf`)))
         toast.error("Could not open the bill", { description: "Try again in a moment." });
-      }
-    } catch (e) {
-      toast.error("Could not open the bill", { description: apiMessage(e, "Please try again.") });
     } finally {
       setBusy(false);
     }
@@ -466,7 +482,10 @@ function QuickAction({ order, onDone }: { order: Order; onDone: () => void | Pro
     order.deliveryState !== null &&
     ["BOOKED", "AWAITING", "IN_TRANSIT", "OUT_FOR_DELIVERY"].includes(order.deliveryState);
 
-  if (order.channel === "local" && inFlight) {
+  /* The channel the salesman confirms himself -- the hand delivery. Read off
+     the channel's ConfirmedByRole in the database rather than its key, which is
+     the same rule DeliveryController enforces on the way in. */
+  if (order.channelConfirmedBy === "sales" && inFlight) {
     return (
       <Button variant="accent" size="sm" className="gap-1 flex-shrink-0"
         disabled={busy} onClick={() => void move("DELIVERED", "Marked delivered")}>

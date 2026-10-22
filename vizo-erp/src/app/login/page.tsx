@@ -10,7 +10,7 @@ import { z } from "zod";
 import axios from "axios";
 import {
   Mail, Lock, Eye, EyeOff, Loader2, AlertCircle, ArrowRight,
-  ShoppingCart, ClipboardList, Wallet, Shield, Check,
+  ShoppingCart, ClipboardList, Wallet, Shield, Check, PackageCheck, BookCheck,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from "@/components/ui/form";
@@ -22,11 +22,17 @@ import { Toaster, toast } from "@/components/ui/toaster";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import {
   saveSession,
+  fetchMustChangePassword,
   API_BASE_URL,
   type SessionUser,
 } from "@/components/providers/session-provider";
 import type { RoleKey } from "@/lib/app-config";
 import { cn } from "@/lib/utils";
+import { useCompanyName } from "@/lib/company";
+import s from "./login.module.css";
+
+/* Stagger index for the entrance animation (login.module.css .rise). */
+const at = (i: number) => ({ "--i": i }) as React.CSSProperties;
 
 const LoginSchema = z.object({
   email: z.string().min(1, "Email is required").email("Enter a valid email address"),
@@ -51,24 +57,31 @@ const PANEL_TONE: Record<RoleKey, { ring: string; chip: string }> = {
 };
 
 /**
- * Shortcut buttons that fill in the address for each panel. Emails only --
- * a password baked into the bundle is a password everybody has, and these
- * are real accounts now.
+ * The four panels, by ROLE only.
+ *
+ * These cards used to carry a real person's name and email address each --
+ * on a public page anybody on the internet can open, which is a list of who
+ * works here and which address to try a password against. They now say what
+ * each panel is for and nothing about who holds it. Choosing one only marks it
+ * and puts the cursor in the email box; the account's own role (from the API)
+ * decides where the person lands, whichever card was chosen. There is
+ * deliberately no endpoint that lists staff for this page.
  */
-type Panel = { role: RoleKey; label: string; person: string; email: string; blurb: string };
+type Panel = { role: RoleKey; label: string; blurb: string };
 
 const PANELS: Panel[] = [
-  { role: "sales", label: "Sales", person: "Zara Malik", email: "sales@advpos.pk",
+  { role: "sales", label: "Sales",
     blurb: "Takes customer orders and follows up on payments." },
-  { role: "order-dept", label: "Order Department", person: "Bilal Ahmed", email: "order@advpos.pk",
+  { role: "order-dept", label: "Order Department",
     blurb: "Checks stock, packs orders, moves goods and books deliveries." },
-  { role: "accountant", label: "Accountant", person: "Hassan Raza", email: "accounts@advpos.pk",
+  { role: "accountant", label: "Accountant",
     blurb: "Records money in and out, keeps the ledgers and statements." },
-  { role: "super-admin", label: "Super Admin", person: "Umer Memon", email: "vizo.com.pk@gmail.com",
+  { role: "super-admin", label: "Super Admin",
     blurb: "Sees everything, plus users, setup and backup." },
 ];
 
 function LoginForm() {
+  const companyName = useCompanyName();
   const router = useRouter();
   const { resolvedTheme } = useTheme();
 
@@ -76,6 +89,8 @@ function LoginForm() {
   const [showPassword, setShowPassword] = React.useState(false);
   const [serverError, setServerError] = React.useState<string | null>(null);
   const [selected, setSelected] = React.useState<RoleKey>("sales");
+  /* Bumped on every failed attempt so the error box shakes again, not only the first time. */
+  const [attempt, setAttempt] = React.useState(0);
 
   const form = useForm<LoginForm>({
     resolver: vizoResolver(LoginSchema),
@@ -85,8 +100,7 @@ function LoginForm() {
   function choosePanel(panel: Panel) {
     setSelected(panel.role);
     setServerError(null);
-    form.setValue("email", panel.email);
-    form.setFocus("password");
+    form.setFocus("email");
   }
 
   async function onSubmit(data: LoginForm) {
@@ -98,7 +112,16 @@ function LoginForm() {
       );
 
       const { token, user } = res.data;
-      saveSession(token, user);
+      /* "Keep me signed in" unticked = session cookies, gone when the browser closes. */
+      saveSession(token, user, data.remember !== false);
+
+      /* A temporary password (new account, or reset by the Super Admin) is
+         replaced before anything else. */
+      if (await fetchMustChangePassword(token)) {
+        toast.success(`Welcome, ${user.fullName}`, { description: "Choose your own password to continue." });
+        router.replace("/setup");
+        return;
+      }
 
       toast.success(`Signed in as ${user.fullName}`, { description: `${user.roleLabel} panel` });
 
@@ -124,6 +147,7 @@ function LoginForm() {
         }
       }
       setServerError(message);
+      setAttempt((n) => n + 1);
       toast.error("Sign-in failed", { description: message });
     }
   }
@@ -132,7 +156,7 @@ function LoginForm() {
     <div className="min-h-screen grid lg:grid-cols-2 bg-white dark:bg-navy-950 font-sans text-navy-900 dark:text-white antialiased">
       {/* ── LEFT: panels + form ───────────────────────────────── */}
       <div className="flex flex-col px-6 py-10 sm:px-10 lg:px-14 xl:px-20 relative">
-        <div className="flex items-center justify-between mb-10">
+        <div className={cn("flex items-center justify-between mb-10", s.rise)} style={at(0)}>
           <div className="flex items-center gap-2.5">
             <Image
               src={resolvedTheme === "dark" ? "/vizo-logo-dark.jpg" : "/vizo-logo.png"}
@@ -152,16 +176,16 @@ function LoginForm() {
         </div>
 
         <div className="flex-1 flex flex-col justify-center max-w-lg w-full mx-auto lg:mx-0">
-          <div className="mb-6">
+          <div className={cn("mb-6", s.rise)} style={at(1)}>
             <h1 className="text-3xl font-bold tracking-tight">Choose your panel</h1>
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-2">
-              Each role sees a different app. Pick one to fill in its address, then enter your password.
+              Each role sees a different app. Pick yours, then sign in with your own email and password.
             </p>
           </div>
 
           {/* Role panels */}
           <div className="grid sm:grid-cols-2 gap-2.5 mb-6">
-            {PANELS.map((account) => {
+            {PANELS.map((account, i) => {
               const Icon = PANEL_ICON[account.role];
               const tone = PANEL_TONE[account.role];
               const active = selected === account.role;
@@ -171,45 +195,40 @@ function LoginForm() {
                   type="button"
                   onClick={() => choosePanel(account)}
                   aria-pressed={active}
+                  style={at(2 + i)}
                   className={cn(
-                    "text-left p-3.5 rounded-xl border-2 transition-colors",
+                    "text-left p-3.5 rounded-xl border-2", s.rise, s.panelCard,
                     active
                       ? tone.ring
                       : "border-slate-200 dark:border-navy-800 hover:border-slate-300 dark:hover:border-navy-600"
                   )}
                 >
                   <div className="flex items-center gap-2.5">
-                    <div className={cn("size-8 rounded-lg flex items-center justify-center flex-shrink-0", tone.chip)}>
+                    <div className={cn("size-8 rounded-lg flex items-center justify-center flex-shrink-0", tone.chip, s.panelIcon)}>
                       <Icon className="size-4" />
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="text-sm font-semibold truncate">{account.label}</div>
-                      <div className="text-2xs text-slate-500 dark:text-slate-400 truncate">
-                        {account.person}
-                      </div>
                     </div>
-                    {active && <Check className="size-4 text-brand-yellow flex-shrink-0" />}
+                    {active && <Check key={account.role} className={cn("size-4 text-brand-yellow flex-shrink-0", s.pop)} />}
                   </div>
                   <p className="text-2xs text-slate-500 dark:text-slate-400 mt-2 leading-snug">
                     {account.blurb}
                   </p>
-                  <div className="tabular text-2xs text-slate-400 dark:text-slate-500 mt-2 truncate">
-                    {account.email}
-                  </div>
                 </button>
               );
             })}
           </div>
 
           {serverError && (
-            <div role="alert" className="mb-5 flex items-start gap-2.5 p-3 rounded-lg bg-danger/5 border border-danger/30 text-sm">
+            <div key={attempt} role="alert" className={cn("mb-5 flex items-start gap-2.5 p-3 rounded-lg bg-danger/5 border border-danger/30 text-sm", s.shake)}>
               <AlertCircle className="size-4 text-danger flex-shrink-0 mt-0.5" />
               <div className="text-danger-dark dark:text-danger-light">{serverError}</div>
             </div>
           )}
 
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4" noValidate>
+            <form onSubmit={form.handleSubmit(onSubmit)} className={cn("space-y-4", s.rise)} style={at(6)} noValidate>
               <FormField control={form.control} name="email" render={({ field }) => (
                 <FormItem>
                   <FormLabel required>Email address</FormLabel>
@@ -266,7 +285,7 @@ function LoginForm() {
                 </FormItem>
               )} />
 
-              <Button type="submit" variant="accent" size="lg" className="w-full font-semibold" disabled={form.formState.isSubmitting}>
+              <Button type="submit" variant="accent" size="lg" className={cn("w-full font-semibold", s.shine)} disabled={form.formState.isSubmitting}>
                 {form.formState.isSubmitting ? (
                   <><Loader2 className="size-4 animate-spin" /> Signing in…</>
                 ) : (
@@ -276,39 +295,73 @@ function LoginForm() {
             </form>
           </Form>
 
-          <div className="mt-8 pt-5 border-t border-slate-200 dark:border-navy-800 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-            <div>© 2026 AdvPOS</div>
-            <div className="flex items-center gap-3">
-              <Link href="#" className="hover:text-navy-900 dark:hover:text-white">Privacy</Link>
-              <Link href="#" className="hover:text-navy-900 dark:hover:text-white">Terms</Link>
-              <Link href="#" className="hover:text-navy-900 dark:hover:text-white">Help</Link>
-            </div>
+          {/* The Privacy / Terms / Help links went nowhere (href="#") and there
+              are no such pages, so they are gone. The year is today's -- the
+              page is prerendered, so the build year may differ for a moment
+              after New Year; suppressHydrationWarning covers exactly that. */}
+          <div className={cn("mt-8 pt-5 border-t border-slate-200 dark:border-navy-800 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400", s.rise)} style={at(8)}>
+            <div suppressHydrationWarning>© {new Date().getFullYear()} {companyName}</div>
           </div>
         </div>
       </div>
 
       {/* ── RIGHT: what each panel does ──────────────────────── */}
       <div className="hidden lg:flex relative bg-navy-900 text-white overflow-hidden">
-        <div className="absolute inset-0 opacity-[0.04]"
+        <div className={cn("absolute inset-0 opacity-[0.05]", s.grid)}
              style={{ backgroundImage: "linear-gradient(white 1px, transparent 1px), linear-gradient(90deg, white 1px, transparent 1px)", backgroundSize: "64px 64px" }} />
-        <div className="absolute top-1/4 -right-20 w-96 h-96 bg-brand-yellow/10 rounded-full blur-3xl" />
-        <div className="absolute bottom-1/4 -left-10 w-72 h-72 bg-brand-yellow/5 rounded-full blur-3xl" />
+        <div className={cn("absolute top-1/4 -right-20 w-96 h-96 bg-brand-yellow/15 rounded-full blur-3xl", s.orb1)} />
+        <div className={cn("absolute bottom-1/4 -left-10 w-72 h-72 bg-brand-yellow/10 rounded-full blur-3xl", s.orb2)} />
+        <div className={cn("absolute top-10 left-1/3 w-56 h-56 bg-sky-400/10 rounded-full blur-3xl", s.orb3)} />
+
+        {/* Two small cards drifting over the panel: what the system does all day.
+            ILLUSTRATIONS, not data -- they used to show an order number and a
+            rupee amount that looked live and were made up. Now they name the
+            two things the app does and carry a moving bar, nothing more. */}
+        <div aria-hidden className={cn("absolute top-14 right-16 z-10 hidden xl:block", s.fadeScale)} style={at(6)}>
+          <div className={cn("w-60 rounded-xl border border-white/10 bg-white/5 p-3.5 backdrop-blur-md shadow-2xl", s.float)}>
+            <div className="flex items-center gap-2 text-sm font-semibold text-white">
+              <span className="size-7 rounded-lg bg-success/15 flex items-center justify-center">
+                <PackageCheck className="size-4 text-success" />
+              </span>
+              Orders packed &amp; dispatched
+            </div>
+            <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/10">
+              <div className={cn("h-full w-full rounded-full bg-success/80", s.grow, s.shimmerBar)} />
+            </div>
+          </div>
+        </div>
+        <div aria-hidden className={cn("absolute bottom-16 right-24 z-10 hidden xl:block", s.fadeScale)} style={at(8)}>
+          <div className={cn("w-60 rounded-xl border border-white/10 bg-white/5 p-3.5 backdrop-blur-md shadow-2xl", s.float2)}>
+            <div className="flex items-center gap-2 text-sm font-semibold text-white">
+              <span className="size-7 rounded-lg bg-brand-yellow/15 flex items-center justify-center">
+                <BookCheck className="size-4 text-brand-yellow" />
+              </span>
+              Collections posted to the ledger
+            </div>
+            <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/10">
+              <div className={cn("h-full w-full rounded-full bg-brand-yellow/80", s.grow, s.shimmerBar)} />
+            </div>
+          </div>
+        </div>
 
         <div className="relative z-10 flex flex-col justify-center p-12 xl:p-16 w-full">
           <div className="max-w-lg">
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-brand-yellow/10 border border-brand-yellow/20 text-brand-yellow text-xs font-semibold uppercase tracking-wider mb-8">
+            <div className={cn("inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-brand-yellow/10 border border-brand-yellow/20 text-brand-yellow text-xs font-semibold uppercase tracking-wider mb-8", s.rise)} style={at(1)}>
               <span className="size-1.5 rounded-full bg-brand-yellow animate-pulse-soft" />
               One system, four panels
             </div>
-            <h2 className="text-4xl xl:text-5xl font-bold leading-[1.15] tracking-tight">
-              Everyone works in the <span className="text-brand-yellow">same place</span>.
+            <h2 className={cn("text-4xl xl:text-5xl font-bold leading-[1.15] tracking-tight", s.rise)} style={at(2)}>
+              Everyone works in the <span className={s.accentText}>same place</span>.
             </h2>
-            <p className="text-base text-slate-300 mt-6 leading-relaxed">
+            <p className={cn("text-base text-slate-300 mt-6 leading-relaxed", s.rise)} style={at(3)}>
               An order starts with Sales, gets packed by the Order Department, and
               lands with Accounts — without a single message leaving the building.
             </p>
 
-            <ol className="mt-10 space-y-4">
+            <ol className="relative mt-10 space-y-5">
+              {/* the thread that joins the three steps, drawn once */}
+              <span aria-hidden className="absolute left-4 top-4 bottom-4 w-px bg-white/10" />
+              <span aria-hidden className={cn("absolute left-4 top-4 bottom-4 w-px bg-gradient-to-b from-brand-yellow via-brand-yellow/70 to-brand-yellow/20", s.flowLine)} />
               <FlowStep
                 n={1}
                 title="Sales"
@@ -345,9 +398,12 @@ function roleLabel(role: RoleKey) {
 
 function FlowStep({ n, title, body }: { n: number; title: string; body: string }) {
   return (
-    <li className="flex gap-4">
-      <div className="size-8 rounded-full bg-brand-yellow/15 border border-brand-yellow/30 flex items-center justify-center flex-shrink-0 tabular text-sm font-bold text-brand-yellow">
-        {n}
+    <li className={cn("relative flex gap-4", s.rise)} style={at(3 + n)}>
+      <div className="relative size-8 flex-shrink-0">
+        <span aria-hidden className={cn("absolute inset-0 rounded-full bg-brand-yellow/30", s.ping)} style={at(n)} />
+        <div className="relative size-8 rounded-full bg-navy-900 border border-brand-yellow/40 flex items-center justify-center tabular text-sm font-bold text-brand-yellow">
+          {n}
+        </div>
       </div>
       <div>
         <div className="text-sm font-semibold text-white">{title}</div>

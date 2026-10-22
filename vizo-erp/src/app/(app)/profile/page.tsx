@@ -1,5 +1,6 @@
 "use client";
 
+import { usePageRefresh } from "@/lib/page-refresh";
 import * as React from "react";
 import axios from "axios";
 import { AlertCircle, RefreshCw, Loader2, Save } from "lucide-react";
@@ -92,6 +93,8 @@ export default function ProfilePage() {
       setLoading(false);
     }
   }, [applyToForm]);
+
+  usePageRefresh(load);   // the top bar's Refresh button -- lib/page-refresh.ts
 
   React.useEffect(() => {
     /* eslint-disable-next-line react-hooks/set-state-in-effect --

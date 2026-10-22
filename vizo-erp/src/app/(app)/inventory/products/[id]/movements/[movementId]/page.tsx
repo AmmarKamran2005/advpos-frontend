@@ -1,5 +1,6 @@
 "use client";
 
+import { usePageRefresh } from "@/lib/page-refresh";
 import * as React from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -42,8 +43,9 @@ type MovementDetail = {
   id: number; type: string; typeName: string; movedAt: string; reference: string | null;
   qty: number; balanceAfter: number; direction: "in" | "out" | "move";
   locationId: number; location: string; locationCode: string; city: string;
-  by: string; byRole: string; valueAtCost: number;
-  product: { id: number; sku: string; name: string; imageUrl: string | null; packing: number; costPrice: number; dutyPrice: number };
+  /* Cost figures reach the Super Admin only (26 Sep); absent for everyone else. */
+  by: string; byRole: string; valueAtCost?: number;
+  product: { id: number; sku: string; name: string; imageUrl: string | null; packing: number; costPrice?: number; dutyPrice?: number };
   legs: Leg[];
   document: DocumentBlock | null;
 };
@@ -79,6 +81,8 @@ export default function MovementDetailPage() {
       setLoading(false);
     }
   }, [productId, movementId]);
+
+  usePageRefresh(load);   // the top bar's Refresh button -- lib/page-refresh.ts
 
   React.useEffect(() => {
     /* eslint-disable-next-line react-hooks/set-state-in-effect -- axios inside the page is the brief */
@@ -202,8 +206,10 @@ export default function MovementDetailPage() {
                   <Fact label="Rate on the document" value={`${formatMoney(doc.thisLine.rate)} each`}
                     hint={doc.thisLine.amount !== null ? `${formatMoney(doc.thisLine.amount)} for this line` : undefined} />
                 )}
-                <Fact label="Value at today's landed cost" value={formatMoney(m.valueAtCost)}
-                  hint={`${qty} × ${formatMoney(m.product.costPrice + m.product.dutyPrice)}`} />
+                {m.valueAtCost !== undefined && (
+                  <Fact label="Value at today's landed cost" value={formatMoney(m.valueAtCost)}
+                    hint={`${qty} × ${formatMoney((m.product.costPrice ?? 0) + (m.product.dutyPrice ?? 0))}`} />
+                )}
               </dl>
             </CardBody>
           </Card>

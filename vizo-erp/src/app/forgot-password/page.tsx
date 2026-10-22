@@ -81,7 +81,9 @@ function ForgotPasswordFlow() {
       );
       setExpiresIn(res.data.expiresInMinutes ?? 30);
       setStep("code");
-      toast.success("Code sent", { description: "Check your inbox for a six-digit code." });
+      /* The API answers the same whether or not the address is real (so a
+         stranger cannot test addresses), so the toast must not claim more. */
+      toast.success("Check your inbox", { description: res.data.message });
     } catch (err) {
       setError(errorText(err, "Could not send the code. Try again."));
     } finally {
@@ -209,9 +211,10 @@ function ForgotPasswordFlow() {
             <form onSubmit={checkCode} noValidate>
               <h1 className="text-2xl font-bold tracking-tight">Enter your code</h1>
               <p className="text-sm text-slate-500 dark:text-slate-400 mt-2">
-                We sent a six-digit code to{" "}
-                <span className="font-semibold text-navy-900 dark:text-white">{email}</span>.
-                It is good for {expiresIn} minutes.
+                If{" "}
+                <span className="font-semibold text-navy-900 dark:text-white break-all">{email}</span>{" "}
+                belongs to a staff account, a six-digit code is on its way to it. It is good for {expiresIn} minutes.
+                Nothing arriving? Check the address, or ask your administrator.
               </p>
 
               <div className="mt-8 space-y-5">

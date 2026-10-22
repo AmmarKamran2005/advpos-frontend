@@ -8,7 +8,6 @@ import {
   Wallet,
   BarChart3,
   Send,
-  PackageCheck,
   PackageX,
   Settings2,
 } from "lucide-react";
@@ -29,7 +28,7 @@ export type NavBadge = {
  * A live badge shows nothing at all while it is loading and nothing when the
  * count is zero, so it never claims work that is not there.
  */
-export type LiveBadgeKey = "creditHolds";
+export type LiveBadgeKey = "creditHolds" | "newOrders" | "newCustomers";
 
 export type NavChild = {
   label: string;
@@ -39,6 +38,8 @@ export type NavChild = {
   liveBadge?: LiveBadgeKey;
   /** Hidden unless the signed-in role holds at least one of these. */
   perms?: string[];
+  /** Hidden for these roles even when they hold the permission. */
+  hideForRoles?: string[];
 };
 
 export type NavNode =
@@ -109,7 +110,9 @@ export const navigation: NavNode[] = [
     icon: ShoppingCart,
     match: "sales",
     children: [
-      { label: "Orders",          href: "/sales/orders",       match: "sales.orders",   perms: ["orders.view"] },
+      /* newOrders: orders created since this person last opened the list
+         (Super Admin, accountant, order desk -- SidebarBadgesController). */
+      { label: "Orders",          href: "/sales/orders",       match: "sales.orders",   perms: ["orders.view"], liveBadge: "newOrders" },
       { label: "Sale Invoices",   href: "/sales/invoices",     match: "sales.invoices", perms: ["invoices.view"] },
       { label: "Counter Sale",    href: "/sales/direct",       match: "sales.direct",   perms: ["sales.direct"] },
       { label: "Sales Returns",   href: "/sales/returns",      match: "sales.returns",  perms: ["returns.sales"] },
@@ -122,9 +125,12 @@ export const navigation: NavNode[] = [
     icon: Truck,
     match: "purchases",
     children: [
+      /* Super Admin only since 26 Sep (only that role holds purchases.view,
+         and the API and proxy.ts refuse everyone else by role). No "Stock
+         Received": a purchase order is received the moment it is saved. */
       { label: "Orders to Supplier", href: "/purchases/orders",   match: "purchases.orders",   perms: ["purchases.view"] },
-      { label: "Stock Received",     href: "/purchases/grns",     match: "purchases.grns",     perms: ["receipts.stock", "purchases.view"] },
       { label: "Purchase Invoices",  href: "/purchases/invoices", match: "purchases.invoices", perms: ["purchases.view"] },
+      { label: "Logistics Companies", href: "/purchases/logistics", match: "purchases.logistics", perms: ["purchases.view"] },
     ],
   },
   /* PACKING IS BACK, as a different screen entirely. The pre-chain queue this
@@ -167,18 +173,10 @@ export const navigation: NavNode[] = [
     match: "delivery",
     perms: ["delivery.view"],
   },
-  {
-    /* The same screen as Delivery, pre-filtered to what already arrived --
-       "a Delivered page ... which the Order Department can also view."
-       Reusing /delivery's own status filter rather than a second page that
-       would drift from the first one's columns and rules. */
-    type: "item",
-    label: "Delivered",
-    icon: PackageCheck,
-    href: "/delivery?status=DELIVERED",
-    match: "delivery.delivered",
-    perms: ["delivery.view"],
-  },
+  /* "Delivered" is no longer its own item (the owner, 26 September). It was
+     the same /delivery screen pre-filtered to DELIVERED, and /delivery keeps
+     its status filter and its ?status= link, so delivered orders are still
+     one tap away -- without a second menu entry for one screen. */
 
   { type: "section", label: "People" },
   {
@@ -187,9 +185,11 @@ export const navigation: NavNode[] = [
     icon: Users,
     match: "parties",
     children: [
-      { label: "Customers",       href: "/parties/customers", match: "parties.customers", perms: ["customers.view"] },
+      { label: "Customers",       href: "/parties/customers", match: "parties.customers", perms: ["customers.view"], liveBadge: "newCustomers" },
       { label: "Suppliers",       href: "/parties/suppliers", match: "parties.suppliers", perms: ["suppliers.manage", "purchases.view"] },
-      { label: "Customer Visits", href: "/parties/visits",    match: "parties.visits",    perms: ["visits.view"] },
+      /* Off the sales panel's menu (the owner, 30 Sep). A rep still logs a
+         visit from the customer's own page; the list is the office's. */
+      { label: "Customer Visits", href: "/parties/visits",    match: "parties.visits",    perms: ["visits.view"], hideForRoles: ["sales"] },
     ],
   },
 
@@ -205,10 +205,18 @@ export const navigation: NavNode[] = [
       { label: "Confirm Collections", href: "/accounting/collections",  match: "accounting.collections", perms: ["money.manage"] },
       { label: "Vouchers",         href: "/accounting/vouchers",        match: "accounting.vouchers", perms: ["money.view"] },
       { label: "Expenses",         href: "/accounting/expenses",        match: "accounting.expenses", perms: ["expenses.manage"] },
+      /* Every customer's and every staff member's account, from the books
+         (26 September). Super Admin and Accountant: proxy.ts and the API
+         both say so by role; ledger.view keeps them off anybody else's menu. */
+      { label: "Customer Ledgers", href: "/ledgers/customers",          match: "accounting.customer-ledgers", perms: ["ledger.view"] },
+      { label: "Staff Ledgers",    href: "/ledgers/staff",              match: "accounting.staff-ledgers",    perms: ["ledger.view"] },
       { label: "Account List",     href: "/accounting/coa",             match: "accounting.coa",      perms: ["ledger.view"] },
       { label: "Ledgers",          href: "/accounting/ledgers",         match: "accounting.ledgers",  perms: ["ledger.view"] },
       { label: "Manual Entries",   href: "/accounting/journal-entries", match: "accounting.je",       perms: ["ledger.manage"] },
-      { label: "Trial Balance",    href: "/accounting/trial-balance",   match: "accounting.tb",       perms: ["statements.view"] },
+      /* It existed only as a link on a voucher; it is on the menu now that a
+         statement can actually be started and loaded from it (E3, 27 Sep). */
+      { label: "Bank Reconciliation", href: "/accounting/reconciliation", match: "accounting.recon", perms: ["ledger.manage"] },
+      /* Trial Balance removed from the menu on the owner's word (27 Sep). */
       { label: "Income Statement", href: "/accounting/profit-loss",     match: "accounting.pl",       perms: ["statements.view"] },
       { label: "Balance Sheet",    href: "/accounting/balance-sheet",   match: "accounting.bs",       perms: ["statements.view"] },
       { label: "Year End",         href: "/accounting/period-close",    match: "accounting.pc",       perms: ["statements.view"] },
@@ -225,8 +233,16 @@ export const navigation: NavNode[] = [
       { label: "All Reports",     href: "/reports",                match: "reports.lib",      perms: ["reports.full"] },
       { label: "Sales Summary",   href: "/reports/sales-summary",  match: "reports.sales",    perms: ["reports.view"] },
       { label: "Top Customers",   href: "/reports/top-customers",  match: "reports.top-cust", perms: ["reports.full"] },
+      /* Built 27 Sep (round E) -- they were "Not built" cards on /reports. A rep
+         sees his own row / his own invoices; the API scopes it. */
+      { label: "Sales by Salesperson", href: "/reports/sales-by-rep",     match: "reports.by-rep",     perms: ["reports.view"] },
+      { label: "Sales by Product",     href: "/reports/sales-by-product", match: "reports.by-product", perms: ["reports.view"] },
       { label: "Recovery — Customers", href: "/reports/aging/customer", match: "reports.ar-aging", perms: ["reports.full"] },
       { label: "Recovery — Suppliers", href: "/reports/aging/supplier", match: "reports.ap-aging", perms: ["reports.full"] },
+      /* Supplier Ledger: Super Admin and accountant (ledger.view). Purchase
+         Summary: purchase prices, the Super Admin alone (purchases.view). */
+      { label: "Supplier Ledger",  href: "/reports/supplier-ledger",  match: "reports.sup-ledger", perms: ["ledger.view"] },
+      { label: "Purchase Summary", href: "/reports/purchase-summary", match: "reports.purchases",  perms: ["purchases.view"] },
       { label: "Slow Selling",    href: "/reports/slow-moving",    match: "reports.slow",     perms: ["stock.view"] },
       { label: "Not Selling",     href: "/reports/dead-stock",     match: "reports.dead",     perms: ["stock.view"] },
     ],
@@ -269,7 +285,7 @@ const FLATTEN_AT = 2;
  * with three screens should not have to open three accordions to reach them.
  * Section headings with nothing under them are dropped.
  */
-export function navigationFor(can: (permission: string) => boolean): NavNode[] {
+export function navigationFor(can: (permission: string) => boolean, role?: string): NavNode[] {
   /* Takes the predicate rather than a role, so the menu is driven by the
      permission list the API put in the token. Edit a role in Setup > Roles and
      the sidebar follows on next sign-in -- no code change, no second copy of
@@ -285,7 +301,9 @@ export function navigationFor(can: (permission: string) => boolean): NavNode[] {
     }
 
     if (node.type === "group") {
-      const children = node.children.filter((c) => allowed(c.perms));
+      const children = node.children.filter(
+        (c) => allowed(c.perms) && !(role && c.hideForRoles?.includes(role))
+      );
       if (children.length === 0) continue;
 
       if (children.length <= FLATTEN_AT) {

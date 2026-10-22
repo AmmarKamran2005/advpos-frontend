@@ -184,7 +184,7 @@ export function AccountantDashboard() {
               icon={TrendingDown}
               tone="danger"
               hint={`${formatCompact(data.payables.dueSoonTotal)} · overdue or due in 3 days`}
-              href="/purchases/invoices"
+              href="/parties/suppliers"
             />
             <Counter
               label="Recovery 60+ days"
@@ -372,7 +372,7 @@ export function AccountantDashboard() {
                 )}
               </div>
               <Button variant="ghost" size="sm" asChild>
-                <Link href="/purchases/invoices">All bills <ArrowRight /></Link>
+                <Link href="/parties/suppliers">All suppliers <ArrowRight /></Link>
               </Button>
             </div>
             {loading ? (
@@ -386,7 +386,9 @@ export function AccountantDashboard() {
                 {data.payables.dueSoon.map((p) => (
                   <Link
                     key={p.id}
-                    href={`/purchases/invoices/${p.id}`}
+                    /* Purchase screens are the Super Admin's alone (26 Sep);
+                       the accountant pays from the supplier's page. */
+                    href="/parties/suppliers"
                     className="flex items-center gap-3 py-2.5 hover:bg-slate-50 dark:hover:bg-navy-700/50 -mx-2 px-2 rounded-lg"
                   >
                     <div className="min-w-0 flex-1">

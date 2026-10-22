@@ -1,5 +1,6 @@
 "use client";
 
+import { usePageRefresh } from "@/lib/page-refresh";
 import * as React from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -178,6 +179,8 @@ export default function JournalEntryDetailPage() {
       setLoading(false);
     }
   }, [id, reset]);
+
+  usePageRefresh(load);   // the top bar's Refresh button -- lib/page-refresh.ts
 
   React.useEffect(() => {
     void load();

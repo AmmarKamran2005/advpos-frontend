@@ -59,3 +59,7 @@ desktop.ini
 # `git add -A`. Ship a redacted appsettings.Example.json instead.
 backend/vizo-backend/appsettings.json
 backend/vizo-backend/appsettings.Development.json
+
+# Real customer statements from the old system, shared as reference only.
+# They carry real names and balances; never push them.
+vizo-erp/refrence to ledger and etc/
