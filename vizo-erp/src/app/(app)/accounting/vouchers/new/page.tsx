@@ -29,7 +29,7 @@ import { vizoResolver } from "@/lib/zod-resolver";
 import { toast } from "@/components/ui/toaster";
 import { formatMoney, formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
+import { API_BASE_URL, authHeader, useSession } from "@/components/providers/session-provider";
 
 /* GET /accounting/lookups */
 type LookupAccount = { id: number; code: string; name: string; isGroup: boolean; type: string };
@@ -106,6 +106,8 @@ type FormValues = z.infer<typeof Schema>;
 
 export default function NewVoucherPage() {
   const router = useRouter();
+  const { role } = useSession();
+  const seesPayments = role === "super-admin";
 
   const [lookups, setLookups] = React.useState<Lookups | null>(null);
   const [loading, setLoading] = React.useState(true);
@@ -156,7 +158,9 @@ export default function NewVoucherPage() {
       const wantReceipt = search.get("type") === "receipt";
       const wantParty = Number(search.get("partyId") ?? 0);
 
-      const offered = res.data.voucherTypes.filter((t) => !RETIRED_TYPES.includes(t.code));
+      const offered = res.data.voucherTypes
+        .filter((t) => !RETIRED_TYPES.includes(t.code))
+        .filter((t) => seesPayments || t.isReceipt);
       const firstType = wantReceipt
         ? offered.find((t) => t.isReceipt) ?? offered[0]
         : offered[0];
@@ -178,7 +182,7 @@ export default function NewVoucherPage() {
     } finally {
       setLoading(false);
     }
-  }, [reset, search]);
+  }, [reset, search, seesPayments]);
 
   usePageRefresh(load);   // the top bar's Refresh button -- lib/page-refresh.ts
 
@@ -197,9 +201,14 @@ export default function NewVoucherPage() {
   const method = lookups?.paymentMethods.find((m) => m.id === methodId) ?? null;
 
   /* The types this form offers -- every one but the two wallet vouchers. */
+  /* ...and for anybody but the Super Admin, receipts only (the owner, 22 Oct:
+     cash payment, bank payment and journal voucher are the Super Admin's).
+     The API refuses the others too (AccountingController.SeesPayments). */
   const voucherTypeChoices = React.useMemo(
-    () => (lookups?.voucherTypes ?? []).filter((t) => !RETIRED_TYPES.includes(t.code)),
-    [lookups]
+    () => (lookups?.voucherTypes ?? [])
+      .filter((t) => !RETIRED_TYPES.includes(t.code))
+      .filter((t) => seesPayments || t.isReceipt),
+    [lookups, seesPayments]
   );
 
   /* The methods for this type. Money in is limited to the receiving methods;

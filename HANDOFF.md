@@ -142,7 +142,33 @@ post the history — **changa.txt §G, in that order.**
 
 ---
 
-## LATEST — 21 Oct: accountant moves orders anywhere; stock at confirm and dispatch; rep's max quantity; one Refresh button; voucher clean-up
+## LATEST — 22 Oct: payments and JVs are the Super Admin's; the Voucher Book (table entry)
+
+No migration. 28/28 API checks (`flow22.py`, session scratchpad) on a local
+restore of live, plus browser checks as Super Admin and accountant.
+
+- **Accountant = receipts only.** New Voucher and voucher edit offer CR/BR only;
+  the voucher list, its export and the totals show receipts only; a payment or
+  JV voucher answers 404 to the accountant (open, post, edit, delete, cancel).
+  `AccountingController.SeesPayments` / `HiddenVoucher`. The Super Admin is
+  unchanged.
+- **Voucher Book** — `/accounting/vouchers/table`, the "Table Entry" button on
+  Vouchers. Modelled on the client's old "Receipt Vouchers Book" photos: entry
+  date at the top, a grid of rows (Code · Ac CR · Particulars · Amount · Ac DR ·
+  Method), the date's saved entries listed above the new rows, search within
+  the date, Enter on an amount adds a row, "Post on save" (default on).
+  - Codes from `GET /accounting/voucher-book`: Super Admin CR, BR, CP, BP, JV;
+    accountant CR, BR. Receipts/payments become normal vouchers (same
+    validation and posting as the single form); a JV becomes a 2-line JOURNAL
+    entry (a party side lands on 1130/2101 with the party).
+  - `POST /accounting/voucher-book` saves the whole table in ONE transaction;
+    a bad row saves nothing and is highlighted ("Row n: …").
+  - New entries only for today or later (the no-past-dates rule, D2); a past
+    date is shown read-only.
+  - `Controllers/AccountingController.VoucherBook.cs` (the controller is now
+    `partial`).
+
+## 21 Oct: accountant moves orders anywhere; stock at confirm and dispatch; rep's max quantity; one Refresh button; voucher clean-up
 
 The owner's 21 Oct list. No migration — nothing in the database changed shape.
 Tested on a fresh restore of live (taken 21 Oct) on a throwaway Postgres:
