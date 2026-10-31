@@ -13,7 +13,7 @@ import { Card, CardBody } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DocumentActions } from "@/components/widgets/document-actions";
-import { Badge, StatusPill } from "@/components/ui/badge";
+import { StatusPill } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { formatMoney, formatDate } from "@/lib/format";
 import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
@@ -41,7 +41,6 @@ type Expense = {
   paidFromAccount: string;
   amount: number;
   vendorName: string;
-  paymentMethod: string;
   description: string | null;
   status: string;
   statusName: string;
@@ -183,7 +182,6 @@ export default function ExpenseDetailPage() {
                   <div className="text-2xs uppercase font-semibold tracking-wider text-slate-500 dark:text-slate-400">Amount</div>
                   <div className="text-3xl tabular font-bold text-danger">-{formatMoney(e.amount)}</div>
                 </div>
-                <Badge variant="muted">{e.paymentMethod}</Badge>
               </div>
 
               <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4 text-sm">

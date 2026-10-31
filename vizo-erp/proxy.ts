@@ -73,6 +73,10 @@ const ROUTE_RULES: { prefix: string; pattern?: RegExp; roles: RoleKey[]; perm?: 
   { prefix: "/ledgers", roles: ["super-admin", "accountant"] },
 
   { prefix: "/sales/credit-holds", roles: ["super-admin", "accountant"] },
+  /* PAYMENT COLLECTION is the salesperson's (the owner, 1 Nov). The accountant
+     and the Super Admin confirm on /accounting/collections; the Super Admin may
+     look here too. */
+  { prefix: "/sales/collections", roles: ["super-admin", "sales"] },
   { prefix: "/sales/direct", roles: ["super-admin", "order-dept"] },
   /* SALES RETURNS ARE THE BACK OFFICE'S, BY ROLE.
 

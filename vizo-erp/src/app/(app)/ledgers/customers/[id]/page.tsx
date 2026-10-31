@@ -255,7 +255,7 @@ export default function CustomerStatementPage() {
         ) : (
           <div className={cn(loading && "opacity-60 transition-opacity")}>
             {/* column heads, desktop */}
-            <div className="hidden md:grid grid-cols-[6.5rem_1fr_7.5rem_7.5rem_8.5rem] gap-x-3 px-4 py-2.5 bg-navy-900 text-white text-2xs uppercase tracking-wider font-semibold">
+            <div className="hidden md:grid grid-cols-[6.5rem_1fr_7.5rem_7.5rem_8.5rem] gap-x-3 px-4 py-2 bg-slate-50 dark:bg-navy-800 text-slate-500 dark:text-slate-400 text-2xs uppercase tracking-wider font-semibold border-b border-slate-200 dark:border-navy-700">
               <div>Date</div><div>Particulars</div>
               <div className="text-right">Debit</div><div className="text-right">Credit</div><div className="text-right">Balance</div>
             </div>
@@ -269,17 +269,17 @@ export default function CustomerStatementPage() {
                 onCancel={() => setAdding(false)}
                 onSaved={() => { setAdding(false); void load(); }} />
             ) : (
-              <button type="button" onClick={() => setAdding(true)} disabled={!lookups}
-                className="w-full flex items-center justify-center gap-2 py-3 text-sm font-medium text-navy-900 dark:text-brand-yellow border-t border-dashed border-slate-200 dark:border-navy-700 hover:bg-brand-yellow/5 transition-colors">
-                <span className="size-6 rounded-full bg-brand-yellow text-navy-900 inline-flex items-center justify-center"><Plus className="size-4" /></span>
-                Add a row
-              </button>
+              <div className="px-4 py-3 border-t border-slate-200 dark:border-navy-700">
+                <Button variant="secondary" size="sm" className="gap-1.5" onClick={() => setAdding(true)} disabled={!lookups}>
+                  <Plus /> Add row
+                </Button>
+              </div>
             )}
 
             {/* TOTALS -- entry count, the ledger limit, and the three sums. */}
-            <div className="bg-navy-900 text-white px-4 py-3 md:grid md:grid-cols-[6.5rem_1fr_7.5rem_7.5rem_8.5rem] md:gap-x-3 md:items-center">
-              <div className="text-2xs uppercase tracking-wider font-bold text-brand-yellow">Totals</div>
-              <div className="text-xs text-slate-300 mt-0.5 md:mt-0">
+            <div className="bg-slate-50 dark:bg-navy-800 text-navy-900 dark:text-white border-t border-slate-200 dark:border-navy-700 px-4 py-3 md:grid md:grid-cols-[6.5rem_1fr_7.5rem_7.5rem_8.5rem] md:gap-x-3 md:items-center">
+              <div className="text-2xs uppercase tracking-wider font-bold text-slate-500 dark:text-slate-400">Totals</div>
+              <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 md:mt-0">
                 {s.entryCount} {s.entryCount === 1 ? "entry" : "entries"} · Ledger limit {s.creditLimit > 0 ? ledgerAmount(s.creditLimit) : "none"}
               </div>
               <div className="grid grid-cols-3 gap-2 mt-2 md:contents">
@@ -308,7 +308,7 @@ function Money({ label, v, strong }: { label: string; v: number; strong?: boolea
   return (
     <div className="text-right">
       <div className="md:hidden text-2xs uppercase tracking-wider text-slate-400">{label}</div>
-      <div className={cn("tabular", strong ? "text-brand-yellow font-bold text-base" : "font-semibold text-sm")}>{ledgerAmount(v, "0")}</div>
+      <div className={cn("tabular", strong ? "text-navy-900 dark:text-white font-bold text-base" : "font-semibold text-sm")}>{ledgerAmount(v, "0")}</div>
     </div>
   );
 }

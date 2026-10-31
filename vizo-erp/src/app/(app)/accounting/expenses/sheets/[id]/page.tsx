@@ -23,7 +23,7 @@ import { openDocumentWhenReady, viewableUrl, printPdf, downloadPdf } from "@/lib
 import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
 import {
   ExpenseGrid, isBlank, newRowKey, parseAmount, validateRow,
-  type GridRow, type Head, type Method, type PaidFromAccount, type RowErrors, type Field,
+  type GridRow, type Head, type PaidFromAccount, type RowErrors, type Field,
 } from "../../_components/expense-grid";
 
 /* GET /expense-sheets/{id} */
@@ -37,8 +37,6 @@ type Line = {
   vendorName: string;
   paidFromAccountId: number;
   paidFrom: string;
-  methodId: number;
-  method: string;
   amount: number;
   status: string;
   entryId: number | null;
@@ -84,7 +82,6 @@ type Sheet = {
 type Lookups = {
   heads: Head[];
   paidFrom: PaidFromAccount[];
-  methods: Method[];
   locations: { id: number; name: string }[];
   defaultLocationId: number | null;
   vendors: string[];
@@ -111,14 +108,12 @@ function toRow(l: Line): GridRow {
     description: l.description ?? "",
     vendorName: l.vendorName,
     paidFromAccountId: l.paidFromAccountId,
-    methodId: l.methodId,
     amount: l.amount.toFixed(2).replace(/\.00$/, ""),
     locked: l.locked,
     excluded: l.excluded,
     head: l.head,
     headCode: l.headCode,
     paidFrom: l.paidFrom,
-    method: l.method,
     status: l.status,
   };
 }
@@ -165,13 +160,12 @@ export default function ExpenseSheetPage() {
   }, [lookups, sheet]);
 
   const spareRow = React.useCallback(
-    (paidFromId: number, look: Lookups | null): GridRow => ({
+    (paidFromId: number): GridRow => ({
       key: newRowKey(),
       expenseAccountId: 0,
       description: "",
       vendorName: "",
       paidFromAccountId: paidFromId,
-      methodId: look?.paidFrom.find((a) => a.id === paidFromId)?.defaultMethodId ?? 0,
       amount: "",
     }),
     []
@@ -199,7 +193,7 @@ export default function ExpenseSheetPage() {
           look.data.paidFrom.find((a) => a.name.toLowerCase().includes(loc))?.id ??
           look.data.paidFrom.find((a) => /cash/i.test(a.name) && !/jazz/i.test(a.name))?.id ??
           look.data.paidFrom[0]?.id ?? 0;
-        base.push(spareRow(pf, look.data));
+        base.push(spareRow(pf));
       }
       setRows(base);
       setDirty(false);
@@ -287,7 +281,6 @@ export default function ExpenseSheetPage() {
             description: r.description.trim() || null,
             vendorName: r.vendorName.trim(),
             paidFromAccountId: r.paidFromAccountId,
-            methodId: r.methodId || null,
             amount: parseAmount(r.amount),
           })),
         },
@@ -574,7 +567,7 @@ export default function ExpenseSheetPage() {
         {editable && (
           <p className="text-xs text-slate-500 dark:text-slate-400">
             <span className="hidden md:inline">Tab or Enter moves to the next cell · ↑ ↓ between rows · Ctrl+S saves. </span>
-            A new line appears as you type.
+            &ldquo;+ Add row&rdquo; (or Enter in the last amount) starts a new line.
           </p>
         )}
       </div>
@@ -584,7 +577,6 @@ export default function ExpenseSheetPage() {
         editable={editable}
         heads={lookups.heads}
         paidFrom={lookups.paidFrom}
-        methods={lookups.methods}
         vendors={lookups.vendors}
         errors={serverErrors}
         showAllErrors={showAllErrors}

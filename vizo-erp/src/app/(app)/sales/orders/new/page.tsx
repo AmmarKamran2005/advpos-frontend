@@ -199,10 +199,12 @@ export default function NewOrderPage() {
     try {
       const res = await axios.get<Lookups>(`${API_BASE_URL}/sales/lookups`, { headers: authHeader() });
       setLookups(res.data);
-      /* Credit by default: an order taken by a rep is on the shop's account
-         unless somebody says otherwise. Cash sales go through Counter Sale. */
-      const list = res.data.receivingMethods?.length ? res.data.receivingMethods : res.data.paymentMethods;
-      setMethodId(list?.find((m) => m.key === "CREDIT")?.id ?? list?.[0]?.id ?? 0);
+      /* CREDIT, AND ONLY CREDIT (the owner, 1 Nov). Meezan and Faysal are the
+         business's own bank accounts, not a way a customer pays an order; how
+         the money actually came in is said on Payment Collection. Cash sales
+         go through Counter Sale. The API holds a rep to this too. */
+      const list = res.data.paymentMethods ?? [];
+      setMethodId(list.find((m) => m.key === "CREDIT")?.id ?? 0);
       setError(null);
     } catch (e) {
       setError(apiMessage(e, "Could not load your customers and the item list."));
@@ -221,7 +223,7 @@ export default function NewOrderPage() {
 
   const customers = lookups?.customers ?? [];
   const products = lookups?.products ?? [];
-  const methods = (lookups?.receivingMethods?.length ? lookups.receivingMethods : lookups?.paymentMethods) ?? [];
+  const methods = (lookups?.paymentMethods ?? []).filter((m) => m.key === "CREDIT");
   const customer = customers.find((c) => c.id === customerId) ?? null;
 
   /* The same arithmetic the API runs on the way in: tax on the line, on the

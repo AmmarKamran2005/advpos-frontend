@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import axios from "axios";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   CheckCircle2, ChevronDown, Loader2, Pencil, Trash2, XCircle,
   Truck, Check, AlertCircle,
@@ -154,15 +154,19 @@ export function OrderWorkflowActions({
   permissions,
   busy,
   onChanged,
+  locationId,
 }: {
   orderId: number;
   orderNo: string;
+  /** The place the order goes out of -- chosen when it was confirmed. */
+  locationId?: number;
   workflow: Workflow | null;
   permissions: OrderPermissions | null;
   busy: boolean;
   onChanged: () => void | Promise<void>;
 }) {
   const router = useRouter();
+  const search = useSearchParams();
   const { role } = useSession();
 
   const [working, setWorking] = React.useState(false);
@@ -171,12 +175,12 @@ export function OrderWorkflowActions({
 
   const disabled = busy || working;
 
-  /* DISPATCH IS THE ONE MOVE THAT ASKS A QUESTION FIRST.
+  /* THE PLACE IS CHOSEN AT CONFIRMATION (the owner, 1 Nov).
 
-     Every other step is a press. Dispatched takes the goods off a shelf, so
-     the API refuses it without a place (`needsLocation` comes back on a 400)
-     and this screen asks which one -- warehouses, order departments and shops,
-     never Claim Stock, which holds damaged goods that are not for sale. */
+     Confirming asks which place the order will go out of -- Karachi
+     Warehouse, Karachi Order Department or Shop 2 (the sellable places, never
+     Claim Stock) -- and the order keeps it. Dispatching then sends from that
+     place without asking again; the dialog only shows it, with the stock. */
   const [dispatchOpen, setDispatchOpen] = React.useState(false);
   const [places, setPlaces] = React.useState<Place[] | null>(null);
   const [placeId, setPlaceId] = React.useState(0);
@@ -233,37 +237,68 @@ export function OrderWorkflowActions({
     [orderId, onChanged]
   );
 
-  /* The places, fetched once and only when the dialog is first opened -- the
-     order screen does not need them otherwise. */
-  const openDispatch = React.useCallback(async () => {
-    setShortages([]);
-    setDispatchOpen(true);
-    /* What each place holds, so the desk sees it before sending (the owner,
-       21 Oct). Read fresh on every opening -- stock moves. */
-    void loadStock();
+  /* The places, fetched once and only when a dialog first needs them -- the
+     order screen does not otherwise. The order's own place is picked first. */
+  const loadPlaces = React.useCallback(async () => {
     if (places) return;
     try {
       const res = await axios.get<{ locations: Place[] }>(
         `${API_BASE_URL}/sales/lookups`, { headers: authHeader() });
       const sellable = (res.data.locations ?? []).filter((l) => l.isSellable);
       setPlaces(sellable);
-      setPlaceId(sellable[0]?.id ?? 0);
+      setPlaceId((cur) => cur
+        || (sellable.some((p) => p.id === locationId) ? locationId! : sellable[0]?.id ?? 0));
     } catch (e) {
       toast.error("Could not load the places", { description: apiMessage(e, "Please try again.") });
     }
-  }, [places, loadStock]);
+  }, [places, locationId]);
+
+  const openDispatch = React.useCallback(async () => {
+    setShortages([]);
+    /* Dispatch sends from the place chosen at confirmation. */
+    setPlaceId(locationId ?? 0);
+    setDispatchOpen(true);
+    /* What each place holds, so the desk sees it before sending (the owner,
+       21 Oct). Read fresh on every opening -- stock moves. */
+    void loadStock();
+    void loadPlaces();
+  }, [loadStock, loadPlaces, locationId]);
 
   /** Any step, pressed from the button or the menu. */
   const go = React.useCallback((key: string, name: string) => {
     if (key === "DISPATCHED") { void openDispatch(); return; }
     if (workflow && CONFIRMING_STEPS.includes(key) && !ALREADY_CONFIRMED.includes(workflow.current)) {
       setShortages([]);
+      setPlaceId(0);
       setConfirmFor({ key, name });
       void loadStock();
+      void loadPlaces();
       return;
     }
     void move(key);
-  }, [workflow, openDispatch, loadStock, move]);
+  }, [workflow, openDispatch, loadStock, loadPlaces, move]);
+
+  /* Once the places arrive for a confirmation, start on the order's own. */
+  React.useEffect(() => {
+    if (!confirmFor || placeId || !places?.length) return;
+    /* eslint-disable-next-line react-hooks/set-state-in-effect --
+       a default for the picker, once, when the places first arrive. */
+    setPlaceId(places.some((p) => p.id === locationId) ? locationId! : places[0].id);
+  }, [confirmFor, placeId, places, locationId]);
+
+  const confirmShort = stock && placeId ? shortAt(stock, placeId) : [];
+
+  /* Arriving from the owner's dashboard with ?confirm=1 opens the confirm
+     dialog straight away -- once. */
+  const autoConfirmed = React.useRef(false);
+  React.useEffect(() => {
+    if (autoConfirmed.current || search.get("confirm") !== "1" || !workflow?.next) return;
+    if (!CONFIRMING_STEPS.includes(workflow.next) || ALREADY_CONFIRMED.includes(workflow.current)) return;
+    autoConfirmed.current = true;
+    /* eslint-disable-next-line react-hooks/set-state-in-effect --
+       opening the confirm dialog once, on arrival from the owner's dashboard. */
+    go(workflow.next, workflow.nextName ?? workflow.next);
+  }, [search, workflow, go]);
 
   /* "There is not enough there" is said BEFORE anything is sent: the stock
      table already knows, so the desk is told at once which place cannot do it
@@ -432,10 +467,10 @@ export function OrderWorkflowActions({
       <Dialog open={dispatchOpen} onOpenChange={(o) => { setDispatchOpen(o); if (!o) setShortages([]); }}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Where is {orderNo} going out of?</DialogTitle>
+            <DialogTitle>Dispatch {orderNo}?</DialogTitle>
             <DialogDescription>
-              The goods come off this shelf when you dispatch, so it has to be the place they are
-              really leaving from. Claim Stock is not offered &mdash; nothing is sold off it.
+              It goes out of the place chosen when the order was confirmed, and the goods come off
+              that shelf.
             </DialogDescription>
           </DialogHeader>
 
@@ -451,29 +486,16 @@ export function OrderWorkflowActions({
                 under Setup &rarr; Locations.
               </p>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {places.map((l) => (
-                  <button key={l.id} type="button" onClick={() => { setPlaceId(l.id); setShortages([]); }}
-                    className={cn(
-                      "text-left p-3 rounded-lg border-2 transition-colors",
-                      placeId === l.id
-                        ? "border-brand-yellow bg-brand-yellow/5"
-                        : "border-slate-200 dark:border-navy-700 hover:border-brand-yellow/40"
-                    )}>
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-sm font-medium text-navy-900 dark:text-white truncate">{l.name}</span>
-                      {placeId === l.id && <Check className="size-4 text-brand-yellow shrink-0" />}
-                    </div>
-                    <div className="text-2xs text-slate-500 dark:text-slate-400 mt-0.5 uppercase tracking-wider">
-                      {l.kind}
-                    </div>
-                  </button>
-                ))}
+              <div className="p-3 rounded-lg border-2 border-brand-yellow bg-brand-yellow/5">
+                <div className="text-2xs text-slate-500 dark:text-slate-400 uppercase tracking-wider">Going out of</div>
+                <div className="text-sm font-medium text-navy-900 dark:text-white mt-0.5">
+                  {places.find((p) => p.id === placeId)?.name ?? "No place chosen -- confirm the order again to pick one"}
+                </div>
               </div>
             )}
 
-            {/* What each place holds of every item -- the column for the place
-                picked above is the one that must cover the order. */}
+            {/* What each place holds of every item -- the column for the
+                order's place is the one that must cover it. */}
             {places && places.length > 0 && (
               <div className="mt-3">
                 <div className="text-2xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
@@ -499,7 +521,7 @@ export function OrderWorkflowActions({
                   ))}
                 </ul>
                 <p className="text-2xs text-slate-500 dark:text-slate-400 mt-2">
-                  Pick another place, or move the stock there first.
+                  Move the stock there first.
                 </p>
               </div>
             )}
@@ -510,7 +532,7 @@ export function OrderWorkflowActions({
             <Button variant="accent" className="gap-1.5" disabled={working || !placeId}
               onClick={dispatchFromHere}>
               {working ? <Loader2 className="size-4 animate-spin" /> : <Truck />}
-              Dispatch from here
+              Dispatch
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -524,36 +546,64 @@ export function OrderWorkflowActions({
               {confirmFor?.key === "CONFIRMED" ? `Confirm ${orderNo}?` : `Move ${orderNo} to ${confirmFor?.name}?`}
             </DialogTitle>
             <DialogDescription>
-              Each item&apos;s stock at every place, beside what was ordered. The order department must
-              have enough of every item &mdash; it is packed from there. If it is short, move the stock
-              there first, then confirm.
+              Pick the place this order will be dispatched from. The order department then sends it from
+              there without being asked. Each item&apos;s stock is shown beside what was ordered &mdash;
+              the place picked must have enough of every item.
             </DialogDescription>
           </DialogHeader>
 
           <div className="px-5 pb-1 space-y-3">
+            <div>
+              <div className="text-2xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
+                Dispatch from
+              </div>
+              {!places ? (
+                <div className="h-14 rounded-lg bg-slate-100 dark:bg-navy-800 animate-pulse" />
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  {places.map((l) => (
+                    <button key={l.id} type="button" onClick={() => { setPlaceId(l.id); setShortages([]); }}
+                      className={cn(
+                        "text-left p-3 rounded-lg border-2 transition-colors",
+                        placeId === l.id
+                          ? "border-brand-yellow bg-brand-yellow/5"
+                          : "border-slate-200 dark:border-navy-700 hover:border-brand-yellow/40"
+                      )}>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-sm font-medium text-navy-900 dark:text-white truncate">{l.name}</span>
+                        {placeId === l.id && <Check className="size-4 text-brand-yellow shrink-0" />}
+                      </div>
+                      <div className="text-2xs text-slate-500 dark:text-slate-400 mt-0.5 uppercase tracking-wider">
+                        {l.kind}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {stock ? (
               <>
-                <OrderStockTable stock={stock}
-                  watch={stock.places.filter((p) => p.kind === "department").map((p) => p.id)} />
-                {stock.orderDeptCovers ? (
+                <OrderStockTable stock={stock} watch={placeId ? [placeId] : []} />
+                {!placeId ? null : confirmShort.length === 0 ? (
                   <p className="text-xs text-success flex items-center gap-1.5">
-                    <CheckCircle2 className="size-4" /> The order department has enough of every item.
+                    <CheckCircle2 className="size-4" /> {places?.find((p) => p.id === placeId)?.name ?? "This place"} has enough of every item.
                   </p>
                 ) : (
                   <div className="rounded-lg border border-danger/40 bg-danger/5 p-3">
                     <div className="flex items-center gap-2 text-sm font-semibold text-danger">
                       <AlertCircle className="size-4" />
-                      The order department is short
+                      {places?.find((p) => p.id === placeId)?.name ?? "This place"} is short
                     </div>
                     <ul className="mt-1.5 space-y-0.5">
-                      {stock.lines.filter((l) => l.orderDeptShort > 0).map((l) => (
-                        <li key={l.productId} className="text-2xs tabular text-danger-dark dark:text-danger-light">
-                          {l.name}: ordered {l.ordered}, order department has {l.orderDept} &mdash; short {l.orderDeptShort}
+                      {confirmShort.map((sh) => (
+                        <li key={sh.sku ?? sh.name} className="text-2xs tabular text-danger-dark dark:text-danger-light">
+                          {sh.name}: need {sh.needed}, have {sh.onHand} &mdash; short {sh.shortBy}
                         </li>
                       ))}
                     </ul>
                     <p className="text-2xs text-slate-500 dark:text-slate-400 mt-2">
-                      Transfer the stock to the order department, then confirm.
+                      Pick another place, or transfer the stock there first.
                     </p>
                   </div>
                 )}
@@ -568,7 +618,7 @@ export function OrderWorkflowActions({
             )}
 
             {/* The API's own refusal, if the shelf moved while this was open. */}
-            {shortages.length > 0 && stock?.orderDeptCovers && (
+            {shortages.length > 0 && confirmShort.length === 0 && (
               <p className="text-xs text-danger">
                 The stock changed while this was open. {shortages.map((sh) => `${sh.name}: short ${sh.shortBy}`).join("; ")}.
               </p>
@@ -579,8 +629,8 @@ export function OrderWorkflowActions({
             <Button variant="ghost" onClick={() => setConfirmFor(null)}>Cancel</Button>
             <Button variant="ghost" onClick={() => void loadStock()} disabled={working}>Refresh stock</Button>
             <Button variant="accent" className="gap-1.5"
-              disabled={working || !stock || !stock.orderDeptCovers}
-              onClick={() => confirmFor && void move(confirmFor.key)}>
+              disabled={working || !stock || !placeId || confirmShort.length > 0}
+              onClick={() => confirmFor && void move(confirmFor.key, undefined, placeId)}>
               {working ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 />}
               {confirmFor?.key === "CONFIRMED" ? "Confirm order" : `Move to ${confirmFor?.name}`}
             </Button>

@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { SelectNative } from "@/components/ui/select-native";
 import { Avatar } from "@/components/ui/avatar";
 import { StatusPill, Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -394,26 +395,53 @@ function CollectionCard({ c, onConfirm, onBounce }: { c: Collection; onConfirm: 
   );
 }
 
-/** Confirm a rep's collection: how much actually arrived (never more than recorded). */
+type CashBank = { id: number; code: string; name: string };
+
+/**
+ * Confirm a rep's collection: how much actually arrived (never more than
+ * recorded), and which account it went into -- Cash on Hand, Meezan, Faysal
+ * (the owner, 1 Nov). The receipt is posted there.
+ */
 function ConfirmRepDialog({ c, onOpenChange, onDone }: { c: Collection | null; onOpenChange: (o: boolean) => void; onDone: () => void }) {
   const [amount, setAmount] = React.useState("");
   const [note, setNote] = React.useState("");
   const [saving, setSaving] = React.useState(false);
+  const [accounts, setAccounts] = React.useState<CashBank[] | null>(null);
+  const [accountId, setAccountId] = React.useState(0);
+
+  /* The chart's Cash & Bank accounts, read once when the dialog first opens. */
+  React.useEffect(() => {
+    if (!c || accounts) return;
+    axios.get<{ accounts: { id: number; code: string; name: string; isGroup: boolean; type: string }[] }>(
+      `${API_BASE_URL}/accounting/lookups`, { headers: authHeader() })
+      .then((r) => setAccounts(r.data.accounts.filter((a) => !a.isGroup && a.type === "Cash & Bank")))
+      .catch(() => setAccounts([]));
+  }, [c, accounts]);
 
   React.useEffect(() => {
     /* eslint-disable-next-line react-hooks/set-state-in-effect -- reset the form for the row just opened. */
-    if (c) { setAmount(String(c.amount)); setNote(""); }
+    if (c) { setAmount(String(c.amount)); setNote(""); setAccountId(0); }
   }, [c]);
 
+  /* Cash goes to Cash on Hand by default; a bank payment to the first bank. */
+  React.useEffect(() => {
+    if (!c || accountId || !accounts?.length) return;
+    const cash = accounts.find((a) => /cash/i.test(a.name));
+    const bank = accounts.find((a) => !/cash/i.test(a.name));
+    /* eslint-disable-next-line react-hooks/set-state-in-effect -- a default for the picker. */
+    setAccountId(((c.method === "CASH" ? cash ?? bank : bank ?? cash) ?? accounts[0]).id);
+  }, [c, accounts, accountId]);
+
   const amt = parseFloat(amount) || 0;
-  const problem = !c ? null : amt <= 0 ? "Enter the amount that arrived." : amt > c.amount ? `${c.receiptNo} recorded ${formatMoney(c.amount)} — no more than that.` : null;
+  const problem = !c ? null : amt <= 0 ? "Enter the amount that arrived." : amt > c.amount ? `${c.receiptNo} recorded ${formatMoney(c.amount)} — no more than that.`
+    : !accountId ? "Pick the account it went into." : null;
 
   async function confirm() {
     if (!c || problem) return;
     setSaving(true);
     try {
       const r = await axios.post<{ message: string }>(`${API_BASE_URL}/accounting/collections/${c.id}/confirm`,
-        { amount: amt, note: note.trim() || null }, { headers: authHeader() });
+        { amount: amt, note: note.trim() || null, depositAccountId: accountId }, { headers: authHeader() });
       toast.success("Collection confirmed", { description: r.data.message });
       onOpenChange(false);
       onDone();
@@ -440,6 +468,20 @@ function ConfirmRepDialog({ c, onOpenChange, onDone }: { c: Collection | null; o
               value={amount} onChange={(e) => setAmount(e.target.value)} />
             {c && amt > 0 && amt < c.amount && (
               <p className="mt-1 text-2xs text-warning-dark dark:text-warning-light">{formatMoney(c.amount - amt)} short — the orders it covers are trimmed to match.</p>
+            )}
+          </div>
+          <div>
+            <Label className="mb-1.5 block">Received into</Label>
+            {!accounts ? <div className="h-9 rounded-lg bg-slate-100 dark:bg-navy-800 animate-pulse" /> : (
+              <SelectNative value={accountId || ""} onChange={(e) => setAccountId(Number(e.target.value))}>
+                {accounts.length === 0 && <option value="">No Cash &amp; Bank account in the chart</option>}
+                {accounts.map((a) => <option key={a.id} value={a.id}>{a.code} · {a.name}</option>)}
+              </SelectNative>
+            )}
+            {c && c.method !== "CASH" && (c.bank || c.reference) && (
+              <p className="mt-1 text-2xs text-slate-500 dark:text-slate-400">
+                The rep says: {c.methodName}{c.bank ? ` from ${c.bank}` : ""}{c.reference ? `, ref ${c.reference}` : ""}.
+              </p>
             )}
           </div>
           <div>

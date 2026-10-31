@@ -29,7 +29,7 @@ import { ConfirmDialog } from "@/components/dialogs/confirm-dialog";
 import { formatMoney, formatDate } from "@/lib/format";
 import { toast } from "@/components/ui/toaster";
 import { cn } from "@/lib/utils";
-import { API_BASE_URL, authHeader, Can, useSession } from "@/components/providers/session-provider";
+import { API_BASE_URL, authHeader, Can } from "@/components/providers/session-provider";
 
 /* GET /accounting/vouchers/{id} */
 type Allocation = {
@@ -53,7 +53,6 @@ type Voucher = {
   cashBankAccountId: number | null;
   cashBankAccount: string | null;
   amount: number;
-  paymentMethod: string;
   paymentProvider: string | null;
   reference: string | null;
   walletTxnId: string | null;
@@ -68,13 +67,11 @@ type Voucher = {
 };
 
 type LookupAccount = { id: number; code: string; name: string; isGroup: boolean; type: string };
-type LookupMethod = { id: number; key: string; name: string; kind: string };
 type LookupVoucherType = { id: number; code: string; name: string; isReceipt: boolean };
 type LookupRow = { id: number; name: string };
 type Lookups = {
   accounts: LookupAccount[];
   voucherTypes: LookupVoucherType[];
-  paymentMethods: LookupMethod[];
   locations: LookupRow[];
 };
 
@@ -92,10 +89,8 @@ const Schema = z.object({
   locationId: z.coerce.number().positive("Pick a location"),
   cashBankAccountId: z.coerce.number().positive("Pick the cash or bank account"),
   amount: z.coerce.number().positive("Amount must be above zero"),
-  methodId: z.coerce.number().positive("Pick a payment method"),
   paymentProvider: z.string().max(80).optional().or(z.literal("")),
   reference: z.string().max(50).optional().or(z.literal("")),
-  walletTxnId: z.string().max(50).optional().or(z.literal("")),
   narration: z.string().max(500).optional().or(z.literal("")),
 });
 type FormValues = z.infer<typeof Schema>;
@@ -111,7 +106,6 @@ const STATUS_VARIANT: Record<string, "success" | "muted" | "warning" | "danger" 
 
 export default function VoucherDetailPage() {
   const params = useParams<{ id: string }>();
-  const { role } = useSession();
   const router = useRouter();
   const id = Number.parseInt(params.id ?? "", 10);
 
@@ -147,17 +141,14 @@ export default function VoucherDetailPage() {
       setNotFound(false);
 
       const vType = look.data.voucherTypes.find((t) => t.code === one.data.type);
-      const method = look.data.paymentMethods.find((m) => m.key === one.data.paymentMethod);
       reset({
         voucherTypeId: vType?.id ?? 0,
         voucherDate: one.data.date,
         locationId: one.data.locationId,
         cashBankAccountId: one.data.cashBankAccountId ?? 0,
         amount: one.data.amount,
-        methodId: method?.id ?? 0,
         paymentProvider: one.data.paymentProvider ?? "",
         reference: one.data.reference ?? "",
-        walletTxnId: one.data.walletTxnId ?? "",
         narration: one.data.narration ?? "",
       });
     } catch (e) {
@@ -201,10 +192,9 @@ export default function VoucherDetailPage() {
           partyId: voucher?.partyId ?? null,
           cashBankAccountId: values.cashBankAccountId,
           amount: values.amount,
-          methodId: values.methodId,
           paymentProvider: values.paymentProvider?.trim() || null,
           reference: values.reference?.trim() || null,
-          walletTxnId: values.walletTxnId?.trim() || null,
+          walletTxnId: voucher?.walletTxnId ?? null,
           narration: values.narration?.trim() || null,
           allocations: (voucher?.allocations ?? []).map((a) => ({
             salesInvoiceId: a.salesInvoiceId,
@@ -315,7 +305,7 @@ export default function VoucherDetailPage() {
   const isPosted = v.status === "POSTED";
   const isDead = v.status === "CANCELLED" || v.status === "REVERSED";
   const allocated = v.allocations.reduce((s, a) => s + a.amount, 0);
-  const method = lookups?.paymentMethods.find((m) => m.key === v.paymentMethod) ?? null;
+  const isBank = v.type === "BR" || v.type === "BP";
 
   return (
     <>
@@ -387,8 +377,6 @@ export default function VoucherDetailPage() {
                           {/* No wallet types, the same as the New Voucher form (the owner, 21 Oct). */}
                           {lookups?.voucherTypes
                             .filter((t) => t.code !== "WR" && t.code !== "WP")
-                            /* Receipts only, except for the Super Admin. */
-                            .filter((t) => role === "super-admin" || t.isReceipt)
                             .map((t) => <option key={t.id} value={t.id}>{t.code} — {t.name}</option>)}
                         </SelectNative>
                       </FormControl><FormMessage /></FormItem>
@@ -413,25 +401,11 @@ export default function VoucherDetailPage() {
                     <FormField control={form.control} name="amount" render={({ field }) => (
                       <FormItem><FormLabel required>Amount (PKR)</FormLabel><FormControl><Input type="number" step="0.01" min={0} {...field} /></FormControl><FormMessage /></FormItem>
                     )} />
-                    <FormField control={form.control} name="methodId" render={({ field }) => (
-                      <FormItem><FormLabel required>Method</FormLabel><FormControl>
-                        <SelectNative {...field}>
-                          {/* A cash receipt never takes "Credit" -- the API refuses it too. */}
-                          {lookups?.paymentMethods
-                            .filter((m) => !(m.kind === "credit" &&
-                              lookups.voucherTypes.find((t) => t.id === Number(form.watch("voucherTypeId")))?.code === "CR"))
-                            .map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-                        </SelectNative>
-                      </FormControl><FormMessage /></FormItem>
-                    )} />
                     <FormField control={form.control} name="paymentProvider" render={({ field }) => (
-                      <FormItem><FormLabel>Provider / Bank</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
+                      <FormItem><FormLabel>Bank name</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
                     )} />
                     <FormField control={form.control} name="reference" render={({ field }) => (
                       <FormItem><FormLabel>Reference</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
-                    )} />
-                    <FormField control={form.control} name="walletTxnId" render={({ field }) => (
-                      <FormItem><FormLabel>Wallet Txn ID</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
                     )} />
                     <FormField control={form.control} name="narration" render={({ field }) => (
                       <FormItem className="sm:col-span-2"><FormLabel>Narration</FormLabel><FormControl><Textarea rows={2} {...field} /></FormControl><FormMessage /></FormItem>
@@ -471,7 +445,6 @@ export default function VoucherDetailPage() {
                       {isReceipt ? "+" : "-"}{formatMoney(v.amount)}
                     </div>
                   </div>
-                  <Badge variant="muted">{method?.name ?? v.paymentMethod}</Badge>
                 </div>
 
                 <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 text-sm">
@@ -484,8 +457,7 @@ export default function VoucherDetailPage() {
                       : "—"
                   } />
                   <Meta label={isReceipt ? "Received into" : "Paid from"} value={v.cashBankAccount ?? "—"} />
-                  <Meta label="Payment Method" value={<Badge variant="muted">{method?.name ?? v.paymentMethod}</Badge>} />
-                  {v.paymentProvider && <Meta label="Provider" value={v.paymentProvider} />}
+                  {v.paymentProvider && <Meta label="Bank name" value={v.paymentProvider} />}
                   {v.reference && <Meta label="Reference" value={<span className="tabular">{v.reference}</span>} />}
                   {v.walletTxnId && <Meta label="Wallet Txn" value={<span className="tabular">{v.walletTxnId}</span>} />}
                   <Meta label="Created By" value={v.createdBy} />
@@ -603,7 +575,7 @@ export default function VoucherDetailPage() {
             </CardBody>
           </Card>
 
-          {isPosted && method && (method.kind === "bank" || method.kind === "wallet") && (
+          {isPosted && isBank && (
             <Card>
               <CardBody>
                 <h3 className="text-sm font-semibold text-navy-900 dark:text-white mb-1.5">Bank reconciliation</h3>

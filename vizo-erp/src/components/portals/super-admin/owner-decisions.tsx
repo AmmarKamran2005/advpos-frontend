@@ -190,14 +190,11 @@ export function OwnerDecisions() {
                   </div>
 
                   <div className="flex items-center gap-1.5 flex-shrink-0">
-                    <Button
-                      variant="accent"
-                      size="sm"
-                      className="gap-1"
-                      disabled={working}
-                      onClick={() => void confirm(o, "CONFIRMED")}
-                    >
-                      <Check /> Confirm
+                    {/* Confirming asks where the order will be dispatched from
+                        (the owner, 1 Nov), so it opens the order's own confirm
+                        dialog rather than firing from here. */}
+                    <Button variant="accent" size="sm" className="gap-1" disabled={working} asChild>
+                      <Link href={`/sales/orders/${o.id}?confirm=1`}><Check /> Confirm</Link>
                     </Button>
                     <Button
                       variant="ghost"

@@ -117,6 +117,9 @@ export const navigation: NavNode[] = [
       { label: "Counter Sale",    href: "/sales/direct",       match: "sales.direct",   perms: ["sales.direct"] },
       { label: "Sales Returns",   href: "/sales/returns",      match: "sales.returns",  perms: ["returns.sales"] },
       { label: "Limit Alerts",    href: "/sales/credit-holds", match: "sales.credit-holds", perms: ["limits.manage"], liveBadge: "creditHolds" },
+      /* The rep's own money screen (the owner, 1 Nov). Accounts confirms on
+         Confirm Collections, so it is not on their menu. */
+      { label: "Payment Collection", href: "/sales/collections", match: "sales.collections", perms: ["orders.view"], hideForRoles: ["accountant", "order-dept"] },
     ],
   },
   {

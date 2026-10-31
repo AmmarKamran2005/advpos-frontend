@@ -3,6 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import axios from "axios";
+import { Loader2 } from "lucide-react";
 import type { RoleKey } from "@/lib/app-config";
 
 /**
@@ -172,6 +173,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = React.useState<SessionUser | null>(null);
   const [status, setStatus] = React.useState<SessionValue["status"]>("loading");
   const [mustChangePassword, setMustChangePassword] = React.useState(false);
+  const [signingOut, setSigningOut] = React.useState(false);
 
   /* Hydrate from storage first so the shell paints immediately, then confirm
      with the server. If the token has been revoked or the account switched
@@ -230,17 +232,27 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     };
   }, [router]);
 
+  /* SIGNING OUT IS IMMEDIATE (the owner, 1 Nov).
+
+     It used to wait for POST /auth/logout before clearing anything, so a slow
+     or sleeping server held the person on the screen with nothing happening.
+     Now the "Signing out" cover goes up at once, the server is told without
+     being waited on (keepalive lets the request finish even after the page
+     has gone), the cookies are cleared, and the login screen opens. The
+     server call is only the activity-log entry -- a bearer token is dropped
+     by the client, so nothing depends on it. If the client-side navigation
+     has not happened within a moment, a full page load to /login follows. */
   const logout = React.useCallback(async () => {
+    setSigningOut(true);
     const token = getToken();
     if (token) {
-      /* Best effort: the log entry is useful, but a bearer token is dropped
-         by the client, so a failure here must not block signing out. */
       try {
-        await axios.post(
-          `${API_BASE_URL}/auth/logout`,
-          {},
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
+        void fetch(`${API_BASE_URL}/auth/logout`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: "{}",
+          keepalive: true,
+        }).catch(() => undefined);
       } catch {
         /* ignored on purpose */
       }
@@ -249,6 +261,9 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
     setStatus("unauthenticated");
     router.replace("/login");
+    window.setTimeout(() => {
+      if (!window.location.pathname.startsWith("/login")) window.location.replace("/login");
+    }, 1500);
   }, [router]);
 
   const refresh = React.useCallback(async () => {
@@ -274,7 +289,20 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     [user, mustChangePassword, status, logout, refresh]
   );
 
-  return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
+  return (
+    <SessionContext.Provider value={value}>
+      {children}
+      {signingOut && (
+        <div role="status" aria-live="polite"
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-white/80 dark:bg-navy-950/80 backdrop-blur-sm">
+          <div className="flex items-center gap-3 rounded-xl border border-slate-200 dark:border-navy-700 bg-white dark:bg-navy-800 px-5 py-4 shadow-lg">
+            <Loader2 className="size-5 animate-spin text-brand-yellow" />
+            <span className="text-sm font-medium text-navy-900 dark:text-white">Signing you out…</span>
+          </div>
+        </div>
+      )}
+    </SessionContext.Provider>
+  );
 }
 
 export function useSession() {

@@ -13,7 +13,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SelectNative } from "@/components/ui/select-native";
-import { Badge, StatusPill } from "@/components/ui/badge";
+import { StatusPill } from "@/components/ui/badge";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { FilterBar } from "@/components/ui/filter-bar";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -21,7 +21,7 @@ import { Pager } from "@/components/ui/pager";
 import { toast } from "@/components/ui/toaster";
 import { formatMoney, formatDate, formatCompact } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { API_BASE_URL, authHeader, useSession } from "@/components/providers/session-provider";
+import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
 
 /* GET /accounting/vouchers
    -> { count, total, receiptTotal, paymentTotal, draftCount, page, pageSize,
@@ -41,7 +41,6 @@ type Voucher = {
   partyName: string | null;
   cashBankAccount: string | null;
   amount: number;
-  paymentMethod: string;
   paymentProvider: string | null;
   reference: string | null;
   narration: string;
@@ -134,11 +133,6 @@ export default function VouchersPage() {
   const [page, setPage] = React.useState(1);
   const [lookups, setLookups] = React.useState<VoucherLookups | null>(null);
 
-  /* Payments and journal vouchers are the Super Admin's (the owner, 22 Oct).
-     The API already lists only receipts for anybody else; the tabs follow. */
-  const { role } = useSession();
-  const seesPayments = role === "super-admin";
-
   React.useEffect(() => {
     /* Once, beside the list and never in front of it: until it answers the
        tabs show "All" alone and the list is already usable. */
@@ -149,9 +143,9 @@ export default function VouchersPage() {
 
   const types = React.useMemo(
     () => [{ key: "", label: "All" }, ...(lookups?.voucherTypes ?? [])
-      .filter((t) => seesPayments || t.isReceipt)
       .map((t) => ({ key: t.code, label: t.name }))],
-    [lookups, seesPayments]
+    /* Every type for the Super Admin and the accountant alike (the owner, 27 Oct). */
+    [lookups]
   );
   const statusName = (key: string) => lookups?.postingStatuses.find((s) => s.key === key)?.name ?? key;
 
@@ -262,14 +256,13 @@ export default function VouchersPage() {
         </div>
       )
     },
-    { key: "paymentMethod", header: "Method", cell: (v) => (
+    { key: "reference", header: "Reference", cell: (v) => (
         <div>
-          <Badge variant="muted">{v.paymentMethod}</Badge>
+          <span className="tabular text-xs text-slate-600 dark:text-slate-300">{v.reference ?? "—"}</span>
           {v.paymentProvider && <div className="text-2xs text-slate-500 dark:text-slate-400 mt-0.5">{v.paymentProvider}</div>}
         </div>
       )
     },
-    { key: "reference", header: "Reference", cell: (v) => <span className="tabular text-xs text-slate-600 dark:text-slate-300">{v.reference ?? "—"}</span> },
     { key: "narration", header: "Narration", cell: (v) => <span className="text-xs text-slate-600 dark:text-slate-300 line-clamp-1">{v.narration}</span> },
     { key: "amount", header: "Amount", align: "right", cell: (v) => (
         /* isReceipt comes from the API, so a new voucher type does not need

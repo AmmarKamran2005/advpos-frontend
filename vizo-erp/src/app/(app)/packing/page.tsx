@@ -436,7 +436,7 @@ export default function PackingPage() {
       toast.error(notReadyMessage(order.status, order.statusName, order.orderNo));
       return;
     }
-    if (!dispatchLocationId) { toast.error("Say which place it is going out of."); return; }
+    if (!dispatchLocationId) { toast.error("This order has no dispatch place. Ask the accountant to confirm it again."); return; }
 
     /* NOT ENOUGH THERE: SAID NOW, NOT AFTER THE FORM (the owner, 21 Oct). The
        stock is read again first -- the screen may have sat open -- and if the
@@ -448,7 +448,7 @@ export default function PackingPage() {
       setShortages(short);
       const place = places.find((p) => p.id === dispatchLocationId)?.name ?? "this place";
       toast.error(`Cannot dispatch from ${place}`, {
-        description: `There is not enough stock there for ${short.length} ${short.length === 1 ? "item" : "items"}. Pick another place, or move the stock there first.`,
+        description: `There is not enough stock there for ${short.length} ${short.length === 1 ? "item" : "items"}. Move the stock there first, or ask the accountant to change the dispatch place.`,
       });
       return;
     }
@@ -538,17 +538,18 @@ export default function PackingPage() {
     }
   }
 
-  /* ── the location the goods go out of -- the same box the order detail
-     page's own dispatch dialog asks, from the same GET /sales/lookups. ── */
+  /* ── THE PLACE IT GOES OUT OF IS NOT ASKED HERE (the owner, 1 Nov).
+
+     The Super Admin or the accountant picks it when they confirm the order --
+     Karachi Warehouse, Karachi Order Department or Shop 2 -- and the order
+     carries it as its location. The order desk only dispatches what has been
+     confirmed, so it simply sends from there. The places are still read, for
+     the name. ── */
   const [places, setPlaces] = React.useState<Place[]>([]);
-  const [dispatchLocationId, setDispatchLocationId] = React.useState<number>(0);
+  const dispatchLocationId = order?.locationId ?? 0;
   React.useEffect(() => {
     axios.get<{ locations: Place[] }>(`${API_BASE_URL}/sales/lookups`, { headers: authHeader() })
-      .then((res) => {
-        const sellable = (res.data.locations ?? []).filter((l) => l.isSellable);
-        setPlaces(sellable);
-        setDispatchLocationId((cur) => cur || sellable[0]?.id || 0);
-      })
+      .then((res) => setPlaces(res.data.locations ?? []))
       .catch(() => undefined);
   }, []);
 
@@ -741,13 +742,14 @@ export default function PackingPage() {
                     </div>
                   )}
 
-                  {/* Where it goes out of -- asked only while it can still go out. */}
+                  {/* Where it goes out of -- chosen when the order was confirmed. */}
                   {order.status !== "DISPATCHED" && (
                     <div className="mt-2">
                       <Label>Sending from</Label>
-                      <SelectNative value={dispatchLocationId || ""} onChange={(e) => { setDispatchLocationId(Number(e.target.value)); setShortages([]); }}>
-                        {places.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                      </SelectNative>
+                      <div className="h-9 px-3 rounded-lg border border-slate-200 dark:border-navy-700 bg-slate-50 dark:bg-navy-900 text-sm flex items-center gap-2 text-navy-900 dark:text-white">
+                        {places.find((p) => p.id === dispatchLocationId)?.name ?? "—"}
+                        <span className="ml-auto text-2xs text-slate-400">chosen at confirmation</span>
+                      </div>
                     </div>
                   )}
                 </CardBody>

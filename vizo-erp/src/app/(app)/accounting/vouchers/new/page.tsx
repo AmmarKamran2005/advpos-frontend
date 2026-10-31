@@ -20,7 +20,6 @@ import { notPast, PAST_DATE_MESSAGE, todayISO } from "@/lib/dates";
 import { Textarea } from "@/components/ui/textarea";
 import { SelectNative } from "@/components/ui/select-native";
 import { Avatar } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage, FormDescription } from "@/components/ui/form";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -29,21 +28,16 @@ import { vizoResolver } from "@/lib/zod-resolver";
 import { toast } from "@/components/ui/toaster";
 import { formatMoney, formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { API_BASE_URL, authHeader, useSession } from "@/components/providers/session-provider";
+import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
 
 /* GET /accounting/lookups */
 type LookupAccount = { id: number; code: string; name: string; isGroup: boolean; type: string };
 type LookupParty = { id: number; code: string; name: string; type: "CUSTOMER" | "SUPPLIER" | "BOTH" };
-type LookupMethod = { id: number; key: string; name: string; kind: string };
 type LookupVoucherType = { id: number; code: string; name: string; isReceipt: boolean };
 type LookupRow = { id: number; name: string };
 type Lookups = {
   accounts: LookupAccount[];
   voucherTypes: LookupVoucherType[];
-  paymentMethods: LookupMethod[];
-  /* Money coming in. A receipt voucher offers these four; a payment voucher
-     is money going OUT and keeps the whole list. */
-  receivingMethods: LookupMethod[];
   locations: LookupRow[];
   parties: LookupParty[];
 };
@@ -96,18 +90,14 @@ const Schema = z.object({
   partyId: z.coerce.number().optional(),
   cashBankAccountId: z.coerce.number().positive("Pick the cash or bank account"),
   amount: z.coerce.number().positive("Amount must be above zero"),
-  methodId: z.coerce.number().positive("Pick a payment method"),
   paymentProvider: z.string().max(80).optional().or(z.literal("")),
   reference: z.string().max(50).optional().or(z.literal("")),
-  walletTxnId: z.string().max(50).optional().or(z.literal("")),
   narration: z.string().min(5, "Say what this voucher is for").max(500),
 });
 type FormValues = z.infer<typeof Schema>;
 
 export default function NewVoucherPage() {
   const router = useRouter();
-  const { role } = useSession();
-  const seesPayments = role === "super-admin";
 
   const [lookups, setLookups] = React.useState<Lookups | null>(null);
   const [loading, setLoading] = React.useState(true);
@@ -130,10 +120,8 @@ export default function NewVoucherPage() {
       partyId: 0,
       cashBankAccountId: 0,
       amount: 0,
-      methodId: 0,
       paymentProvider: "",
       reference: "",
-      walletTxnId: "",
       narration: "",
     },
   });
@@ -159,20 +147,16 @@ export default function NewVoucherPage() {
       const wantParty = Number(search.get("partyId") ?? 0);
 
       const offered = res.data.voucherTypes
-        .filter((t) => !RETIRED_TYPES.includes(t.code))
-        .filter((t) => seesPayments || t.isReceipt);
+        .filter((t) => !RETIRED_TYPES.includes(t.code));
       const firstType = wantReceipt
         ? offered.find((t) => t.isReceipt) ?? offered[0]
         : offered[0];
       const cash = res.data.accounts.find((a) => !a.isGroup && a.type === "Cash & Bank");
-      const methodList = res.data.receivingMethods?.length ? res.data.receivingMethods : res.data.paymentMethods;
-      const cashMethod = methodList.find((m) => m.key === "CASH");
       reset((current) => ({
         ...current,
         voucherTypeId: firstType?.id ?? 0,
         locationId: res.data.locations[0]?.id ?? 0,
         cashBankAccountId: cash?.id ?? 0,
-        methodId: cashMethod?.id ?? methodList[0]?.id ?? 0,
         partyId: wantParty > 0 && res.data.parties.some((pa) => pa.id === wantParty)
           ? wantParty
           : current.partyId,
@@ -182,7 +166,7 @@ export default function NewVoucherPage() {
     } finally {
       setLoading(false);
     }
-  }, [reset, search, seesPayments]);
+  }, [reset, search]);
 
   usePageRefresh(load);   // the top bar's Refresh button -- lib/page-refresh.ts
 
@@ -192,45 +176,24 @@ export default function NewVoucherPage() {
 
   const voucherTypeId = Number(form.watch("voucherTypeId"));
   const partyId = Number(form.watch("partyId"));
-  const methodId = Number(form.watch("methodId"));
   const amount = Number(form.watch("amount")) || 0;
 
   const type = lookups?.voucherTypes.find((t) => t.id === voucherTypeId) ?? null;
   const isReceipt = type?.isReceipt ?? true;
   const isJournalVoucher = type?.code === "JV";
-  const method = lookups?.paymentMethods.find((m) => m.id === methodId) ?? null;
+  const isBank = type?.code === "BR" || type?.code === "BP";
 
-  /* The types this form offers -- every one but the two wallet vouchers. */
-  /* ...and for anybody but the Super Admin, receipts only (the owner, 22 Oct:
-     cash payment, bank payment and journal voucher are the Super Admin's).
-     The API refuses the others too (AccountingController.SeesPayments). */
+  /* The types this form offers -- every one but the two wallet vouchers.
+     The Super Admin and the accountant get the same five (the owner, 27 Oct:
+     the accountant does all of CR, CP, BR, BP and JV exactly as the admin). */
   const voucherTypeChoices = React.useMemo(
-    () => (lookups?.voucherTypes ?? [])
-      .filter((t) => !RETIRED_TYPES.includes(t.code))
-      .filter((t) => seesPayments || t.isReceipt),
-    [lookups, seesPayments]
+    () => (lookups?.voucherTypes ?? []).filter((t) => !RETIRED_TYPES.includes(t.code)),
+    [lookups]
   );
 
-  /* The methods for this type. Money in is limited to the receiving methods;
-     a CASH RECEIPT drops "Credit" as well (the owner, 21 Oct) -- cash that has
-     been received is not credit, and a cash receipt marked Credit posts money
-     into the cash account that never arrived. The API refuses it too. */
-  const methodChoices = React.useMemo(() => {
-    const base = isReceipt && lookups?.receivingMethods?.length
-      ? lookups.receivingMethods
-      : lookups?.paymentMethods ?? [];
-    return type?.code === "CR" ? base.filter((m) => m.kind !== "credit") : base;
-  }, [lookups, isReceipt, type]);
-
-  /* Switching type can take the chosen method off the list (Credit, on moving
-     to Cash Receipt). Fall back to Cash, or the first one left, rather than
-     post with a method the dropdown no longer shows. */
-  React.useEffect(() => {
-    if (!lookups || methodChoices.length === 0) return;
-    if (!methodChoices.some((m) => m.id === methodId)) {
-      setValue("methodId", (methodChoices.find((m) => m.key === "CASH") ?? methodChoices[0]).id);
-    }
-  }, [methodChoices, methodId, lookups, setValue]);
+  /* NO METHOD ON A VOUCHER (the owner, 27 Oct). The type already says cash or
+     bank, and "Received into / Paid from" says which account -- the column is
+     gone from the database. */
   const party = lookups?.parties.find((p) => p.id === partyId) ?? null;
   const cashBankAccounts = React.useMemo(
     () => (lookups?.accounts ?? []).filter((a) => !a.isGroup && a.type === "Cash & Bank"),
@@ -327,10 +290,8 @@ export default function NewVoucherPage() {
           partyId: values.partyId || null,
           cashBankAccountId: values.cashBankAccountId,
           amount: values.amount,
-          methodId: values.methodId,
           paymentProvider: values.paymentProvider?.trim() || null,
           reference: values.reference?.trim() || null,
-          walletTxnId: values.walletTxnId?.trim() || null,
           narration: values.narration.trim(),
           postImmediately,
           allocations: rows,
@@ -514,13 +475,6 @@ export default function NewVoucherPage() {
                   <FormField control={form.control} name="amount" render={({ field }) => (
                     <FormItem><FormLabel required>Amount (PKR)</FormLabel><FormControl><Input type="number" step="0.01" min={0} {...field} /></FormControl><FormMessage /></FormItem>
                   )} />
-                  <FormField control={form.control} name="methodId" render={({ field }) => (
-                    <FormItem><FormLabel required>Method</FormLabel><FormControl>
-                      <SelectNative {...field}>
-                        {methodChoices.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-                      </SelectNative>
-                    </FormControl><FormMessage /></FormItem>
-                  )} />
                   <FormField control={form.control} name="cashBankAccountId" render={({ field }) => (
                     <FormItem className="sm:col-span-2">
                       <FormLabel required>{isReceipt ? "Received into" : "Paid from"}</FormLabel>
@@ -533,35 +487,18 @@ export default function NewVoucherPage() {
                     </FormItem>
                   )} />
 
-                  {method && (method.kind === "bank") && (
-                    <>
-                      <FormField control={form.control} name="paymentProvider" render={({ field }) => (
-                        <FormItem><FormLabel>Bank name</FormLabel><FormControl><Input placeholder="HBL / Meezan / UBL" {...field} /></FormControl><FormMessage /></FormItem>
-                      )} />
-                      <FormField control={form.control} name="reference" render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>{method.key === "CHEQUE" ? "Cheque #" : "Txn reference"}</FormLabel>
-                          <FormControl><Input {...field} /></FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )} />
-                    </>
-                  )}
-                  {method && method.kind === "wallet" && (
-                    <FormField control={form.control} name="walletTxnId" render={({ field }) => (
-                      <FormItem className="sm:col-span-2">
-                        <FormLabel>Wallet Txn ID</FormLabel>
-                        <FormControl><Input placeholder="EP-… / JC-…" {...field} /></FormControl>
-                        <FormDescription>From the wallet provider&apos;s confirmation</FormDescription>
-                        <FormMessage />
-                      </FormItem>
+                  {isBank && (
+                    <FormField control={form.control} name="paymentProvider" render={({ field }) => (
+                      <FormItem><FormLabel>Bank name</FormLabel><FormControl><Input placeholder="HBL / Meezan / UBL" {...field} /></FormControl><FormMessage /></FormItem>
                     )} />
                   )}
-                  {method && method.kind === "cash" && (
-                    <FormField control={form.control} name="reference" render={({ field }) => (
-                      <FormItem className="sm:col-span-2"><FormLabel>Reference</FormLabel><FormControl><Input placeholder="Optional" {...field} /></FormControl><FormMessage /></FormItem>
-                    )} />
-                  )}
+                  <FormField control={form.control} name="reference" render={({ field }) => (
+                    <FormItem className={isBank ? undefined : "sm:col-span-2"}>
+                      <FormLabel>{isBank ? "Cheque # / Txn reference" : "Reference"}</FormLabel>
+                      <FormControl><Input placeholder="Optional" {...field} /></FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
 
                   <FormField control={form.control} name="narration" render={({ field }) => (
                     <FormItem className="sm:col-span-2"><FormLabel required>Narration</FormLabel><FormControl><Textarea rows={2} placeholder="What this voucher is for" {...field} /></FormControl><FormMessage /></FormItem>
@@ -632,7 +569,6 @@ export default function NewVoucherPage() {
                     {isReceipt ? "+" : "-"}{formatMoney(amount)}
                   </span>
                 </div>
-                {method && <Badge variant="muted" className="mt-2">{method.name}</Badge>}
 
                 <div className="mt-4 pt-4 border-t border-slate-200 dark:border-navy-700">
                   <div className="text-2xs uppercase font-semibold text-slate-500">Posting</div>

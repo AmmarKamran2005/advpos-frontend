@@ -335,6 +335,7 @@ export default function OrderDetailPage() {
               /* Every other case -- the next step, the free-choice dropdown,
                  edit, delete, and the rep's application for permission. */
               <OrderWorkflowActions
+                locationId={order.locationId}
                 orderId={order.id}
                 orderNo={order.orderNo}
                 workflow={workflow}

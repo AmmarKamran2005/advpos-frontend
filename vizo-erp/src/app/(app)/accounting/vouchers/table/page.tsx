@@ -39,9 +39,11 @@ import { API_BASE_URL, authHeader } from "@/components/providers/session-provide
                         its receivable or payable account)
 
    The codes come from the API (GET /accounting/voucher-book): the Super Admin
-   gets all five, the accountant CR and BR only, and the day's list shows the
-   accountant receipts only. Saving sends the whole table at once and the API
-   saves all of it or none (AccountingController.SaveVoucherBook).
+   and the accountant both get all five and see every entry of the day (the
+   owner, 27 Oct). There is no Method column -- the code already says cash or
+   bank, and the Cash / Bank cell says which account. Saving sends the whole
+   table at once and the API saves all of it or none
+   (AccountingController.SaveVoucherBook).
    ─────────────────────────────────────────────────────────────────────────── */
 
 type Code = { code: string; name: string; kind: "receipt" | "payment" | "journal" };
@@ -57,7 +59,6 @@ type BookLine = {
   amount: number;
   status: string;
   statusName: string;
-  method: string | null;
   createdBy: string | null;
   url: string;
 };
@@ -75,12 +76,9 @@ type Book = {
 /* GET /accounting/lookups -- only the parts this page reads. */
 type LookupAccount = { id: number; code: string; name: string; isGroup: boolean; type: string };
 type LookupParty = { id: number; code: string; name: string; type: "CUSTOMER" | "SUPPLIER" | "BOTH" };
-type LookupMethod = { id: number; key: string; name: string; kind: string };
 type Lookups = {
   accounts: LookupAccount[];
   parties: LookupParty[];
-  paymentMethods: LookupMethod[];
-  receivingMethods: LookupMethod[];
   locations: { id: number; name: string }[];
 };
 
@@ -93,7 +91,6 @@ type Draft = {
   code: string;
   party: string;        // Pick key -- receipts and payments
   cashBank: number;     // receipts and payments
-  methodId: number;     // bank receipts and payments
   debit: string;        // Pick key -- JV
   credit: string;       // Pick key -- JV
   particulars: string;
@@ -217,13 +214,6 @@ export default function VoucherBookPage() {
     ];
   }, [lookups]);
 
-  function methodsFor(code: string) {
-    if (!lookups) return [];
-    if (code === "BR") return lookups.receivingMethods.filter((m) => m.kind === "bank");
-    if (code === "BP") return lookups.paymentMethods.filter((m) => m.kind === "bank");
-    return lookups.paymentMethods.filter((m) => m.key === "CASH");
-  }
-
   /** The cash account for a cash code, a bank account for a bank code -- by name, the best guess the chart allows. */
   function defaultCashBank(code: string) {
     const cash = cashBank.find((a) => /cash/i.test(a.name));
@@ -235,7 +225,7 @@ export default function VoucherBookPage() {
     const c = code ?? drafts[drafts.length - 1]?.code ?? codes[0]?.code ?? "CR";
     return {
       uid: nextUid++, code: c, party: "", cashBank: defaultCashBank(c),
-      methodId: methodsFor(c)[0]?.id ?? 0, debit: "", credit: "", particulars: "", amount: "",
+      debit: "", credit: "", particulars: "", amount: "",
     };
   }
 
@@ -255,7 +245,6 @@ export default function VoucherBookPage() {
       /* A new code resets what the old one meant. */
       if (patch.code && patch.code !== r.code) {
         next.cashBank = defaultCashBank(patch.code);
-        next.methodId = methodsFor(patch.code)[0]?.id ?? 0;
         if (kindOf(patch.code) !== kindOf(r.code)) { next.party = ""; next.debit = ""; next.credit = ""; }
       }
       return next;
@@ -290,7 +279,6 @@ export default function VoucherBookPage() {
         code: r.code, amount: Number(r.amount), particulars: r.particulars || null,
         partyId: find(partyPicks, r.party)?.partyId ?? null,
         cashBankAccountId: r.cashBank || null,
-        methodId: r.methodId || null,
       };
     });
 
@@ -323,9 +311,7 @@ export default function VoucherBookPage() {
       <PageHeader
         breadcrumbs={[{ label: "Accounting" }, { label: "Vouchers", href: "/accounting/vouchers" }, { label: "Table Entry" }]}
         title="Voucher Book"
-        subtitle={book && !book.canSeePayments
-          ? "Receipts for one date, entered as a table"
-          : "Receipts, payments and journal vouchers for one date, entered as a table"}
+        subtitle="Receipts, payments and journal vouchers for one date, entered as a table"
         actions={
           <>
             <Button variant="ghost" size="md" className="gap-1.5" asChild>
@@ -386,7 +372,7 @@ export default function VoucherBookPage() {
 
       <Card>
         <div className="overflow-x-auto">
-          <table className="w-full text-sm min-w-[92rem] table-fixed">
+          <table className="w-full text-sm min-w-[82rem] table-fixed">
             <thead className="bg-slate-50 dark:bg-navy-800 text-2xs uppercase tracking-wider text-slate-500 dark:text-slate-400">
               <tr>
                 <th className="px-2 py-2 text-left w-10">#</th>
@@ -395,7 +381,6 @@ export default function VoucherBookPage() {
                 <th className="px-2 py-2 text-left">Particulars</th>
                 <th className="px-2 py-2 text-right w-36">Amount</th>
                 <th className="px-2 py-2 text-left w-64">Ac DR</th>
-                <th className="px-2 py-2 text-left w-36">Method</th>
                 <th className="px-2 py-2 text-left w-24">Status</th>
                 <th className="px-2 py-2 w-10" />
               </tr>
@@ -404,7 +389,7 @@ export default function VoucherBookPage() {
               {/* ── what is already in the book for this date ── */}
               {loading && !book ? (
                 [0, 1, 2].map((i) => (
-                  <tr key={i}><td colSpan={9} className="px-2 py-1.5"><Skeleton className="h-8" /></td></tr>
+                  <tr key={i}><td colSpan={8} className="px-2 py-1.5"><Skeleton className="h-8" /></td></tr>
                 ))
               ) : saved.map((r, i) => (
                 <tr key={`${r.kind}-${r.id}`} className="border-t border-slate-100 dark:border-navy-700 bg-slate-50/40 dark:bg-navy-900/30">
@@ -417,13 +402,12 @@ export default function VoucherBookPage() {
                   <td className="px-2 py-2 text-slate-500 dark:text-slate-400">{r.particulars || "—"}</td>
                   <td className="px-2 py-2 text-right tabular font-semibold text-navy-900 dark:text-white">{formatMoney(r.amount)}</td>
                   <td className="px-2 py-2 text-slate-700 dark:text-slate-200">{r.accountDr}</td>
-                  <td className="px-2 py-2 text-slate-500 dark:text-slate-400">{r.method ?? "—"}</td>
                   <td className="px-2 py-2"><StatusPill variant={STATUS_VARIANT[r.status] ?? "muted"}>{r.statusName}</StatusPill></td>
                   <td />
                 </tr>
               ))}
               {book && saved.length === 0 && (
-                <tr><td colSpan={9} className="px-3 py-3 text-center text-xs text-slate-400">
+                <tr><td colSpan={8} className="px-3 py-3 text-center text-xs text-slate-400">
                   {q ? "Nothing on this date matches the search." : "Nothing entered on this date yet."}
                 </td></tr>
               )}
@@ -470,14 +454,6 @@ export default function VoucherBookPage() {
                         : kind === "payment" ? partyCell
                         : <AccountPicker picks={journalPicks} value={r.debit} onChange={(k) => setRow(r.uid, { debit: k })} placeholder="Account to debit…" />}
                     </td>
-                    <td className="px-2 py-1.5">
-                      {kind === "journal" ? <span className="text-2xs text-slate-400 leading-10">no cash</span>
-                        : r.code === "BR" || r.code === "BP" ? (
-                          <SelectNative value={r.methodId || ""} onChange={(e) => setRow(r.uid, { methodId: Number(e.target.value) })}>
-                            {methodsFor(r.code).map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-                          </SelectNative>
-                        ) : <span className="text-xs text-slate-500 leading-10">Cash</span>}
-                    </td>
                     <td className="px-2 py-1.5 text-2xs text-slate-400 pt-3">{post ? "will post" : "draft"}</td>
                     <td className="px-2 py-1.5">
                       <Button variant="ghost" size="icon-sm" aria-label="Remove row"
@@ -504,12 +480,8 @@ export default function VoucherBookPage() {
           )}
           <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs tabular">
             <span className="text-slate-500">Receipts <b className="text-success">{formatMoney(book?.receiptTotal ?? 0)}</b></span>
-            {book?.canSeePayments && (
-              <>
-                <span className="text-slate-500">Payments <b className="text-danger">{formatMoney(book.paymentTotal)}</b></span>
-                <span className="text-slate-500">Journal <b className="text-info">{formatMoney(book.journalTotal)}</b></span>
-              </>
-            )}
+            <span className="text-slate-500">Payments <b className="text-danger">{formatMoney(book?.paymentTotal ?? 0)}</b></span>
+            <span className="text-slate-500">Journal <b className="text-info">{formatMoney(book?.journalTotal ?? 0)}</b></span>
             {!pastDay && <span className="text-slate-500">New rows <b className="text-navy-900 dark:text-white">{formatMoney(newTotal)}</b></span>}
           </div>
         </CardBody>

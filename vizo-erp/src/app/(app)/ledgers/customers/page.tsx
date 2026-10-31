@@ -233,14 +233,14 @@ export default function CustomerLedgersPage() {
             <div className={cn(loading && "opacity-60 transition-opacity")}>
               {/* Desktop: a table. */}
               <table className="hidden md:table w-full text-sm">
-                <thead>
+                <thead className="bg-slate-50 dark:bg-navy-800">
                   <tr className="text-2xs uppercase tracking-wider text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-navy-700">
-                    <th className="text-left font-semibold px-4 py-2.5">Code</th>
-                    <th className="text-left font-semibold px-4 py-2.5">Customer</th>
-                    <th className="text-left font-semibold px-4 py-2.5">Category</th>
-                    <th className="text-left font-semibold px-4 py-2.5">City</th>
-                    <th className="text-right font-semibold px-4 py-2.5">Credit limit</th>
-                    <th className="text-right font-semibold px-4 py-2.5">Balance</th>
+                    <th className="text-left font-semibold px-4 py-2">Code</th>
+                    <th className="text-left font-semibold px-4 py-2">Customer</th>
+                    <th className="text-left font-semibold px-4 py-2">Category</th>
+                    <th className="text-left font-semibold px-4 py-2">City</th>
+                    <th className="text-right font-semibold px-4 py-2">Credit limit</th>
+                    <th className="text-right font-semibold px-4 py-2">Balance</th>
                     <th className="w-8" />
                   </tr>
                 </thead>
