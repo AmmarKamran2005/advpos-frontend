@@ -44,6 +44,7 @@ type StaffInfo = {
   id: number; code: string; name: string; phone: string | null; cnic: string | null; categoryId: number;
   category: string; monthlySalary: number; openingBalance: number; joinedOn: string; isActive: boolean;
   notes: string | null; userId: number | null; login: string | null; role: string | null;
+  salaryAccountId: number | null; salaryAccount: string | null;
 };
 type Statement = {
   staff: StaffInfo; from: string; to: string; balanceBroughtForward: number; rows: Row[];
@@ -195,6 +196,7 @@ export default function StaffStatementPage() {
             <div className="text-xl sm:text-2xl tabular font-bold mt-1 text-white">{formatMoney(Math.abs(s.closingBalance))}</div>
             <div className="text-2xs mt-1 text-slate-300 tabular">
               {st && st.monthlySalary > 0 ? `Monthly salary ${formatMoney(st.monthlySalary)}` : "No monthly salary set"}
+              {st?.salaryAccount ? ` · posts to ${st.salaryAccount}` : ""}
             </div>
           </Card>
         </div>
@@ -281,6 +283,7 @@ export default function StaffStatementPage() {
             fullName: st.name, categoryId: String(st.categoryId), phone: st.phone ?? "", cnic: st.cnic ?? "",
             monthlySalary: String(st.monthlySalary || ""), openingBalance: String(st.openingBalance || ""),
             joinedOn: st.joinedOn, notes: st.notes ?? "", userId: "", isActive: st.isActive,
+            salaryAccountId: st.salaryAccountId ? String(st.salaryAccountId) : "",
           }}
           onSaved={() => { setEditOpen(false); void load(); loadLookups(); }} />
       )}

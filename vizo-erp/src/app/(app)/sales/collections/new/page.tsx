@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import axios from "axios";
-import { ArrowLeft, Save, Loader2, Banknote, Landmark, Check, AlertCircle } from "lucide-react";
+import { ArrowLeft, Save, Loader2, Banknote, Landmark, Check, AlertCircle, Info } from "lucide-react";
 import { usePageRefresh } from "@/lib/page-refresh";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardBody } from "@/components/ui/card";
@@ -22,9 +22,12 @@ import { cn } from "@/lib/utils";
 /* ───────────────────────────────────────────────────────────────────────────
    NEW PAYMENT COLLECTION -- as few inputs as the job allows (the owner, 1 Nov)
 
-   1. Customer   -- a dropdown of the rep's customers who owe on an invoiced order
-   2. Order      -- a dropdown of that customer's open orders; the items and what
-                    is still owed show underneath
+   1. Customer   -- a dropdown of the rep's customers with something to collect
+   2. Order      -- a dropdown of that customer's live orders, any status
+                    (delivered first). A fully paid order is not offered; a
+                    part-paid one shows what is left and can be collected again.
+                    An order not delivered yet can still be collected -- the
+                    screen only says so, softly (the owner, 1 Nov).
    3. Amount     -- filled in with everything that can be collected
    4. Paid by    -- Cash or Bank, two buttons. Bank asks the bank's name and the
                     transaction / cheque number (and the cheque date if a cheque).
@@ -37,7 +40,8 @@ import { cn } from "@/lib/utils";
 type Customer = { id: number; name: string; code: string; city: string | null; openOrders: number; owed: number; awaiting: number };
 type Line = { name: string; qty: number; rate: number; total: number };
 type Order = {
-  id: number; orderNo: string; invoiceNo: string; invoiceDate: string; dueDate: string;
+  id: number; orderNo: string; status: string; statusName: string; delivered: boolean; orderDate: string;
+  invoiceNo: string | null; invoiceDate: string | null; dueDate: string | null;
   total: number; received: number; awaiting: number; balance: number; collectable: number; lines: Line[];
 };
 
@@ -186,7 +190,9 @@ export default function NewCollectionPage() {
                   }}>
                   <option value="">{!customerId ? "Pick a customer first" : orders?.length === 0 ? "No open order" : "Choose order…"}</option>
                   {(orders ?? []).map((o) => (
-                    <option key={o.id} value={o.id}>{o.orderNo} · {o.invoiceNo} — {formatMoney(o.collectable)} due</option>
+                    <option key={o.id} value={o.id}>
+                      {o.orderNo} · {o.statusName}{o.received > 0 || o.awaiting > 0 ? " · part paid" : ""} — {formatMoney(o.collectable)} left
+                    </option>
                   ))}
                 </SelectNative>
               )}
@@ -201,11 +207,19 @@ export default function NewCollectionPage() {
               <div>
                 <div className="text-sm font-semibold text-navy-900 dark:text-white">{customer.name}</div>
                 <div className="text-2xs text-slate-500 dark:text-slate-400">
-                  <span className="tabular">{order.orderNo}</span> · invoice <span className="tabular">{order.invoiceNo}</span>
-                  {" "}of {formatDate(order.invoiceDate)} · due {formatDate(order.dueDate)}
+                  <span className="tabular">{order.orderNo}</span> of {formatDate(order.orderDate)} · {order.statusName}
+                  {order.invoiceNo && <> · invoice <span className="tabular">{order.invoiceNo}</span></>}
+                  {order.dueDate && <> · due {formatDate(order.dueDate)}</>}
                 </div>
               </div>
             </div>
+            {/* Soft, never a refusal: money can be taken before delivery. */}
+            {!order.delivered && (
+              <div className="mx-4 mb-2 rounded-lg border border-info/30 bg-info/5 px-3 py-2 text-xs text-slate-700 dark:text-slate-200 flex items-start gap-2">
+                <Info className="size-4 text-info shrink-0 mt-0.5" />
+                <span>This order is <b>{order.statusName.toLowerCase()}</b>, not delivered yet. You can still record the payment.</span>
+              </div>
+            )}
             <div className="overflow-x-auto">
               <table className="w-full text-sm min-w-[32rem]">
                 <thead className="bg-slate-50 dark:bg-navy-800 text-2xs uppercase tracking-wider text-slate-500 dark:text-slate-400">
@@ -229,10 +243,10 @@ export default function NewCollectionPage() {
               </table>
             </div>
             <CardBody className="border-t border-slate-200 dark:border-navy-700 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-              <Figure label="Invoice total" value={formatMoney(order.total)} />
+              <Figure label={order.invoiceNo ? "Invoice total" : "Order total"} value={formatMoney(order.total)} />
               <Figure label="Received" value={formatMoney(order.received)} tone="text-success" />
               <Figure label="Waiting to confirm" value={formatMoney(order.awaiting)} tone="text-warning-dark dark:text-warning-light" />
-              <Figure label="Can collect" value={formatMoney(order.collectable)} strong />
+              <Figure label="Left to collect" value={formatMoney(order.collectable)} strong />
             </CardBody>
           </Card>
         )}

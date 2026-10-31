@@ -42,11 +42,14 @@ type Account = {
   id: number; code: string; name: string; parentId: number | null; accountTypeId: number;
   type: string; group: string; isGroup: boolean; openingBalance: number; currency: string;
   isActive: boolean; balance: number;
+  /** Whose salary account this is, if anybody's. */
+  staffId: number | null; staffName: string | null;
 };
 type Lookups = {
   types: { id: number; name: string; groupId: number; group: string; isDebitNormal: boolean }[];
   groups: { id: number; code: string; name: string; typeId: number; groupId: number }[];
   systemCodes: string[];
+  staff?: { id: number; name: string; code: string; salaryAccountId: number | null }[];
 };
 
 /* The real "AccountGroup".GroupName values. */
@@ -67,6 +70,8 @@ function apiMessage(e: unknown, fallback: string) {
 type Draft = {
   id?: number; code: string; name: string; accountTypeId: string; parentId: string;
   isGroup: boolean; openingBalance: string; isActive: boolean;
+  /** "" = nobody's; otherwise the member of staff this is the salary account of. */
+  staffId: string;
 };
 
 export default function COAPage() {
@@ -124,11 +129,12 @@ export default function COAPage() {
       code = String(kids.length ? Math.max(...kids) + 1 : Number(parent.code) + 1);
     }
     setDraft({ code, name: "", accountTypeId: String(type?.id ?? ""), parentId: parent ? String(parent.id) : "",
-      isGroup: false, openingBalance: "0", isActive: true });
+      isGroup: false, openingBalance: "0", isActive: true, staffId: "" });
   }
   function openEdit(a: Account) {
     setDraft({ id: a.id, code: a.code, name: a.name, accountTypeId: String(a.accountTypeId),
-      parentId: a.parentId ? String(a.parentId) : "", isGroup: a.isGroup, openingBalance: String(a.openingBalance), isActive: a.isActive });
+      parentId: a.parentId ? String(a.parentId) : "", isGroup: a.isGroup, openingBalance: String(a.openingBalance), isActive: a.isActive,
+      staffId: a.staffId ? String(a.staffId) : "" });
   }
 
   async function remove(a: Account) {
@@ -170,6 +176,7 @@ export default function COAPage() {
             )}
             {locked && <Lock className="ml-1.5 inline size-3 text-slate-400" aria-label="Used by the system" />}
             {!a.isActive && <span className="ml-2 text-2xs font-medium text-slate-500">(switched off)</span>}
+            {a.staffName && <span className="ml-2 text-2xs font-medium text-info-dark dark:text-info-light">salary · {a.staffName}</span>}
           </span>
           {!a.isGroup && (
             <>
@@ -303,6 +310,9 @@ function AccountDialog({ draft, setDraft, lookups, accounts, locked, onSaved }: 
       code: draft.code.trim(), name: draft.name.trim(), accountTypeId: Number(draft.accountTypeId),
       parentId: draft.parentId ? Number(draft.parentId) : null, isGroup: draft.isGroup,
       openingBalance: Number(draft.openingBalance) || 0, isActive: draft.id ? draft.isActive : null,
+      /* A member of staff's own salary account (the owner, 1 Nov). */
+      ...(draft.staffId ? { staffId: Number(draft.staffId) }
+        : existing?.staffId ? { unlinkStaff: true } : {}),
     };
     try {
       const r = draft.id
@@ -374,6 +384,23 @@ function AccountDialog({ draft, setDraft, lookups, accounts, locked, onSaved }: 
               <Input type="number" inputMode="decimal" step="0.01" className="tabular max-w-60"
                 value={draft.openingBalance} onChange={(e) => set("openingBalance", e.target.value)} />
               <p className="mt-1 text-2xs text-slate-500">In the account&apos;s own direction — what it held before the first entry in this system.</p>
+            </div>
+          )}
+          {!draft.isGroup && type?.group === "Expenses" && (lookups.staff?.length ?? 0) > 0 && (
+            <div className="sm:col-span-2">
+              <Label className="mb-1.5 block">Salary account of</Label>
+              <SelectNative value={draft.staffId} onChange={(e) => set("staffId", e.target.value)}>
+                <option value="">Nobody — an ordinary expense account</option>
+                {lookups.staff!.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name} · {s.code}{s.salaryAccountId && s.salaryAccountId !== draft.id ? " (has another — it moves here)" : ""}
+                  </option>
+                ))}
+              </SelectNative>
+              <p className="mt-1 text-2xs text-slate-500">
+                An expense paid from this account on the day sheet then shows on that person&apos;s staff ledger, and
+                their salary rows post here.
+              </p>
             </div>
           )}
         </DialogBody>

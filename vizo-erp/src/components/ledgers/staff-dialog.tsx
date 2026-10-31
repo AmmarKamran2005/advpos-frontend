@@ -17,6 +17,8 @@ import { todayISO } from "@/lib/dates";
 export type StaffLookups = {
   categories: { id: number; name: string; inUse: number }[];
   unlinkedUsers: { id: number; name: string; role: string }[];
+  /* Every posting account; the salary-account picker narrows it to expenses. */
+  accounts?: { id: number; code: string; name: string; type: string; group: string }[];
 };
 
 /* ─────────────────────────── add / edit a person ─────────────────────────── */
@@ -24,6 +26,8 @@ export type StaffLookups = {
 export type StaffFormValue = {
   fullName: string; categoryId: string; phone: string; cnic: string; monthlySalary: string;
   openingBalance: string; joinedOn: string; notes: string; userId: string; isActive: boolean;
+  /** "" = none, "new" = open "{name} Salary", otherwise an expense account id. */
+  salaryAccountId: string;
 };
 
 export function StaffDialog({
@@ -38,8 +42,10 @@ export function StaffDialog({
 }) {
   const blank: StaffFormValue = {
     fullName: "", categoryId: "", phone: "", cnic: "", monthlySalary: "", openingBalance: "",
-    joinedOn: todayISO(), notes: "", userId: "", isActive: true,
+    joinedOn: todayISO(), notes: "", userId: "", isActive: true, salaryAccountId: "",
   };
+  const expenseAccounts = (lookups.accounts ?? []).filter((a) => a.group === "Expenses");
+  const initialSalary = initial?.salaryAccountId ?? "";
   const [v, setV] = React.useState<StaffFormValue>({ ...blank, ...initial });
   const [saving, setSaving] = React.useState(false);
   const set = (k: keyof StaffFormValue, value: string | boolean) => setV((cur) => ({ ...cur, [k]: value }));
@@ -61,6 +67,11 @@ export function StaffDialog({
         cnic: v.cnic.trim() || null, monthlySalary: Number(v.monthlySalary) || 0,
         openingBalance: Number(v.openingBalance) || 0, joinedOn: v.joinedOn || null, notes: v.notes.trim() || null,
         userId: v.userId ? Number(v.userId) : null, isActive: v.isActive,
+        /* Their own salary account (the owner, 1 Nov): salary rows post to it,
+           and expenses booked to it land on this ledger. */
+        ...(v.salaryAccountId === "new" ? { createSalaryAccount: true }
+          : v.salaryAccountId ? { salaryAccountId: Number(v.salaryAccountId) }
+          : editId && initialSalary ? { unlinkSalaryAccount: true } : {}),
       };
       const res = editId
         ? await axios.put<{ id: number; message: string }>(`${API_BASE_URL}/ledgers/staff/${editId}`, body, { headers: authHeader() })
@@ -116,6 +127,17 @@ export function StaffDialog({
           <div>
             <Label>Joined on</Label>
             <Input type="date" value={v.joinedOn} onChange={(e) => set("joinedOn", e.target.value)} className="mt-1" />
+          </div>
+          <div className="sm:col-span-2">
+            <Label>Salary account</Label>
+            <SelectNative value={v.salaryAccountId} onChange={(e) => set("salaryAccountId", e.target.value)} className="mt-1">
+              <option value="">General salary (5101)</option>
+              <option value="new">+ Open &ldquo;{v.fullName.trim() || "Name"} Salary&rdquo; account</option>
+              {expenseAccounts.map((a) => <option key={a.id} value={a.id}>{a.code} · {a.name}</option>)}
+            </SelectNative>
+            <p className="text-2xs text-slate-500 mt-0.5">
+              This person&apos;s salary posts to it, and an expense paid from it on the day sheet shows on this ledger.
+            </p>
           </div>
           {lookups.unlinkedUsers.length > 0 && (
             <div className="sm:col-span-2">

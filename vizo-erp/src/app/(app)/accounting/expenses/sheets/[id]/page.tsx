@@ -23,7 +23,7 @@ import { openDocumentWhenReady, viewableUrl, printPdf, downloadPdf } from "@/lib
 import { API_BASE_URL, authHeader } from "@/components/providers/session-provider";
 import {
   ExpenseGrid, isBlank, newRowKey, parseAmount, validateRow,
-  type GridRow, type Head, type PaidFromAccount, type RowErrors, type Field,
+  type GridRow, type Head, type PaidFromAccount, type VendorAccount, type RowErrors, type Field,
 } from "../../_components/expense-grid";
 import { JournalLink } from "@/components/accounting/journal-link";
 
@@ -36,6 +36,7 @@ type Line = {
   headCode: string;
   description: string | null;
   vendorName: string;
+  vendorAccountId: number | null;
   paidFromAccountId: number;
   paidFrom: string;
   amount: number;
@@ -83,6 +84,7 @@ type Sheet = {
 type Lookups = {
   heads: Head[];
   paidFrom: PaidFromAccount[];
+  vendorAccounts?: VendorAccount[];
   locations: { id: number; name: string }[];
   defaultLocationId: number | null;
   vendors: string[];
@@ -108,6 +110,7 @@ function toRow(l: Line): GridRow {
     expenseAccountId: l.expenseAccountId,
     description: l.description ?? "",
     vendorName: l.vendorName,
+    vendorAccountId: l.vendorAccountId,
     paidFromAccountId: l.paidFromAccountId,
     amount: l.amount.toFixed(2).replace(/\.00$/, ""),
     locked: l.locked,
@@ -241,6 +244,21 @@ export default function ExpenseSheetPage() {
     return [...m.values()].sort((a, b) => b.amount - a.amount);
   }, [live, lookups]);
 
+  /* Opens a vendor account under 2170 from the Vendor cell (the owner, 1 Nov). */
+  async function createVendor(name: string) {
+    try {
+      const res = await axios.post<{ id: number; code: string; name: string; message: string }>(
+        `${API_BASE_URL}/expense-sheets/vendors`, { name }, { headers: authHeader() });
+      const made = { id: res.data.id, code: res.data.code, name: res.data.name };
+      setLookups((cur) => cur ? { ...cur, vendorAccounts: [...(cur.vendorAccounts ?? []), made].sort((a, b) => a.name.localeCompare(b.name)) } : cur);
+      toast.success(res.data.message);
+      return made;
+    } catch (e) {
+      toast.error("Vendor not opened", { description: apiMessage(e, "Please try again.") });
+      return null;
+    }
+  }
+
   function onRowsChange(next: GridRow[]) {
     setRows(next);
     setDirty(true);
@@ -281,6 +299,7 @@ export default function ExpenseSheetPage() {
             expenseAccountId: r.expenseAccountId,
             description: r.description.trim() || null,
             vendorName: r.vendorName.trim(),
+            vendorAccountId: r.vendorAccountId ?? null,
             paidFromAccountId: r.paidFromAccountId,
             amount: parseAmount(r.amount),
           })),
@@ -579,6 +598,8 @@ export default function ExpenseSheetPage() {
         heads={lookups.heads}
         paidFrom={lookups.paidFrom}
         vendors={lookups.vendors}
+        vendorAccounts={lookups.vendorAccounts ?? []}
+        onCreateVendor={createVendor}
         errors={serverErrors}
         showAllErrors={showAllErrors}
         onRowsChange={onRowsChange}

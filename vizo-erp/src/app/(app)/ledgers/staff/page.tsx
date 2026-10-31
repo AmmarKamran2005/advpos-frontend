@@ -41,7 +41,11 @@ type Staff = {
   monthlySalary: number; hasLogin: boolean; role: string | null; isActive: boolean; balance: number;
 };
 type Page = { total: number; page: number; pageSize: number; totalPayable: number; items: Staff[] };
-type Lookups = { categories: ManagedCategory[]; unlinkedUsers: { id: number; name: string; role: string }[] };
+type Lookups = {
+  categories: ManagedCategory[];
+  unlinkedUsers: { id: number; name: string; role: string }[];
+  accounts?: { id: number; code: string; name: string; type: string; group: string }[];
+};
 
 export default function StaffLedgersPage() {
   const router = useRouter();

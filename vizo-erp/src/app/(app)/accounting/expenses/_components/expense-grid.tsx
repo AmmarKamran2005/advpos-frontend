@@ -21,6 +21,12 @@ import { cn } from "@/lib/utils";
  * searchable account picker, and a "+ Add row" button under it. There is no
  * payment method (the owner, 1 Nov): the paid-from account says cash or bank.
  *
+ * The Vendor cell picks a VENDOR ACCOUNT ("XYZ Electric", under 2170 Expense
+ * Vendors) or opens a new one on the spot; a plain name still works. A line
+ * paid to a vendor account shows on that vendor's ledger once the day is
+ * approved. A head that is somebody's salary account says whose -- that line
+ * lands on their staff ledger (the owner, 1 Nov).
+ *
  *   - Tab moves right (the browser's own order). Enter does too; Enter in the
  *     last cell of the last row adds the next row, the way the old book moved
  *     down the grid. Shift+Enter goes back. Up / Down move between rows in the
@@ -37,7 +43,8 @@ import { cn } from "@/lib/utils";
  * The page owns the rows; this component only draws them and reports edits.
  */
 
-export type Head = { id: number; code: string; name: string };
+export type Head = { id: number; code: string; name: string; staffName?: string | null };
+export type VendorAccount = { id: number; code: string; name: string };
 export type PaidFromAccount = { id: number; code: string; name: string };
 
 export type GridRow = {
@@ -48,6 +55,8 @@ export type GridRow = {
   expenseAccountId: number;
   description: string;
   vendorName: string;
+  /** The vendor account picked, when one was (else the name is free text). */
+  vendorAccountId?: number | null;
   paidFromAccountId: number;
   /** Kept as typed, so "12." is not rewritten to "12" under the cursor. */
   amount: string;
@@ -79,7 +88,7 @@ export function parseAmount(s: string): number {
 
 /** Nothing typed into it: a fresh row, or one cleared out. */
 export function isBlank(r: GridRow) {
-  return !r.id && !r.expenseAccountId && !r.description.trim() && !r.vendorName.trim() && !r.amount.trim();
+  return !r.id && !r.expenseAccountId && !r.description.trim() && !r.vendorName.trim() && !r.vendorAccountId && !r.amount.trim();
 }
 
 /** The same rules the API applies, so a mistake is caught while typing. */
@@ -87,7 +96,7 @@ export function validateRow(r: GridRow): RowErrors {
   if (r.locked || isBlank(r)) return {};
   const e: RowErrors = {};
   if (!r.expenseAccountId) e.expenseAccountId = "Pick an expense head";
-  if (!r.vendorName.trim()) e.vendorName = "Who was paid?";
+  if (!r.vendorName.trim() && !r.vendorAccountId) e.vendorName = "Who was paid?";
   else if (r.vendorName.trim().length > 150) e.vendorName = "Keep the vendor under 150 characters";
   if (r.description.length > 500) e.description = "Keep the description under 500 characters";
   if (!r.paidFromAccountId) e.paidFromAccountId = "Pick the account it was paid from";
@@ -102,6 +111,8 @@ export function ExpenseGrid({
   heads,
   paidFrom,
   vendors,
+  vendorAccounts = [],
+  onCreateVendor,
   errors,
   showAllErrors,
   onRowsChange,
@@ -113,6 +124,9 @@ export function ExpenseGrid({
   heads: Head[];
   paidFrom: PaidFromAccount[];
   vendors: string[];
+  vendorAccounts?: VendorAccount[];
+  /** Opens a vendor account under 2170 and returns it, or null when refused. */
+  onCreateVendor?: (name: string) => Promise<VendorAccount | null>;
   /** Server-side refusals by row key. */
   errors: Record<string, RowErrors>;
   /** After Save is pressed every row shows its problems, visited or not. */
@@ -216,9 +230,6 @@ export function ExpenseGrid({
   return (
     <Card>
       <div ref={gridRef} className="overflow-x-auto">
-        <datalist id="expense-vendors">
-          {vendors.map((v) => <option key={v} value={v} />)}
-        </datalist>
 
         <table className="w-full text-sm min-w-[56rem] table-fixed">
           <thead className="bg-slate-50 dark:bg-navy-800 text-2xs uppercase tracking-wider text-slate-500 dark:text-slate-400">
@@ -305,18 +316,22 @@ export function ExpenseGrid({
 
                     {/* vendor */}
                     <td className={readOnly ? "px-2 py-2 text-slate-700 dark:text-slate-200" : "px-2 py-1.5"}>
-                      {readOnly ? (r.vendorName || "—") : (
-                        <Input
-                          data-cell={`${i}-2`}
-                          aria-label={`Vendor, line ${i + 1}`}
-                          aria-invalid={!!errs.vendorName}
-                          list="expense-vendors"
-                          autoComplete="off"
-                          value={r.vendorName}
-                          maxLength={150}
-                          placeholder="Paid to"
-                          onChange={(e) => update(i, { vendorName: e.target.value }, "vendorName")}
-                          onKeyDown={(e) => onKeyDown(e, i, 2)}
+                      {readOnly ? (
+                        <span>
+                          {r.vendorName || "—"}
+                          {r.vendorAccountId && <span className="block text-2xs text-info-dark dark:text-info-light">vendor account</span>}
+                        </span>
+                      ) : (
+                        <VendorPicker
+                          cell={`${i}-2`}
+                          label={`Vendor, line ${i + 1}`}
+                          invalid={!!errs.vendorName}
+                          name={r.vendorName}
+                          accountId={r.vendorAccountId ?? null}
+                          accounts={vendorAccounts}
+                          pastNames={vendors}
+                          onCreate={onCreateVendor}
+                          onChange={(name, accountId) => { update(i, { vendorName: name, vendorAccountId: accountId }, "vendorName"); focusCell(i, 3); }}
                         />
                       )}
                     </td>
@@ -425,6 +440,7 @@ function HeadPicker({
   const [open, setOpen] = React.useState(false);
   const chosen = heads.find((h) => h.id === value) ?? null;
   const text = chosen ? `${chosen.code} ${chosen.name}` : strayName;
+  const staff = chosen?.staffName;
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
@@ -441,6 +457,7 @@ function HeadPicker({
           <span className={cn("flex-1 truncate", text ? "text-navy-900 dark:text-white" : "text-slate-400")}>
             {text ?? "Choose head…"}
           </span>
+          {staff && <span className="text-2xs text-info-dark dark:text-info-light shrink-0">staff ledger</span>}
           <ChevronsUpDown className="size-3.5 text-slate-400 shrink-0" />
         </button>
       </PopoverTrigger>
@@ -451,12 +468,112 @@ function HeadPicker({
             <CommandEmpty>None found.</CommandEmpty>
             <CommandGroup>
               {heads.map((h) => (
-                <CommandItem key={h.id} value={`${h.name} ${h.code}`} onSelect={() => { onChange(h.id); setOpen(false); }}>
+                <CommandItem key={h.id} value={`${h.name} ${h.code} ${h.staffName ?? ""}`} onSelect={() => { onChange(h.id); setOpen(false); }}>
                   <span className="flex-1 truncate text-sm">{h.name}</span>
+                  {h.staffName && <span className="text-2xs text-info-dark dark:text-info-light shrink-0">→ {h.staffName}&apos;s ledger</span>}
                   <span className="text-2xs tabular text-slate-400 shrink-0">{h.code}</span>
                 </CommandItem>
               ))}
             </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/**
+ * The vendor cell: pick a vendor account, open a new one from what was typed,
+ * or keep a plain name (the owner, 1 Nov). A vendor account puts the line on
+ * that vendor's ledger when the day is approved.
+ */
+function VendorPicker({
+  cell, label, invalid, name, accountId, accounts, pastNames, onCreate, onChange,
+}: {
+  cell: string;
+  label: string;
+  invalid: boolean;
+  name: string;
+  accountId: number | null;
+  accounts: VendorAccount[];
+  pastNames: string[];
+  onCreate?: (name: string) => Promise<VendorAccount | null>;
+  onChange: (name: string, accountId: number | null) => void;
+}) {
+  const [open, setOpen] = React.useState(false);
+  const [typed, setTyped] = React.useState("");
+  const [creating, setCreating] = React.useState(false);
+  const account = accounts.find((a) => a.id === accountId) ?? null;
+  const shown = account?.name ?? name;
+  const t = typed.trim();
+  const exists = accounts.some((a) => a.name.toLowerCase() === t.toLowerCase());
+  const names = pastNames.filter((n) => !accounts.some((a) => a.name.toLowerCase() === n.toLowerCase()));
+
+  async function create() {
+    if (!onCreate || !t) return;
+    setCreating(true);
+    const made = await onCreate(t);
+    setCreating(false);
+    if (made) { onChange(made.name, made.id); setOpen(false); }
+  }
+
+  return (
+    <Popover open={open} onOpenChange={(o) => { setOpen(o); if (o) setTyped(""); }}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          data-cell={cell}
+          aria-label={invalid ? `${label} (required)` : label}
+          className={cn(
+            "w-full h-9 px-3 rounded-lg border bg-white dark:bg-navy-800 text-left text-sm flex items-center gap-2 transition-all",
+            "focus:outline-none focus:border-brand-yellow focus:shadow-glow-yellow hover:border-brand-yellow",
+            invalid ? "border-danger" : "border-slate-200 dark:border-navy-700"
+          )}
+        >
+          <span className={cn("flex-1 truncate", shown ? "text-navy-900 dark:text-white" : "text-slate-400")}>
+            {shown || "Paid to…"}
+          </span>
+          {account && <span className="text-2xs text-info-dark dark:text-info-light shrink-0">account</span>}
+          <ChevronsUpDown className="size-3.5 text-slate-400 shrink-0" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[min(92vw,26rem)] p-0" align="start">
+        <Command>
+          <CommandInput placeholder="Type the vendor's name…" value={typed} onValueChange={setTyped} />
+          <CommandList className="max-h-72">
+            <CommandEmpty>{t ? "No vendor account by that name." : "No vendor accounts yet."}</CommandEmpty>
+            {accounts.length > 0 && (
+              <CommandGroup heading="Vendor accounts">
+                {accounts.map((a) => (
+                  <CommandItem key={a.id} value={`${a.name} ${a.code}`} onSelect={() => { onChange(a.name, a.id); setOpen(false); }}>
+                    <span className="flex-1 truncate text-sm">{a.name}</span>
+                    <span className="text-2xs tabular text-slate-400 shrink-0">{a.code}</span>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            )}
+            {names.length > 0 && (
+              <CommandGroup heading="Names used before (no account)">
+                {names.slice(0, 30).map((n) => (
+                  <CommandItem key={n} value={`name ${n}`} onSelect={() => { onChange(n, null); setOpen(false); }}>
+                    <span className="flex-1 truncate text-sm">{n}</span>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            )}
+            {t && !exists && (
+              <CommandGroup heading="New">
+                {onCreate && (
+                  <CommandItem value={`create ${t}`} onSelect={() => void create()} disabled={creating}>
+                    <Plus className="size-3.5 text-brand-yellow" />
+                    <span className="flex-1 truncate text-sm">Open vendor account &ldquo;{t}&rdquo;</span>
+                  </CommandItem>
+                )}
+                <CommandItem value={`plain ${t}`} onSelect={() => { onChange(t.slice(0, 150), null); setOpen(false); }}>
+                  <span className="flex-1 truncate text-sm text-slate-600 dark:text-slate-300">Use &ldquo;{t}&rdquo; as a name only</span>
+                </CommandItem>
+              </CommandGroup>
+            )}
           </CommandList>
         </Command>
       </PopoverContent>
