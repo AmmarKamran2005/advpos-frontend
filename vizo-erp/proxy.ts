@@ -66,6 +66,9 @@ const PUBLIC_PATHS = [
 const ROUTE_RULES: { prefix: string; pattern?: RegExp; roles: RoleKey[]; perm?: string }[] = [
   { prefix: "/admin", roles: ["super-admin"] },
 
+  /* The journal: the Super Admin's on 22 Oct, the accountant's too since
+     27 Oct, when the accountant took on every voucher type (JV included). */
+  { prefix: "/accounting/journal-entries", roles: ["super-admin", "accountant"] },
   { prefix: "/accounting", roles: ["super-admin", "accountant"] },
   /* Customer and Staff Ledgers -- money, by role, no permission escape hatch:
      the API refuses every other role on /ledgers (CustomerLedgerController,

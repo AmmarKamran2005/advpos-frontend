@@ -167,6 +167,12 @@ restore of live, plus browser checks as Super Admin and accountant.
     date is shown read-only.
   - `Controllers/AccountingController.VoucherBook.cs` (the controller is now
     `partial`).
+- **Journal Entries = Super Admin only** (same day, owner's yes): route guard,
+  menu ("Manual Entries"), palette, all eight `journal-entries` API actions
+  (403, `JournalsOwnerOnly`), and the journal-entry / payment-voucher PDFs
+  (`DocumentsController.OwnerOnlyDocument`). Elsewhere an entry number is plain
+  text for non-admins (`components/accounting/journal-link.tsx`). Ledgers,
+  statements and the trial balance stay open to the accountant. 15/15 checks.
 
 ## 21 Oct: accountant moves orders anywhere; stock at confirm and dispatch; rep's max quantity; one Refresh button; voucher clean-up
 
